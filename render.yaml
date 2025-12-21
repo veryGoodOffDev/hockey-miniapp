@@ -41,4 +41,3 @@ services:
 databases:
   - name: hockey-db
     plan: free
-    region: frankfurt
