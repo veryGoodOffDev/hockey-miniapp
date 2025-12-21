@@ -31,3 +31,38 @@ h1 { font-size: 18px; margin: 6px 0 10px; }
 h2 { font-size: 16px; margin: 6px 0 10px; }
 .small { color: var(--hint); font-size: 13px; }
 hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+.loaderWrap{
+  min-height: 60vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+}
+
+.sticks{ position:relative; width:90px; height:34px; }
+.stick{
+  position:absolute; top:14px; width:56px; height:6px;
+  border-radius:6px;
+  background: rgba(255,255,255,.55);
+}
+.stick.left{ left:0; transform: rotate(18deg); }
+.stick.right{ right:0; transform: rotate(-18deg); }
+
+.puck{
+  width:22px; height:22px; border-radius:50%;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 6px 18px rgba(0,0,0,.25);
+  animation: puck 1.0s ease-in-out infinite;
+}
+
+@keyframes puck{
+  0%{ transform: translateX(-24px); opacity:.6 }
+  50%{ transform: translateX(24px); opacity:1 }
+  100%{ transform: translateX(-24px); opacity:.6 }
+}
+
+.loaderText{
+  opacity:.8;
+  font-size: 14px;
+}
