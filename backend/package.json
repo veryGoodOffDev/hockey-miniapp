@@ -2,6 +2,9 @@
   "name": "hockey-backend",
   "private": true,
   "type": "module",
+    "scripts": {
+    "start": "node src/index.js"
+  },
   "engines": { "node": ">=20" },
   "dependencies": {
     "dotenv": "^16.4.5",
