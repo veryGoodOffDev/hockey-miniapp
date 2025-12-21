@@ -3,7 +3,6 @@ services:
   - type: web
     name: hockey-backend
     runtime: node
-    plan: free
     rootDir: backend
     buildCommand: npm ci
     startCommand: npm run start
@@ -27,7 +26,6 @@ services:
   - type: web
     name: hockey-webapp
     runtime: static
-    plan: free
     rootDir: webapp
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
