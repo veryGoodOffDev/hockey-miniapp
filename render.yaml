@@ -1,8 +1,8 @@
 services:
-  # 1) Backend (API + Telegram bot webhook)
   - type: web
     name: hockey-backend
     runtime: node
+    plan: free
     rootDir: backend
     buildCommand: npm ci
     startCommand: npm run start
@@ -22,7 +22,6 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false
 
-  # 2) Frontend Mini App (Static Site)
   - type: web
     name: hockey-webapp
     runtime: static
@@ -30,7 +29,6 @@ services:
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
-      # Вариант A (самый простой): задашь вручную в Render после деплоя
       - key: VITE_API_BASE
         sync: false
 
