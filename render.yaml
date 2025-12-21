@@ -28,7 +28,6 @@ services:
     name: hockey-webapp
     runtime: static
     plan: free
-    region: frankfurt
     rootDir: webapp
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
