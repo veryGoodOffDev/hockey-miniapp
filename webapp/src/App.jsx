@@ -8,6 +8,8 @@ export default function App() {
   const [teams, setTeams] = useState(null);
   const [tab, setTab] = useState("game");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
 
   const isAdmin = useMemo(() => {
     const tgId = me?.tg_id;
@@ -24,12 +26,27 @@ export default function App() {
     setRsvps(g.rsvps || []);
   }
 
-  useEffect(() => { refreshAll(); }, []);
+  useEffect(() => {
+  (async () => {
+    try {
+      setLoading(true);
+      await refreshAll();
+    } finally {
+      setLoading(false);
+    }
+  })();
+}, []);
 
-  async function rsvp(status) {
+
+async function rsvp(status) {
+  try {
+    setLoading(true);
     await apiPost("/api/rsvp", { status });
     await refreshAll();
+  } finally {
+    setLoading(false);
   }
+}
 
   async function saveProfile() {
     setSaving(true);
@@ -58,7 +75,7 @@ export default function App() {
 
 const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
 
-
+if (loading) return <Loader text="Загружаем..." />;
   return (
     <div className="container">
       <h1>🏒 Хоккей: отметки и составы</h1>
@@ -210,4 +227,16 @@ function label(k) {
     shooting: "Бросок"
   };
   return m[k] || k;
+}
+function Loader({ text }) {
+  return (
+    <div className="loaderWrap">
+      <div className="sticks">
+        <div className="stick left" />
+        <div className="stick right" />
+      </div>
+      <div className="puck" />
+      <div className="loaderText">{text}</div>
+    </div>
+  );
 }
