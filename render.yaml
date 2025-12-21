@@ -1,90 +1,44 @@
 services:
+  # 1) Backend (API + Telegram bot webhook)
   - type: web
     name: hockey-backend
-    env: node
+    runtime: node
     plan: free
+    region: frankfurt
     rootDir: backend
-    buildCommand: npm install
-    startCommand: node src/index.js
+    buildCommand: npm ci
+    startCommand: npm run start
     envVars:
-      - key: NODE_VERSION
-        value: 20
+      - key: NODE_ENV
+        value: production
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_IDS
         sync: false
-      - key: WEBAPP_URL
-        fromService:
-          type: static_site
-          name: hockey-webapp
-          property: url
       - key: DATABASE_URL
         fromDatabase:
           name: hockey-db
           property: connectionString
+      - key: WEB_APP_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
 
-  - type: static_site
+  # 2) Frontend Mini App (Static Site)
+  - type: web
     name: hockey-webapp
+    runtime: static
     plan: free
+    region: frankfurt
     rootDir: webapp
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
+      # Вариант A (самый простой): задашь вручную в Render после деплоя
       - key: VITE_API_BASE
-        fromService:
-          type: web
-          name: hockey-backend
-          property: url
+        sync: false
 
 databases:
   - name: hockey-db
     plan: free
-
-cronJobs:
-  - name: hockey-tuesday-reminder
-    env: node
-    plan: free
-    rootDir: backend
-    schedule: "0 16 * * 2"
-    buildCommand: npm install
-    command: node src/tasks.js tuesday
-    envVars:
-      - key: NODE_VERSION
-        value: 20
-      - key: BOT_TOKEN
-        sync: false
-      - key: ADMIN_IDS
-        sync: false
-      - key: WEBAPP_URL
-        fromService:
-          type: static_site
-          name: hockey-webapp
-          property: url
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hockey-db
-          property: connectionString
-
-  - name: hockey-saturday-teams
-    env: node
-    plan: free
-    rootDir: backend
-    schedule: "0 18 * * 6"
-    buildCommand: npm install
-    command: node src/tasks.js saturday
-    envVars:
-      - key: NODE_VERSION
-        value: 20
-      - key: BOT_TOKEN
-        sync: false
-      - key: ADMIN_IDS
-        sync: false
-      - key: WEBAPP_URL
-        fromService:
-          type: static_site
-          name: hockey-webapp
-          property: url
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hockey-db
-          property: connectionString
+    region: frankfurt
