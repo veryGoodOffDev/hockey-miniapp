@@ -49,6 +49,15 @@ export default function App() {
     const row = rsvps.find(r => String(r.tg_id) === String(me.tg_id));
     return row?.status || null;
   }, [rsvps, me]);
+  
+  const statusLabel = (s) => ({
+  yes: "Буду",
+  maybe: "Под вопросом",
+  no: "Не буду",
+}[s] || s);
+
+const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
+
 
   return (
     <div className="container">
@@ -70,16 +79,17 @@ export default function App() {
               <div className="row">
                 <span className="badge">⏱ {new Date(game.starts_at).toLocaleString("ru-RU")}</span>
                 <span className="badge">📍 {game.location || "—"}</span>
-                {myRsvp && <span className="badge">Мой статус: {myRsvp}</span>}
+                {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
               </div>
 
               <hr />
 
               <div className="row">
-                <button className="btn" onClick={() => rsvp("yes")}>✅ Буду</button>
-                <button className="btn secondary" onClick={() => rsvp("maybe")}>❓ Под вопросом</button>
-                <button className="btn secondary" onClick={() => rsvp("no")}>❌ Не буду</button>
+                <button className={btnClass("yes")} onClick={() => rsvp("yes")}>✅ Буду</button>
+                <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>❓ Под вопросом</button>
+                <button className={btnClass("no")} onClick={() => rsvp("no")}>❌ Не буду</button>
               </div>
+
 
               <hr />
 
