@@ -1,0 +1,90 @@
+services:
+  - type: web
+    name: hockey-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: WEBAPP_URL
+        fromService:
+          type: static_site
+          name: hockey-webapp
+          property: url
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hockey-db
+          property: connectionString
+
+  - type: static_site
+    name: hockey-webapp
+    plan: free
+    rootDir: webapp
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE
+        fromService:
+          type: web
+          name: hockey-backend
+          property: url
+
+databases:
+  - name: hockey-db
+    plan: free
+
+cronJobs:
+  - name: hockey-tuesday-reminder
+    env: node
+    plan: free
+    rootDir: backend
+    schedule: "0 16 * * 2"
+    buildCommand: npm install
+    command: node src/tasks.js tuesday
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: WEBAPP_URL
+        fromService:
+          type: static_site
+          name: hockey-webapp
+          property: url
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hockey-db
+          property: connectionString
+
+  - name: hockey-saturday-teams
+    env: node
+    plan: free
+    rootDir: backend
+    schedule: "0 18 * * 6"
+    buildCommand: npm install
+    command: node src/tasks.js saturday
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: WEBAPP_URL
+        fromService:
+          type: static_site
+          name: hockey-webapp
+          property: url
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hockey-db
+          property: connectionString
