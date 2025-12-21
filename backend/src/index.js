@@ -11,7 +11,7 @@ app.use(express.json());
 await initDb();
 
 const bot = createBot();
-
+await bot.init(); // <-- важно для webhook режима
 // --- Telegram webhook endpoint (после деплоя выставишь setWebhook на этот URL)
 app.post("/bot", async (req, res) => {
   try {
