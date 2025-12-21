@@ -1,11 +1,31 @@
 import "dotenv/config";
 import express from "express";
+import cors from "cors";
 import { initDb, q } from "./db.js";
 import { createBot } from "./bot.js";
 import { verifyTelegramWebApp } from "./telegramAuth.js";
 import { makeTeams } from "./teamMaker.js";
 
 const app = express();
+app.use(express.json());
+const allowed = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // В Telegram WebView origin иногда бывает пустым/null — разрешаем
+    if (!origin) return cb(null, true);
+
+    if (allowed.includes("*") || allowed.includes(origin)) return cb(null, true);
+
+    return cb(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  allowedHeaders: ["Content-Type", "x-telegram-init-data"],
+  methods: ["GET", "POST", "OPTIONS"]
+}));
+
 app.use(express.json());
 
 await initDb();
