@@ -5,6 +5,8 @@ import { initDb, q } from "./db.js";
 import { createBot } from "./bot.js";
 import { verifyTelegramWebApp } from "./telegramAuth.js";
 import { makeTeams } from "./teamMaker.js";
+import { ensureSchema } from "./schema.js";
+import { buildApiRouter } from "./routesApi.js";
 
 const app = express();
 app.use(express.json());
