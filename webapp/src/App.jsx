@@ -174,7 +174,11 @@ export default function App() {
 
   const statusLabel = (s) =>
     ({ yes: "Буду", maybe: "Под вопросом", no: "Не буду" }[s] || s);
-  
+  const gameStatusLabel = (s) => ({
+    scheduled: "Запланировано",
+    cancelled: "Галя, у нас ОТМЕНА!",
+  }[s] || s);
+
   function displayName(r) {
     return r.first_name || (r.username ? `@${r.username}` : "") || String(r.tg_id);
   }
@@ -267,7 +271,7 @@ export default function App() {
               <div className="row">
                 <span className="badge">⏱ {new Date(game.starts_at).toLocaleString("ru-RU")}</span>
                 <span className="badge">📍 {game.location || "—"}</span>
-                <span className="badge">Статус: {game.status}</span>
+                <span className="badge">Статус: {gameStatusLabel(game.status)}</span>
                 {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
               </div>
 
