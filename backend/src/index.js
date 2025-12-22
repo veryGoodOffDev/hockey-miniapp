@@ -133,15 +133,6 @@ async function sendRsvpReminder(chatId) {
 
   return { ok: true, game_id: game.id };
 }
-async function getNextScheduledGame() {
-  const gr = await q(
-    `SELECT * FROM games
-     WHERE status='scheduled' AND starts_at >= NOW() - INTERVAL '6 hours'
-     ORDER BY starts_at ASC
-     LIMIT 1`
-  );
-  return gr.rows[0] || null;
-}
 
 async function sendRsvpReminder(bot, chatId) {
   const webAppUrl = process.env.WEB_APP_URL;
