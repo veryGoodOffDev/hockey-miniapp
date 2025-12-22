@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
+import AdminPanel from "./AdminPanel.jsx";
 
 export default function App() {
   const [me, setMe] = useState(null);
   const [game, setGame] = useState(null);
   const [rsvps, setRsvps] = useState([]);
+  const [games, setGames] = useState([]);
+  const [selectedGameId, setSelectedGameId] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [teams, setTeams] = useState(null);
   const [tab, setTab] = useState("game");
   const [saving, setSaving] = useState(false);
@@ -18,14 +22,28 @@ export default function App() {
     return Boolean(tgId);
   }, [me]);
 
-  async function refreshAll() {
-    const m = await apiGet("/api/me");
-    if (m?.player) setMe(m.player);
+async function refreshAll(forceGameId) {
+  const m = await apiGet("/api/me");
+  if (m?.player) setMe(m.player);
+  setIsAdmin(!!m?.is_admin);
 
-    const g = await apiGet("/api/game");
-    setGame(g.game);
-    setRsvps(g.rsvps || []);
-  }
+  const gl = await apiGet("/api/games?days=35");
+  const list = gl.games || [];
+  setGames(list);
+
+  const nextId =
+    forceGameId ??
+    selectedGameId ??
+    (list.find(g => g.status === "scheduled")?.id ?? null);
+
+  if (nextId) setSelectedGameId(nextId);
+
+  const g = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
+  setGame(g.game);
+  setRsvps(g.rsvps || []);
+  if (g.teams) setTeams(g.teams);
+}
+
 
 useEffect(() => {
   const tg = window.Telegram?.WebApp;
