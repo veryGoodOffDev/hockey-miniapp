@@ -443,7 +443,7 @@ app.post("/api/admin/reminder/sendNow", async (req, res) => {
   if (!chatId) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
 
   try {
-    const r = await sendRsvpReminder(bot, chatId);
+    const r = await sendRsvpReminder(Number(chatId));
     res.json(r);
   } catch (e) {
     console.error("sendNow failed:", e);
