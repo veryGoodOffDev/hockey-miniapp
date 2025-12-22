@@ -25,14 +25,28 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [location, setLocation] = useState("");
   const [weeks, setWeeks] = useState(4);
 
+  // bulk selection
+  const [selected, setSelected] = useState(() => new Set());
+
   async function load() {
-    const g = await apiGet("/api/games?days=90");
+    const g = await apiGet("/api/games?days=180");
     setGames(g.games || []);
     const p = await apiGet("/api/players");
     setPlayers(p.players || []);
   }
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    // при перезагрузке списка — чистим выбор тех, кого больше нет
+    setSelected(prev => {
+      const ids = new Set((games || []).map(g => g.id));
+      const next = new Set();
+      for (const id of prev) if (ids.has(id)) next.add(id);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games.length]);
 
   const filteredPlayers = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -87,9 +101,54 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
     onChanged?.();
   }
 
+  async function deleteSelected() {
+    if (selected.size === 0) return;
+    const ok = confirm(`Удалить выбранные игры (${selected.size} шт.)?`);
+    if (!ok) return;
+
+    // удаляем по одной (быстро и надёжно)
+    for (const id of selected) {
+      await apiDelete(`/api/games/${id}`);
+    }
+    setSelected(new Set());
+    await load();
+    onChanged?.();
+  }
+
+  async function deleteAllGames() {
+    const ok = confirm("ТОЧНО удалить ВСЕ игры из базы? Это необратимо.");
+    if (!ok) return;
+
+    const ok2 = confirm("Последнее подтверждение: удалить ВСЕ игры?");
+    if (!ok2) return;
+
+    await apiDelete("/api/games"); // новый endpoint
+    setSelected(new Set());
+    await load();
+    onChanged?.();
+  }
+
+  function toggle(id) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set((games || []).map(g => g.id)));
+  }
+
+  function clearAll() {
+    setSelected(new Set());
+  }
+
   async function savePlayer(p) {
     await apiPatch(`/api/players/${p.tg_id}`, {
       first_name: p._first_name ?? p.first_name,
+      last_name: p._last_name ?? p.last_name,
       username: p._username ?? p.username,
       position: p._position ?? p.position,
       skill: Number(p._skill ?? p.skill),
@@ -98,6 +157,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
       stamina: Number(p._stamina ?? p.stamina),
       passing: Number(p._passing ?? p.passing),
       shooting: Number(p._shooting ?? p.shooting),
+      notes: p._notes ?? p.notes,
       disabled: Boolean(p._disabled ?? p.disabled),
     });
     await load();
@@ -125,7 +185,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
           <div style={{ flex: 1, minWidth: 140 }}>
             <label>Недель вперёд</label>
-            <input className="input" type="number" min={1} max={24} value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} />
+            <input className="input" type="number" min={1} max={52} value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} />
           </div>
 
           <button className="btn secondary" onClick={createSeries}>Создать расписание</button>
@@ -135,18 +195,49 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
       <div className="card">
         <h2>Список игр</h2>
 
+        <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
+          <div className="small">
+            Выбрано: <b>{selected.size}</b>
+          </div>
+          <div className="row">
+            <button className="btn secondary" onClick={selectAll}>Выделить всё</button>
+            <button className="btn secondary" onClick={clearAll}>Снять выделение</button>
+          </div>
+        </div>
+
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn secondary" disabled={selected.size === 0} onClick={deleteSelected}>
+            Удалить выбранные
+          </button>
+          <button className="btn secondary" onClick={load}>Обновить</button>
+          <button className="btn" onClick={deleteAllGames}>
+            Удалить ВСЕ игры
+          </button>
+        </div>
+
+        <hr />
+
         {(games || []).map((g) => {
           const dt = toLocal(g.starts_at);
           const cancelled = g.status === "cancelled";
+          const checked = selected.has(g.id);
 
           return (
             <div key={g.id} className="card" style={{ opacity: cancelled ? 0.7 : 1 }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontWeight: 800 }}>
-                    #{g.id} · {dt.date} {dt.time} {cancelled ? "(отменена)" : ""}
+              <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
+                <div className="row" style={{ alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(g.id)}
+                    style={{ transform: "scale(1.2)" }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 800 }}>
+                      #{g.id} · {dt.date} {dt.time} {cancelled ? "(отменена)" : ""}
+                    </div>
+                    <div className="small">{g.location}</div>
                   </div>
-                  <div className="small">{g.location}</div>
                 </div>
                 <span className="badge">{g.status}</span>
               </div>
@@ -182,7 +273,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div>
                 <div style={{ fontWeight: 800 }}>
-                  {p.first_name || "Без имени"} {p.username ? `(@${p.username})` : ""}
+                  {p.first_name || "Без имени"} {p.last_name ? p.last_name : ""} {p.username ? `(@${p.username})` : ""}
                 </div>
                 <div className="small">tg_id: {p.tg_id}</div>
               </div>
@@ -193,34 +284,23 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
             <input className="input" defaultValue={p.position || "F"} onChange={(e) => (p._position = e.target.value)} />
 
             <div className="row">
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <label>Skill</label>
-                <input className="input" type="number" min={1} max={10} defaultValue={p.skill ?? 5} onChange={(e) => (p._skill = e.target.value)} />
-              </div>
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <label>Skating</label>
-                <input className="input" type="number" min={1} max={10} defaultValue={p.skating ?? 5} onChange={(e) => (p._skating = e.target.value)} />
-              </div>
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <label>IQ</label>
-                <input className="input" type="number" min={1} max={10} defaultValue={p.iq ?? 5} onChange={(e) => (p._iq = e.target.value)} />
-              </div>
+              {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+                <div key={k} style={{ flex: 1, minWidth: 120 }}>
+                  <label>{k}</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={10}
+                    defaultValue={p[k] ?? 5}
+                    onChange={(e) => (p[`_${k}`] = e.target.value)}
+                  />
+                </div>
+              ))}
             </div>
 
-            <div className="row">
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <label>Stamina</label>
-                <input className="input" type="number" min={1} max={10} defaultValue={p.stamina ?? 5} onChange={(e) => (p._stamina = e.target.value)} />
-              </div>
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <label>Passing</label>
-                <input className="input" type="number" min={1} max={10} defaultValue={p.passing ?? 5} onChange={(e) => (p._passing = e.target.value)} />
-              </div>
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <label>Shooting</label>
-                <input className="input" type="number" min={1} max={10} defaultValue={p.shooting ?? 5} onChange={(e) => (p._shooting = e.target.value)} />
-              </div>
-            </div>
+            <label>Заметки</label>
+            <textarea className="input" rows={2} defaultValue={p.notes || ""} onChange={(e) => (p._notes = e.target.value)} />
 
             <div className="row" style={{ alignItems: "center" }}>
               <label style={{ margin: 0 }}>Отключить</label>
