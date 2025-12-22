@@ -145,12 +145,19 @@ export default function App() {
     }
   }
 
-  async function saveProfile() {
-    setSaving(true);
-    const res = await apiPost("/api/me", me);
-    if (res?.player) setMe(res.player);
-    setSaving(false);
-  }
+    async function saveProfile() {
+      setSaving(true);
+    
+      const numeric = ["skill","skating","iq","stamina","passing","shooting"];
+      const payload = { ...me };
+      for (const k of numeric) {
+        if (payload[k] == null || payload[k] === "") payload[k] = 5;
+      }
+    
+      const res = await apiPost("/api/me", payload);
+      if (res?.player) setMe(res.player);
+      setSaving(false);
+    }
 
   async function generateTeams() {
     if (!selectedGameId) return;
