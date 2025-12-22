@@ -231,12 +231,13 @@ function label(k) {
 function Loader({ text }) {
   return (
     <div className="loaderWrap">
-      <div className="sticks">
-        <div className="stick left" />
-        <div className="stick right" />
+      <div className="loaderIce">
+        <div className="hStick left" />
+        <div className="hStick right" />
+        <div className="puck" />
       </div>
-      <div className="puck" />
       <div className="loaderText">{text}</div>
     </div>
   );
 }
+
