@@ -81,6 +81,20 @@ function requireAdmin(req, res, user) {
   return true;
 }
 
+async function getSetting(key, def = null) {
+  const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
+  return r.rows[0]?.value ?? def;
+}
+
+async function setSetting(key, value) {
+  await q(
+    `INSERT INTO settings(key, value) VALUES($1,$2)
+     ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
+    [key, String(value)]
+  );
+}
+
+
 async function ensurePlayer(user) {
   await q(
     `INSERT INTO players(tg_id, first_name, last_name, username)
