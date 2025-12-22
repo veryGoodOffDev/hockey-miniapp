@@ -367,7 +367,7 @@ export default function App() {
               </div>
 
               <hr />
-              <h3>🟥 A</h3>
+              <h3>⬜ Белые </h3>
               {(teams.teamA || []).map((p) => (
                 <div key={p.tg_id} className="small">
                   • {p.first_name || p.username || p.tg_id} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
@@ -375,7 +375,7 @@ export default function App() {
               ))}
 
               <hr />
-              <h3>🟦 B</h3>
+              <h3>🟦 Синие </h3>
               {(teams.teamB || []).map((p) => (
                 <div key={p.tg_id} className="small">
                   • {p.first_name || p.username || p.tg_id} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
