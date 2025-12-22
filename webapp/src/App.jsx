@@ -174,6 +174,22 @@ export default function App() {
 
   const statusLabel = (s) =>
     ({ yes: "Буду", maybe: "Под вопросом", no: "Не буду" }[s] || s);
+  
+  function displayName(r) {
+    return r.first_name || (r.username ? `@${r.username}` : "") || String(r.tg_id);
+  }
+  
+  const grouped = useMemo(() => {
+    const g = { yes: [], maybe: [], no: [] };
+    for (const r of (rsvps || [])) {
+      if (g[r.status]) g[r.status].push(r);
+    }
+    // сортируем по имени
+    for (const k of ["yes","maybe","no"]) {
+      g[k].sort((a,b) => displayName(a).localeCompare(displayName(b), "ru"));
+    }
+    return g;
+  }, [rsvps]);
 
   const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
 
@@ -269,24 +285,31 @@ export default function App() {
 
               <hr />
 
-              <div className="small">Отметившиеся:</div>
-              <div style={{ marginTop: 8 }}>
-                {rsvps.length === 0 ? (
-                  <div className="small">Пока никто не отметился.</div>
-                ) : (
-                  rsvps.map((r) => (
-                    <div key={r.tg_id} className="row" style={{ alignItems: "center" }}>
-                      <span className="badge">{statusLabel(r.status)}</span>
-                      <div>{r.first_name || r.username || r.tg_id}</div>
-                      {isAdmin && (
-                        <span className="small">
-                          ({r.position}, skill {r.skill})
-                        </span>
-                      )}
-                    </div>
-                  ))
-                )}
+              <div className="small">Отметки:</div>
+              
+              <div style={{ marginTop: 10 }}>
+                <StatusBlock
+                  title="✅ Будут на игре"
+                  tone="yes"
+                  list={grouped.yes}
+                  isAdmin={isAdmin}
+                />
+              
+                <StatusBlock
+                  title="❓ Под вопросом"
+                  tone="maybe"
+                  list={grouped.maybe}
+                  isAdmin={isAdmin}
+                />
+              
+                <StatusBlock
+                  title="❌ Не будут"
+                  tone="no"
+                  list={grouped.no}
+                  isAdmin={isAdmin}
+                />
               </div>
+
             </>
           )}
         </div>
@@ -413,4 +436,33 @@ function label(k) {
     shooting: "Бросок",
   };
   return m[k] || k;
+}
+
+function StatusBlock({ title, tone, list, isAdmin }) {
+  const cls = `statusBlock ${tone}`;
+  return (
+    <div className={cls}>
+      <div className="statusHeader">
+        <div className="statusTitle">{title}</div>
+        <span className="badge">{list.length}</span>
+      </div>
+
+      {list.length === 0 ? (
+        <div className="small" style={{ opacity: 0.8 }}>—</div>
+      ) : (
+        <div className="statusList">
+          {list.map((r) => (
+            <div key={r.tg_id} className="statusRow">
+              <div>{r.first_name || (r.username ? `@${r.username}` : r.tg_id)}</div>
+              {isAdmin && r.skill != null && (
+                <div className="small" style={{ opacity: 0.8 }}>
+                  ({r.position}, skill {r.skill})
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
