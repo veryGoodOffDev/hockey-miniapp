@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { initDb, q } from "./db.js";
 import { createBot } from "./bot.js";
-import { verifyTelegramWebApp } from "./telegramAuth.js";
+import { verifyTelegramWebApp } from "./tgAuth.js";
 import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
 import { buildApiRouter } from "./routesApi.js";
