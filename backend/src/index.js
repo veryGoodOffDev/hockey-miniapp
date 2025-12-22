@@ -109,8 +109,12 @@ async function sendRsvpReminder(chatId) {
     return { ok: true, reason: "no_game" };
   }
 
-  const dt = new Date(game.starts_at);
-  const when = dt.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
+  const tz = process.env.TZ_NAME || "Europe/Moscow";
+  const when = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: tz,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(game.starts_at));
 
   const text =
 `🏒 Напоминание: отметься на игру!
