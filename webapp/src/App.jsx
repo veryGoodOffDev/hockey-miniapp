@@ -3,7 +3,8 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 
-const BOT_DEEPLINK = "https://t.me/HockeyLineupBot?startapp=1";
+const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
+
 
 export default function App() {
   const tg = window.Telegram?.WebApp;
