@@ -1,48 +1,41 @@
 import crypto from "crypto";
 
-function dataCheckStringFromInitData(initData) {
-  const params = new URLSearchParams(initData);
-  const hash = params.get("hash");
-  params.delete("hash");
-
-  const pairs = [];
-  for (const [k, v] of params.entries()) pairs.push([k, v]);
-  pairs.sort((a, b) => a[0].localeCompare(b[0]));
-
-  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join("\n");
-  return { hash, dataCheckString, params };
-}
-
-export function verifyInitData(initData, botToken) {
-  if (!initData) return null;
-  const { hash, dataCheckString, params } = dataCheckStringFromInitData(initData);
-  if (!hash) return null;
-
-  const secretKey = crypto.createHash("sha256").update(botToken).digest();
-  const hmac = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
-  if (hmac !== hash) return null;
-
-  const userJson = params.get("user");
-  if (!userJson) return null;
-
+export function verifyTelegramWebApp(initData, botToken) {
   try {
-    const user = JSON.parse(userJson);
-    return user;
-  } catch {
-    return null;
+    if (!initData) return { ok: false, reason: "no_init_data" };
+    if (!botToken) return { ok: false, reason: "no_bot_token" };
+
+    const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    if (!hash) return { ok: false, reason: "no_hash" };
+
+    params.delete("hash");
+
+    const pairs = [];
+    for (const [k, v] of params.entries()) pairs.push([k, v]);
+    pairs.sort((a, b) => a[0].localeCompare(b[0]));
+    const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join("\n");
+
+    // secretKey = HMAC_SHA256(botToken, key="WebAppData")
+    const secretKey = crypto
+      .createHmac("sha256", "WebAppData")
+      .update(botToken)
+      .digest();
+
+    // checkHash = HMAC_SHA256(dataCheckString, key=secretKey)
+    const checkHash = crypto
+      .createHmac("sha256", secretKey)
+      .update(dataCheckString)
+      .digest("hex");
+
+    if (checkHash !== hash) return { ok: false, reason: "BOT_INVALID" };
+
+    const userRaw = params.get("user");
+    if (!userRaw) return { ok: false, reason: "no_user" };
+
+    const user = JSON.parse(userRaw);
+    return { ok: true, user };
+  } catch (e) {
+    return { ok: false, reason: "exception" };
   }
-}
-
-export function tgAuthMiddleware(req, res, next) {
-  const initData = req.header("x-telegram-init-data") || "";
-  const botToken = process.env.BOT_TOKEN || "";
-  const user = verifyInitData(initData, botToken);
-
-  if (!user) {
-    req.tgUser = null;
-    return res.status(401).json({ ok: false, error: "invalid_init_data" });
-  }
-
-  req.tgUser = user;
-  next();
 }
