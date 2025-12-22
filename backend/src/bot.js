@@ -15,10 +15,23 @@ export function createBot() {
     return adminIds.has(String(ctx.from?.id));
   }
 
-  function webappKeyboard() {
-    const url = process.env.WEBAPP_URL;
-    return new InlineKeyboard().webApp("Открыть мини-приложение", url);
+function appKeyboard(bot, chatType) {
+  const webAppUrl = process.env.WEB_APP_URL || process.env.WEBAPP_URL;
+
+  if (chatType === "private") {
+    if (!webAppUrl) return undefined;
+    return new InlineKeyboard().webApp("Открыть мини-приложение", webAppUrl);
   }
+
+  // В группе web_app нельзя → даём direct link
+  const username = bot.botInfo?.username || process.env.BOT_USERNAME;
+  const deepLink = username ? `https://t.me/${username}?startapp` : null;
+
+  const url = deepLink || webAppUrl;
+  if (!url) return undefined;
+
+  return new InlineKeyboard().url("Открыть мини-приложение", url);
+}
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
@@ -78,7 +91,8 @@ export function createBot() {
     // мягко подсказываем
     if (ctx.chat.type !== "private") return;
     if (!ctx.message?.text?.startsWith("/")) {
-      await ctx.reply("Открой мини-приложение:", { reply_markup: webappKeyboard() });
+      const kb = appKeyboard(bot, ctx.chat.type);
+      await ctx.reply("Открой мини-приложение:", kb ? { reply_markup: kb } : undefined);
     }
   });
 
