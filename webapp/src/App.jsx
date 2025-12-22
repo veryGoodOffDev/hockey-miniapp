@@ -26,16 +26,36 @@ export default function App() {
     setRsvps(g.rsvps || []);
   }
 
-  useEffect(() => {
+useEffect(() => {
+  const tg = window.Telegram?.WebApp;
+
+  const applyTheme = () => {
+    if (!tg) return;
+    document.documentElement.dataset.tg = tg.colorScheme; // "light" | "dark"
+  };
+
   (async () => {
     try {
       setLoading(true);
+
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        applyTheme();
+        tg.onEvent("themeChanged", applyTheme);
+      }
+
       await refreshAll();
     } finally {
       setLoading(false);
     }
   })();
+
+  return () => {
+    if (tg) tg.offEvent("themeChanged", applyTheme);
+  };
 }, []);
+
 
 
 async function rsvp(status) {
