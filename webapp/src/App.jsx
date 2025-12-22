@@ -300,12 +300,22 @@ export default function App() {
               <label>{label(k)} (1–10)</label>
               <input
                 className="input"
-                type="number"
-                min="1"
-                max="10"
-                value={me?.[k] ?? 5}
-                onChange={(e) => setMe({ ...me, [k]: Number(e.target.value) })}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="1–10"
+                value={me?.[k] == null ? "" : String(me[k])}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^\d]/g, ""); // только цифры
+                  if (raw === "") {
+                    setMe({ ...me, [k]: null });
+                    return;
+                  }
+                  const n = Math.max(1, Math.min(10, parseInt(raw, 10)));
+                  setMe({ ...me, [k]: n });
+                }}
               />
+
             </div>
           ))}
 
