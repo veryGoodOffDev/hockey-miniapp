@@ -11,16 +11,32 @@ function parseIsoToDate(iso) {
 export function buildApiRouter({ q, makeTeams }) {
   const r = express.Router();
 
-  // ---- helper: current user/admin flag
-  r.get("/api/me", async (req, res) => {
-    const tgId = getTgId(req);
-    if (!tgId) return res.status(401).json({ ok: false, error: "no_user" });
+r.get("/api/me", async (req, res) => {
+  const u = req.tgUser || req.user || req.telegramUser; // как у тебя называется объект после проверки initData
+  const tgId = u?.id || u?.tg_id;
+  if (!tgId) return res.status(401).json({ ok: false, error: "no_user" });
 
-    const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [tgId]);
-    const player = pr.rows[0] || null;
+  // создаём/обновляем игрока (чтобы Профиль всегда был доступен)
+  await q(`
+    INSERT INTO players(tg_id, first_name, username)
+    VALUES($1,$2,$3)
+    ON CONFLICT (tg_id) DO UPDATE SET
+      first_name = COALESCE(EXCLUDED.first_name, players.first_name),
+      username   = COALESCE(EXCLUDED.username, players.username),
+      updated_at = NOW()
+  `, [tgId, u.first_name || "", u.username || ""]);
 
-    res.json({ ok: true, player, is_admin: isAdminTgId(tgId) });
-  });
+  const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [tgId]);
+  const player = pr.rows[0];
+
+  const adminIds = (process.env.ADMIN_IDS || "")
+    .split(",").map(s => s.trim()).filter(Boolean);
+
+  const is_admin = adminIds.includes(String(tgId));
+
+  return res.json({ ok: true, player, is_admin });
+});
+
 
   // ---- games list (next N days)
   r.get("/api/games", async (req, res) => {
