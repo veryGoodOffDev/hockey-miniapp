@@ -278,7 +278,11 @@ export default function App() {
                     <div key={r.tg_id} className="row" style={{ alignItems: "center" }}>
                       <span className="badge">{statusLabel(r.status)}</span>
                       <div>{r.first_name || r.username || r.tg_id}</div>
-                      <span className="small">({r.position}, skill {r.skill})</span>
+                      {isAdmin && (
+                        <span className="small">
+                          ({r.position}, skill {r.skill})
+                        </span>
+                      )}
                     </div>
                   ))
                 )}
