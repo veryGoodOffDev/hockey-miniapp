@@ -3,29 +3,53 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 
+const BOT_DEEPLINK = "https://t.me/HockeyLineupBot?startapp=1";
+
 export default function App() {
+  const tg = window.Telegram?.WebApp;
+  const initData = tg?.initData || "";
+  const tgUser = tg?.initDataUnsafe?.user || null;
+  const inTelegramWebApp = Boolean(initData && tgUser?.id);
+
+  // Если открыли “как сайт” — ничего не будет работать (нет initData)
+  if (!inTelegramWebApp) {
+    return (
+      <div className="container">
+        <h1>🏒 Хоккей: отметки и составы</h1>
+        <div className="card">
+          <div className="small">
+            Ты открыл приложение как обычный сайт, поэтому Telegram не передал данные пользователя.
+            Открой мини-приложение через Telegram.
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <a className="btn" href={BOT_DEEPLINK}>Открыть в Telegram</a>
+          </div>
+          <div className="small" style={{ marginTop: 10 }}>
+            Если ссылка не сработала — открой бота в Telegram и нажми “Start”.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const [me, setMe] = useState(null);
-  const [game, setGame] = useState(null);
-  const [rsvps, setRsvps] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [games, setGames] = useState([]);
   const [selectedGameId, setSelectedGameId] = useState(null);
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [game, setGame] = useState(null);
+  const [rsvps, setRsvps] = useState([]);
 
   const [teams, setTeams] = useState(null);
+
   const [tab, setTab] = useState("game");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // --- helper: normalize teams payload
   function normalizeTeams(t) {
     if (!t) return null;
-
-    // вариант: из /api/teams/generate -> { ok, teamA, teamB, meta }
     if (t.ok && (t.teamA || t.teamB)) return t;
-
-    // вариант: из /api/game -> teams row { team_a, team_b, meta }
     if (t.team_a || t.team_b) {
       return {
         ok: true,
@@ -34,13 +58,31 @@ export default function App() {
         meta: t.meta || { sumA: 0, sumB: 0, diff: 0 },
       };
     }
-
     return t;
   }
 
   async function refreshAll(forceGameId) {
     const m = await apiGet("/api/me");
-    if (m?.player) setMe(m.player);
+
+    // если игрока ещё нет в БД — создаём локально дефолт (чтобы профиль появился)
+    if (m?.player) {
+      setMe(m.player);
+    } else {
+      setMe({
+        tg_id: tgUser.id,
+        first_name: tgUser.first_name || "",
+        username: tgUser.username || "",
+        position: "F",
+        skill: 5,
+        skating: 5,
+        iq: 5,
+        stamina: 5,
+        passing: 5,
+        shooting: 5,
+        notes: "",
+      });
+    }
+
     setIsAdmin(!!m?.is_admin);
 
     const gl = await apiGet("/api/games?days=35");
@@ -61,33 +103,24 @@ export default function App() {
   }
 
   useEffect(() => {
-    const tg = window.Telegram?.WebApp;
-
     const applyTheme = () => {
-      if (!tg) return;
-      document.documentElement.dataset.tg = tg.colorScheme; // "light" | "dark"
+      document.documentElement.dataset.tg = tg.colorScheme;
     };
 
     (async () => {
       try {
         setLoading(true);
-
-        if (tg) {
-          tg.ready();
-          tg.expand();
-          applyTheme();
-          tg.onEvent("themeChanged", applyTheme);
-        }
-
+        tg.ready();
+        tg.expand();
+        applyTheme();
+        tg.onEvent("themeChanged", applyTheme);
         await refreshAll();
       } finally {
         setLoading(false);
       }
     })();
 
-    return () => {
-      if (tg) tg.offEvent("themeChanged", applyTheme);
-    };
+    return () => tg.offEvent("themeChanged", applyTheme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -104,7 +137,7 @@ export default function App() {
 
   async function saveProfile() {
     setSaving(true);
-    const res = await apiPost("/api/me", me);
+    const res = await apiPost("/api/me", me); // твой backend уже умеет это
     if (res?.player) setMe(res.player);
     setSaving(false);
   }
@@ -123,11 +156,7 @@ export default function App() {
   }, [rsvps, me]);
 
   const statusLabel = (s) =>
-    ({
-      yes: "Буду",
-      maybe: "Под вопросом",
-      no: "Не буду",
-    }[s] || s);
+    ({ yes: "Буду", maybe: "Под вопросом", no: "Не буду" }[s] || s);
 
   const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
 
@@ -138,19 +167,11 @@ export default function App() {
       <h1>🏒 Хоккей: отметки и составы</h1>
 
       <div className="row">
-        <button className={tab === "game" ? "btn" : "btn secondary"} onClick={() => setTab("game")}>
-          Игра
-        </button>
-        <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>
-          Профиль
-        </button>
-        <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>
-          Составы
-        </button>
+        <button className={tab === "game" ? "btn" : "btn secondary"} onClick={() => setTab("game")}>Игра</button>
+        <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>Профиль</button>
+        <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>Составы</button>
         {isAdmin && (
-          <button className={tab === "admin" ? "btn" : "btn secondary"} onClick={() => setTab("admin")}>
-            Админ
-          </button>
+          <button className={tab === "admin" ? "btn" : "btn secondary"} onClick={() => setTab("admin")}>Админ</button>
         )}
       </div>
 
@@ -175,14 +196,9 @@ export default function App() {
                     hour: "2-digit",
                     minute: "2-digit",
                   })} · ${g.location}${g.status === "cancelled" ? " (отменена)" : ""}`;
-                  return (
-                    <option key={g.id} value={g.id}>
-                      {label}
-                    </option>
-                  );
+                  return <option key={g.id} value={g.id}>{label}</option>;
                 })}
               </select>
-
               <hr />
             </>
           )}
@@ -204,15 +220,9 @@ export default function App() {
                 <div className="small">Эта игра отменена.</div>
               ) : (
                 <div className="row">
-                  <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
-                    ✅ Буду
-                  </button>
-                  <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
-                    ❓ Под вопросом
-                  </button>
-                  <button className={btnClass("no")} onClick={() => rsvp("no")}>
-                    ❌ Не буду
-                  </button>
+                  <button className={btnClass("yes")} onClick={() => rsvp("yes")}>✅ Буду</button>
+                  <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>❓ Под вопросом</button>
+                  <button className={btnClass("no")} onClick={() => rsvp("no")}>❌ Не буду</button>
                 </div>
               )}
 
@@ -227,9 +237,7 @@ export default function App() {
                     <div key={r.tg_id} className="row" style={{ alignItems: "center" }}>
                       <span className="badge">{statusLabel(r.status)}</span>
                       <div>{r.first_name || r.username || r.tg_id}</div>
-                      <span className="small">
-                        ({r.position}, skill {r.skill})
-                      </span>
+                      <span className="small">({r.position}, skill {r.skill})</span>
                     </div>
                   ))
                 )}
@@ -239,14 +247,14 @@ export default function App() {
         </div>
       )}
 
-      {tab === "profile" && me && (
+      {tab === "profile" && (
         <div className="card">
           <h2>Мой профиль</h2>
           <div className="small">Заполни один раз — дальше просто отмечайся.</div>
 
           <div style={{ marginTop: 10 }}>
             <label>Позиция</label>
-            <select value={me.position || "F"} onChange={(e) => setMe({ ...me, position: e.target.value })}>
+            <select value={me?.position || "F"} onChange={(e) => setMe({ ...me, position: e.target.value })}>
               <option value="F">F (нападающий)</option>
               <option value="D">D (защитник)</option>
               <option value="G">G (вратарь)</option>
@@ -261,7 +269,7 @@ export default function App() {
                 type="number"
                 min="1"
                 max="10"
-                value={me[k] ?? 5}
+                value={me?.[k] ?? 5}
                 onChange={(e) => setMe({ ...me, [k]: Number(e.target.value) })}
               />
             </div>
@@ -272,7 +280,7 @@ export default function App() {
             <textarea
               className="input"
               rows={3}
-              value={me.notes || ""}
+              value={me?.notes || ""}
               onChange={(e) => setMe({ ...me, notes: e.target.value })}
             />
           </div>
@@ -288,12 +296,9 @@ export default function App() {
       {tab === "teams" && (
         <div className="card">
           <h2>Составы</h2>
-          <div className="small">Админ может сформировать вручную.</div>
 
           <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>
-              Обновить
-            </button>
+            <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>Обновить</button>
             {isAdmin && (
               <button className="btn" onClick={generateTeams} disabled={!selectedGameId || game?.status === "cancelled"}>
                 Сформировать сейчас (админ)
@@ -339,10 +344,6 @@ export default function App() {
           onChanged={() => refreshAll(selectedGameId)}
         />
       )}
-
-      <div className="small" style={{ marginTop: 10 }}>
-        Если что-то не грузится — открой бота и зайди через кнопку “Открыть мини-приложение”.
-      </div>
     </div>
   );
 }
