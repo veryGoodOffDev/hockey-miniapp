@@ -285,3 +285,129 @@ textarea:focus{
   font-size: var(--fs-sm);
   color: var(--tg-hint);
 }
+/* ===== Hockey Loader (no Tailwind) ===== */
+.hkLoader{
+  min-height: 60vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:18px;
+  padding: 18px;
+}
+
+.hkStage{
+  position: relative;
+  width: 320px;
+  max-width: 92vw;
+  height: 140px;
+}
+
+.hkSticks{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 0 14px;
+}
+
+.hkStickWrap{
+  transform: scale(1);
+  transition: transform 260ms ease;
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,.18));
+}
+
+.hkStickWrap.isActive{
+  transform: scale(1.10);
+}
+
+.hkStickSvg{
+  width: 80px;
+  height: 80px;
+}
+
+/* цвета клюшек под тему */
+.hkStickWrap:first-child .hkStickSvg path{
+  fill: color-mix(in srgb, var(--tg-link) 70%, var(--tg-text));
+}
+
+.hkRight .hkStickSvg path{
+  fill: color-mix(in srgb, var(--tg-btn) 70%, #c41e3a);
+}
+
+.hkFlip{ transform: scaleX(-1); }
+
+.hkPuckRail{
+  position:absolute;
+  left:0; right:0;
+  top: 50%;
+  transform: translateY(-50%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+}
+
+.hkPuck{
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tg-text) 85%, transparent);
+  box-shadow:
+    0 8px 16px rgba(0,0,0,.22),
+    inset 0 2px 4px rgba(255,255,255,.18);
+  transition: transform 1000ms ease-in-out, opacity 1000ms ease-in-out;
+  opacity: .95;
+}
+
+.hkPuck.toRight{ transform: translateX(128px); }
+.hkPuck.toLeft{ transform: translateX(-128px); }
+
+.hkIceLine{
+  position:absolute;
+  left:0; right:0;
+  bottom: 10px;
+  height: 4px;
+  border-radius: 999px;
+  opacity: .25;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--tg-text) 18%, transparent),
+    color-mix(in srgb, var(--tg-text) 10%, transparent),
+    color-mix(in srgb, var(--tg-text) 18%, transparent)
+  );
+}
+
+.hkMeta{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+}
+
+.hkDots{
+  display:flex;
+  gap:7px;
+}
+
+.hkDots span{
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tg-link) 70%, var(--tg-btn));
+  animation: hkBounce 900ms infinite ease-in-out;
+}
+
+.hkDots span:nth-child(2){ animation-delay: 150ms; }
+.hkDots span:nth-child(3){ animation-delay: 300ms; }
+
+@keyframes hkBounce{
+  0%, 80%, 100% { transform: translateY(0); opacity: .65; }
+  40% { transform: translateY(-6px); opacity: 1; }
+}
+
+.hkText{
+  font-size: var(--fs-sm, 14px);
+  color: var(--tg-hint);
+  font-weight: 600;
+}
