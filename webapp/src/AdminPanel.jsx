@@ -24,6 +24,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [time, setTime] = useState("19:00");
   const [location, setLocation] = useState("");
   const [weeks, setWeeks] = useState(4);
+  const [reminderMsg, setReminderMsg] = useState("");
 
   // bulk selection
   const [selected, setSelected] = useState(() => new Set());
@@ -57,6 +58,12 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
       String(p.tg_id).includes(s)
     );
   }, [players, q]);
+  async function sendReminderNow() {
+    setReminderMsg("");
+    const r = await apiPost("/api/admin/reminder/sendNow", {});
+    if (r?.ok) setReminderMsg("✅ Напоминание отправлено");
+    else setReminderMsg(`❌ Ошибка: ${r?.reason || r?.error || "unknown"}`);
+  }
 
   async function createOne() {
     if (!date || !time) return;
@@ -166,7 +173,21 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
   return (
     <div className="card">
-      <h2>Админ</h2>
+        <h2>Админ</h2>
+        <div className="card">
+          <h2>Напоминания</h2>
+          <div className="small">
+            Сначала в нужной группе напиши боту команду <b>/setchat</b>, чтобы назначить чат для уведомлений.
+          </div>
+        
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn" onClick={sendReminderNow}>
+              Отправить напоминание сейчас
+            </button>
+          </div>
+        
+          {reminderMsg && <div className="small" style={{ marginTop: 8 }}>{reminderMsg}</div>}
+        </div>
 
       <div className="card">
         <h2>Создать игру</h2>
