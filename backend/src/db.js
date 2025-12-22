@@ -6,6 +6,10 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes("localhost") ? false : { rejectUnauthorized: false },
 });
 
+export async function initDb() {
+  await pool.query("SELECT 1");
+}
+
 export async function q(text, params) {
   return pool.query(text, params);
 }
