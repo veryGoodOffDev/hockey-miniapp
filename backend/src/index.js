@@ -134,16 +134,6 @@ async function sendRsvpReminder(chatId) {
   return { ok: true, game_id: game.id };
 }
 
-async function sendRsvpReminder(bot, chatId) {
-  const webAppUrl = process.env.WEB_APP_URL;
-  if (!webAppUrl) throw new Error("WEB_APP_URL is not set");
-
-  const game = await getNextScheduledGame();
-  if (!game) {
-    await bot.api.sendMessage(chatId, "🏒 Напоминание: ближайшей игры пока нет (scheduled не найдено).");
-    return { ok: true, reason: "no_game" };
-  }
-
   const when = new Date(game.starts_at).toLocaleString("ru-RU", {
     dateStyle: "medium",
     timeStyle: "short",
