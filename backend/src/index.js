@@ -94,6 +94,46 @@ async function setSetting(key, value) {
   );
 }
 
+async function getNextScheduledGame() {
+  const gr = await q(
+    `SELECT * FROM games
+     WHERE status='scheduled' AND starts_at >= NOW() - INTERVAL '6 hours'
+     ORDER BY starts_at ASC
+     LIMIT 1`
+  );
+  return gr.rows[0] || null;
+}
+
+async function sendRsvpReminder(chatId) {
+  const webAppUrl = process.env.WEB_APP_URL;
+  if (!webAppUrl) throw new Error("WEB_APP_URL is not set");
+
+  const game = await getNextScheduledGame();
+  if (!game) {
+    await bot.api.sendMessage(chatId, "🏒 Напоминание: ближайшей игры пока нет (не найдено scheduled).");
+    return { ok: true, reason: "no_game" };
+  }
+
+  const dt = new Date(game.starts_at);
+  const when = dt.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
+
+  const text =
+`🏒 Напоминание: отметься на игру!
+
+📅 ${when}
+📍 ${game.location || "—"}
+
+Открыть мини-приложение для отметок:`;
+
+  const kb = new InlineKeyboard().url("Открыть мини-приложение", webAppUrl);
+
+  await bot.api.sendMessage(chatId, text, {
+    reply_markup: kb,
+    disable_web_page_preview: true,
+  });
+
+  return { ok: true, game_id: game.id };
+}
 
 async function ensurePlayer(user) {
   await q(
