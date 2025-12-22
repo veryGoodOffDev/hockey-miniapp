@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost } from "./api.js";
+import HockeyLoader from "./HockeyLoader.jsx";
 
 export default function App() {
   const [me, setMe] = useState(null);
@@ -95,7 +96,7 @@ async function rsvp(status) {
 
 const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
 
-if (loading) return <Loader text="Загружаем..." />;
+if (loading) return <HockeyLoader text="Загружаем..." />;
   return (
     <div className="container">
       <h1>🏒 Хоккей: отметки и составы</h1>
