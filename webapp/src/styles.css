@@ -40,29 +40,73 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   gap:14px;
 }
 
-.sticks{ position:relative; width:90px; height:34px; }
-.stick{
-  position:absolute; top:14px; width:56px; height:6px;
-  border-radius:6px;
-  background: rgba(255,255,255,.55);
+.loaderIce{
+  position:relative;
+  width:160px;
+  height:100px;
 }
-.stick.left{ left:0; transform: rotate(18deg); }
-.stick.right{ right:0; transform: rotate(-18deg); }
+
+.hStick{
+  position:absolute;
+  left:20px;
+  top:46px;
+  width:120px;
+  height:10px;
+  border-radius:999px;
+  background: rgba(255,255,255,.55);
+  transform-origin: 18px 5px;
+  filter: drop-shadow(0 8px 14px rgba(0,0,0,.18));
+}
+
+/* обмотка/ручка */
+.hStick::before{
+  content:"";
+  position:absolute;
+  left:-2px;
+  top:-2px;
+  width:28px;
+  height:14px;
+  border-radius:999px;
+  background: rgba(255,255,255,.75);
+  opacity:.9;
+}
+
+/* лопатка клюшки */
+.hStick::after{
+  content:"";
+  position:absolute;
+  right:-14px;
+  top:-4px;
+  width:28px;
+  height:18px;
+  border-radius:4px 10px 10px 10px;
+  background: rgba(255,255,255,.65);
+  transform: skewX(-18deg);
+}
+
+.hStick.left{ transform: rotate(32deg); }
+.hStick.right{ transform: rotate(-32deg); }
 
 .puck{
-  width:22px; height:22px; border-radius:50%;
-  background: rgba(255,255,255,.9);
-  box-shadow: 0 6px 18px rgba(0,0,0,.25);
-  animation: puck 1.0s ease-in-out infinite;
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  transform: translate(-50%,-50%);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 10px 22px rgba(0,0,0,.25) inset, 0 10px 20px rgba(0,0,0,.18);
+  animation: puckSlide 1.05s ease-in-out infinite;
 }
 
-@keyframes puck{
-  0%{ transform: translateX(-24px); opacity:.6 }
-  50%{ transform: translateX(24px); opacity:1 }
-  100%{ transform: translateX(-24px); opacity:.6 }
+@keyframes puckSlide{
+  0%   { transform: translate(calc(-50% - 58px), -50%); opacity:.7; }
+  50%  { transform: translate(calc(-50% + 58px), -50%); opacity:1; }
+  100% { transform: translate(calc(-50% - 58px), -50%); opacity:.7; }
 }
 
 .loaderText{
   opacity:.8;
-  font-size: 14px;
+  font-size:14px;
 }
