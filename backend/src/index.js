@@ -133,6 +133,54 @@ async function sendRsvpReminder(chatId) {
 
   return { ok: true, game_id: game.id };
 }
+async function getNextScheduledGame() {
+  const gr = await q(
+    `SELECT * FROM games
+     WHERE status='scheduled' AND starts_at >= NOW() - INTERVAL '6 hours'
+     ORDER BY starts_at ASC
+     LIMIT 1`
+  );
+  return gr.rows[0] || null;
+}
+
+async function sendRsvpReminder(bot, chatId) {
+  const webAppUrl = process.env.WEB_APP_URL;
+  if (!webAppUrl) throw new Error("WEB_APP_URL is not set");
+
+  const game = await getNextScheduledGame();
+  if (!game) {
+    await bot.api.sendMessage(chatId, "🏒 Напоминание: ближайшей игры пока нет (scheduled не найдено).");
+    return { ok: true, reason: "no_game" };
+  }
+
+  const when = new Date(game.starts_at).toLocaleString("ru-RU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
+  const text =
+`🏒 Напоминание: отметься на игру!
+
+📅 ${when}
+📍 ${game.location || "—"}
+
+Открой мини-приложение для отметок:`;
+
+  const kb = new InlineKeyboard().url("Открыть мини-приложение", webAppUrl);
+
+  await bot.api.sendMessage(chatId, text, {
+    reply_markup: kb,
+    disable_web_page_preview: true,
+  });
+
+  return { ok: true, game_id: game.id };
+}
+
+async function getSetting(key, def = null) {
+  const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
+  return r.rows[0]?.value ?? def;
+}
+
 
 async function ensurePlayer(user) {
   await q(
@@ -427,6 +475,25 @@ app.patch("/api/players/:tg_id", async (req, res) => {
 
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [tgId]);
   res.json({ ok: true, player: pr.rows[0] });
+});
+
+app.post("/api/admin/reminder/sendNow", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admins = new Set((process.env.ADMIN_IDS || "").split(",").map(s => s.trim()).filter(Boolean));
+  if (!admins.has(String(user.id))) return res.status(403).json({ ok: false, reason: "not_admin" });
+
+  const chatId = await getSetting("notify_chat_id", null);
+  if (!chatId) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  try {
+    const r = await sendRsvpReminder(bot, chatId);
+    res.json(r);
+  } catch (e) {
+    console.error("sendNow failed:", e);
+    res.status(500).json({ ok: false, reason: "send_failed" });
+  }
 });
 
 function int(v, def) {
