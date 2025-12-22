@@ -291,6 +291,42 @@ r.post("/api/admin/reminder/sendNow", async (req, res) => {
   const r = await sendRsvpReminder(chatId);
   res.json(r);
 });
+r.post("/cron/tick", async (req, res) => {
+  const secret = req.header("x-cron-secret");
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return res.status(403).json({ ok: false, reason: "bad_cron_secret" });
+  }
+
+  const enabled = (await getSetting("remind_enabled", "1")) === "1";
+  if (!enabled) return res.json({ ok: true, skipped: "disabled" });
+
+  const weekday = Number(await getSetting("remind_weekday", "2"));
+  const time = await getSetting("remind_time", "12:00"); // "HH:mm"
+  const tz = await getSetting("remind_tz", "Europe/Moscow");
+  const chatId = await getSetting("notify_chat_id", null);
+  if (!chatId) return res.json({ ok: true, skipped: "no_chat" });
+
+  const now = DateTime.now().setZone(tz);
+  const [hh, mm] = String(time).split(":").map(Number);
+
+  // “окно” 3 минуты, чтобы cron */5 не промахивался
+  const target = now.set({ hour: hh, minute: mm, second: 0, millisecond: 0 });
+  const diffMin = Math.abs(now.diff(target, "minutes").minutes);
+
+  if (now.weekday !== weekday || diffMin > 3) {
+    return res.json({ ok: true, skipped: "not_time" });
+  }
+
+  // анти-дубль: один раз в день
+  const todayKey = `remind_sent_${now.toISODate()}`;
+  const already = (await getSetting(todayKey, "0")) === "1";
+  if (already) return res.json({ ok: true, skipped: "already_sent" });
+
+  await sendRsvpReminder(chatId);
+  await setSetting(todayKey, "1");
+
+  res.json({ ok: true, sent: true });
+});
 
   return r;
 }
