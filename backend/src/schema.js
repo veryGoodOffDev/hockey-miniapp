@@ -10,24 +10,16 @@ export async function ensureSchema(q) {
     );
   `);
 
-  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT '';`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'scheduled';`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
 
-  await q(`UPDATE games SET starts_at = NOW() WHERE starts_at IS NULL;`);
-  await q(`UPDATE games SET location = '' WHERE location IS NULL;`);
-  await q(`UPDATE games SET status = 'scheduled' WHERE status IS NULL OR status = '';`);
-
-  await q(`ALTER TABLE games ALTER COLUMN starts_at SET NOT NULL;`);
-  await q(`ALTER TABLE games ALTER COLUMN location SET NOT NULL;`);
-  await q(`ALTER TABLE games ALTER COLUMN status SET NOT NULL;`);
-
   await q(`
     CREATE TABLE IF NOT EXISTS players (
       tg_id BIGINT PRIMARY KEY,
       first_name TEXT DEFAULT '',
+      last_name TEXT DEFAULT '',
       username TEXT DEFAULT '',
       position TEXT DEFAULT 'F',
       skill INT DEFAULT 5,
@@ -43,6 +35,7 @@ export async function ensureSchema(q) {
     );
   `);
 
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
@@ -72,5 +65,4 @@ export async function ensureSchema(q) {
 
   await q(`CREATE INDEX IF NOT EXISTS idx_games_starts_at ON games(starts_at);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);`);
-  await q(`CREATE INDEX IF NOT EXISTS idx_players_disabled ON players(disabled);`);
 }
