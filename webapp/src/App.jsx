@@ -5,14 +5,12 @@ import AdminPanel from "./AdminPanel.jsx";
 
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 
-
 export default function App() {
   const tg = window.Telegram?.WebApp;
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
 
-  // Если открыли “как сайт” — ничего не будет работать (нет initData)
   if (!inTelegramWebApp) {
     return (
       <div className="container">
@@ -65,7 +63,18 @@ export default function App() {
   async function refreshAll(forceGameId) {
     const m = await apiGet("/api/me");
 
-    // если игрока ещё нет в БД — создаём локально дефолт (чтобы профиль появился)
+    // если backend не принял initData — покажем понятную ошибку
+    if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
+      setMe(null);
+      setIsAdmin(false);
+      setGames([]);
+      setSelectedGameId(null);
+      setGame(null);
+      setRsvps([]);
+      setTeams(null);
+      return;
+    }
+
     if (m?.player) {
       setMe(m.player);
     } else {
@@ -138,7 +147,7 @@ export default function App() {
 
   async function saveProfile() {
     setSaving(true);
-    const res = await apiPost("/api/me", me); // твой backend уже умеет это
+    const res = await apiPost("/api/me", me);
     if (res?.player) setMe(res.player);
     setSaving(false);
   }
@@ -163,6 +172,25 @@ export default function App() {
 
   if (loading) return <HockeyLoader text="Загружаем..." />;
 
+  // если /api/me вернул ошибку (invalid initData) — покажем экран
+  if (!me) {
+    return (
+      <div className="container">
+        <h1>🏒 Хоккей: отметки и составы</h1>
+        <div className="card">
+          <div className="small">
+            Backend не принял данные Telegram (initData). Обычно это означает неправильный BOT_TOKEN на backend
+            или открытие не через Mini App.
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <a className="btn" href={BOT_DEEPLINK}>Открыть бота</a>
+            <button className="btn secondary" onClick={() => refreshAll()}>Повторить</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container">
       <h1>🏒 Хоккей: отметки и составы</h1>
@@ -178,7 +206,10 @@ export default function App() {
 
       {tab === "game" && (
         <div className="card">
-          <h2>Игры</h2>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h2 style={{ margin: 0 }}>Игры</h2>
+            <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>Обновить</button>
+          </div>
 
           {games.length > 0 && (
             <>
@@ -205,7 +236,9 @@ export default function App() {
           )}
 
           {!game ? (
-            <div className="small">Игры ещё нет. Админ может создать в вкладке “Админ”.</div>
+            <div className="small">
+              Игры ещё нет. {isAdmin ? "Создай игру во вкладке “Админ”." : "Попроси админа создать игру."}
+            </div>
           ) : (
             <>
               <div className="row">
