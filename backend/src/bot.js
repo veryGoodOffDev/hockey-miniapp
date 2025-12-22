@@ -34,14 +34,13 @@ function appKeyboard(bot, chatType) {
 }
 
   bot.command("start", async (ctx) => {
-    await ctx.reply(
-      "Привет! Здесь отмечаемся на хоккей и собираем составы.\n\nКоманды лучше смотреть через мини-приложение.",
-      { reply_markup: webappKeyboard() }
-    );
+    const kb = appKeyboard(ctx);
+    await ctx.reply( "Привет! Здесь отмечаемся на хоккей и собираем составы.\n\nКоманды лучше смотреть через мини-приложение.", kb ? { reply_markup: kb } : undefined);
   });
 
   bot.command("app", async (ctx) => {
-    await ctx.reply("Открывай:", { reply_markup: webappKeyboard() });
+    const kb = appKeyboard(ctx);
+    await ctx.reply("Открой мини-приложение:", kb ? { reply_markup: kb } : undefined);
   });
 
   bot.command("setchat", async (ctx) => {
