@@ -391,6 +391,27 @@ app.post("/api/games/:id/cancel", async (req, res) => {
   res.json({ ok: true, game: ur.rows[0] });
 });
 
+app.post("/api/games/:id/status", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!requireAdmin(req, res, user)) return;
+
+  const id = Number(req.params.id);
+  const status = String(req.body?.status || "").trim();
+
+  if (!["scheduled", "cancelled"].includes(status)) {
+    return res.status(400).json({ ok: false, reason: "bad_status" });
+  }
+
+  const ur = await q(
+    `UPDATE games SET status=$2, updated_at=NOW() WHERE id=$1 RETURNING *`,
+    [id, status]
+  );
+
+  res.json({ ok: true, game: ur.rows[0] });
+});
+
+
 app.delete("/api/games/:id", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
