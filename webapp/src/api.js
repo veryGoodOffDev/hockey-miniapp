@@ -18,7 +18,6 @@ async function request(path, { method = "GET", body } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // на всякий случай: если backend вернёт не-JSON
   const text = await res.text();
   try {
     return JSON.parse(text);
