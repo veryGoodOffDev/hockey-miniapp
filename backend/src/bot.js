@@ -33,10 +33,12 @@ function appKeyboard(bot, chatType) {
   return new InlineKeyboard().url("Открыть мини-приложение", url);
 }
 
-  bot.command("start", async (ctx) => {
-    const kb = appKeyboard(ctx);
-    await ctx.reply( "Привет! Здесь отмечаемся на хоккей и собираем составы.\n\nКоманды лучше смотреть через мини-приложение.", kb ? { reply_markup: kb } : undefined);
-  });
+bot.command("start", async (ctx) => {
+  const webAppUrl = process.env.WEB_APP_URL; // URL твоего hockey-webapp на Render
+  const kb = new InlineKeyboard().webApp("Открыть мини-приложение", webAppUrl);
+  await ctx.reply("Открой мини-приложение:", { reply_markup: kb });
+});
+
 
   bot.command("app", async (ctx) => {
     const kb = appKeyboard(ctx);
