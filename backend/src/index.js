@@ -134,28 +134,6 @@ async function sendRsvpReminder(chatId) {
   return { ok: true, game_id: game.id };
 }
 
-  const when = new Date(game.starts_at).toLocaleString("ru-RU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-
-  const text =
-`🏒 Напоминание: отметься на игру!
-
-📅 ${when}
-📍 ${game.location || "—"}
-
-Открой мини-приложение для отметок:`;
-
-  const kb = new InlineKeyboard().url("Открыть мини-приложение", webAppUrl);
-
-  await bot.api.sendMessage(chatId, text, {
-    reply_markup: kb,
-    disable_web_page_preview: true,
-  });
-
-  return { ok: true, game_id: game.id };
-}
 
 async function getSetting(key, def = null) {
   const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
