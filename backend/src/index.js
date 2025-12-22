@@ -10,6 +10,11 @@ import { buildApiRouter } from "./routesApi.js";
 
 const app = express();
 app.use(express.json());
+// ВАЖНО: перед роутами
+await ensureSchema(q);
+
+// Подключаем API
+app.use(buildApiRouter({ q, makeTeams }));
 const allowed = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map(s => s.trim())
