@@ -248,6 +248,49 @@ r.get("/api/me", async (req, res) => {
 
     res.json({ ok: true, teamA, teamB, meta });
   });
+// GET reminder settings (admin)
+r.get("/api/admin/reminder", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!requireAdmin(req, res, user)) return;
+
+  const cfg = {
+    enabled: (await getSetting("remind_enabled", "1")) === "1",
+    weekday: Number(await getSetting("remind_weekday", "2")), // 2 = Tuesday (Luxon: Mon=1..Sun=7)
+    time: await getSetting("remind_time", "12:00"),
+    tz: await getSetting("remind_tz", "Europe/Moscow"),
+  };
+
+  res.json({ ok: true, cfg });
+});
+
+// PATCH reminder settings (admin)
+r.patch("/api/admin/reminder", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!requireAdmin(req, res, user)) return;
+
+  const b = req.body || {};
+  if (b.enabled !== undefined) await setSetting("remind_enabled", b.enabled ? "1" : "0");
+  if (b.weekday) await setSetting("remind_weekday", String(Number(b.weekday)));
+  if (b.time) await setSetting("remind_time", String(b.time));
+  if (b.tz) await setSetting("remind_tz", String(b.tz));
+
+  res.json({ ok: true });
+});
+
+// Send reminder now (admin)
+r.post("/api/admin/reminder/sendNow", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!requireAdmin(req, res, user)) return;
+
+  const chatId = await getSetting("notify_chat_id", null);
+  if (!chatId) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  const r = await sendRsvpReminder(chatId);
+  res.json(r);
+});
 
   return r;
 }
