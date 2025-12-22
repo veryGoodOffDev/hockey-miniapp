@@ -36,12 +36,12 @@ await bot.init(); // <-- важно для webhook режима
 app.post("/bot", async (req, res) => {
   try {
     await bot.handleUpdate(req.body);
-    res.sendStatus(200);
   } catch (e) {
-    console.error(e);
-    res.sendStatus(500);
+    console.error("handleUpdate failed:", e);
   }
+  res.sendStatus(200);
 });
+
 
 function requireWebAppAuth(req, res) {
   const initData = req.header("x-telegram-init-data");
