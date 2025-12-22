@@ -234,15 +234,30 @@ app.get("/api/game", async (req, res) => {
   }
 
   if (!game) return res.json({ ok: true, game: null, rsvps: [], teams: null });
+  
+  const is_admin = adminIds().has(String(user.id));
 
-  const rr = await q(
-    `SELECT r.status, p.tg_id, p.first_name, p.username, p.position, p.skill
-     FROM rsvps r
-     JOIN players p ON p.tg_id = r.tg_id
-     WHERE r.game_id = $1
-     ORDER BY r.status ASC, p.skill DESC, p.first_name ASC`,
-    [game.id]
-  );
+  let rr;
+  
+  if (is_admin) {
+    rr = await q(
+      `SELECT r.status, p.tg_id, p.first_name, p.username, p.position, p.skill
+       FROM rsvps r
+       JOIN players p ON p.tg_id = r.tg_id
+       WHERE r.game_id = $1
+       ORDER BY r.status ASC, p.skill DESC, p.first_name ASC`,
+      [game.id]
+    );
+  } else {
+    rr = await q(
+      `SELECT r.status, p.tg_id, p.first_name, p.username
+       FROM rsvps r
+       JOIN players p ON p.tg_id = r.tg_id
+       WHERE r.game_id = $1
+       ORDER BY r.status ASC, p.first_name ASC`,
+      [game.id]
+    );
+  }
 
   const tr = await q(`SELECT team_a, team_b, meta, generated_at FROM teams WHERE game_id=$1`, [game.id]);
   const teams = tr.rows[0] || null;
