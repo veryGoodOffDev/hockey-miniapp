@@ -120,7 +120,12 @@ async function sendRsvpReminder(chatId) {
 
 Открыть мини-приложение для отметок:`;
 
-  const kb = new InlineKeyboard().url("Открыть мини-приложение", webAppUrl);
+  const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
+
+  // Можно передавать game.id как startapp, на будущее (потом сможешь выбирать игру автоматически)
+  const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(game.id))}`;
+  
+  const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
 
   await bot.api.sendMessage(chatId, text, {
     reply_markup: kb,
