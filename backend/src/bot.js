@@ -95,6 +95,7 @@ function appKeyboard(bot, chatType) {
       await ctx.reply("Открой мини-приложение:", kb ? { reply_markup: kb } : undefined);
     }
   });
+bot.catch((err) => console.error("BOT_ERROR:", err));
 
   return bot;
 }
