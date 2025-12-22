@@ -80,10 +80,6 @@ function requireAdmin(req, res, user) {
   return true;
 }
 
-async function getSetting(key, def = null) {
-  const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
-  return r.rows[0]?.value ?? def;
-}
 
 async function setSetting(key, value) {
   await q(
