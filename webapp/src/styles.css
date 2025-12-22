@@ -1,44 +1,207 @@
-:root {
-  --bg: var(--tg-theme-bg-color, #0b0f14);
-  --text: var(--tg-theme-text-color, #e6e6e6);
-  --hint: var(--tg-theme-hint-color, #9aa4af);
-  --btn: var(--tg-theme-button-color, #2ea6ff);
-  --btnText: var(--tg-theme-button-text-color, #ffffff);
-  --card: rgba(255,255,255,0.06);
-  --border: rgba(255,255,255,0.10);
+/* =========
+   Telegram theme tokens + fallbacks
+   ========= */
+:root{
+  /* Base tg theme vars */
+  --tg-bg: var(--tg-theme-bg-color, #ffffff);
+  --tg-text: var(--tg-theme-text-color, #111111);
+  --tg-hint: var(--tg-theme-hint-color, #6b7280);
+  --tg-link: var(--tg-theme-link-color, #2563eb);
+  --tg-btn: var(--tg-theme-button-color, #2563eb);
+  --tg-btn-text: var(--tg-theme-button-text-color, #ffffff);
+
+  /* Optional tg vars (often present) */
+  --tg-secondary-bg: var(--tg-theme-secondary-bg-color, #f3f4f6);
+  --tg-section-bg: var(--tg-theme-section-bg-color, var(--tg-secondary-bg));
+
+  /* Derived UI tokens */
+  --card-bg: var(--tg-section-bg);
+  --border: color-mix(in srgb, var(--tg-text) 14%, transparent);
+  --muted-bg: color-mix(in srgb, var(--tg-text) 7%, transparent);
+  --shadow: 0 10px 22px rgba(0,0,0,.06);
+
+  /* Spacing + radius */
+  --r-lg: 14px;
+  --r-md: 12px;
+
+  /* Typography */
+  --fs-base: clamp(15px, 2.6vw, 17px);
+  --fs-sm: clamp(13px, 2.3vw, 14px);
+  --fs-h1: clamp(18px, 3.4vw, 22px);
+  --fs-h2: clamp(16px, 3.0vw, 18px);
+
+  /* Loader colors (adaptive) */
+  --loader-stick: color-mix(in srgb, var(--tg-text) 28%, transparent);
+  --loader-stick2: color-mix(in srgb, var(--tg-text) 40%, transparent);
+  --loader-puck: color-mix(in srgb, var(--tg-text) 78%, transparent);
 }
-html {
+
+/* If you add JS setting: document.documentElement.dataset.tg = tg.colorScheme */
+:root[data-tg="light"]{
+  --border: color-mix(in srgb, var(--tg-text) 18%, transparent);
+}
+:root[data-tg="dark"]{
+  --border: color-mix(in srgb, var(--tg-text) 24%, transparent);
+}
+
+/* =========
+   Base / reset
+   ========= */
+html{
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   font-size: 16px;
 }
 
-body {
-  font-size: clamp(15px, 2.6vw, 17px);
-  line-height: 1.35;
+body{
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--tg-bg);
+  color: var(--tg-text);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: var(--fs-base);
+  line-height: 1.35;
 }
-.container { padding: 14px; max-width: 720px; margin: 0 auto; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; margin: 10px 0; }
-.row { display: flex; gap: 10px; flex-wrap: wrap; }
-.btn {
-  border: 0; border-radius: 12px; padding: 12px 14px; cursor: pointer;
-  background: var(--btn); color: var(--btnText); font-weight: 700;
+
+a{ color: var(--tg-link); text-decoration: none; }
+a:hover{ text-decoration: underline; }
+
+*{ box-sizing: border-box; }
+
+hr{
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
 }
-.btn.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
-.badge { padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--hint); }
-.input, select, textarea {
-  width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border);
-  background: transparent; color: var(--text);
+
+/* =========
+   Layout
+   ========= */
+.container{
+  padding: 14px;
+  max-width: 720px;
+  margin: 0 auto;
 }
-label { font-size: 13px; color: var(--hint); }
-h1 { font-size: 18px; margin: 6px 0 10px; }
-h2 { font-size: 16px; margin: 6px 0 10px; }
-.small { color: var(--hint); font-size: 13px; }
-hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+.row{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* =========
+   Cards / badges
+   ========= */
+.card{
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 12px;
+  margin: 10px 0;
+  box-shadow: var(--shadow);
+}
+
+.badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--muted-bg);
+  color: var(--tg-text);
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+
+/* =========
+   Headings / text
+   ========= */
+h1{
+  font-size: var(--fs-h1);
+  margin: 6px 0 10px;
+  line-height: 1.15;
+}
+
+h2{
+  font-size: var(--fs-h2);
+  margin: 6px 0 10px;
+  line-height: 1.2;
+}
+
+label{
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--tg-hint);
+  margin: 8px 0 6px;
+}
+
+.small{
+  color: var(--tg-hint);
+  font-size: var(--fs-sm);
+}
+
+/* =========
+   Inputs
+   ========= */
+.input,
+input,
+select,
+textarea{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  color: var(--tg-text);
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder{
+  color: var(--tg-hint);
+}
+
+input:focus,
+select:focus,
+textarea:focus{
+  border-color: color-mix(in srgb, var(--tg-btn) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-btn) 18%, transparent);
+}
+
+/* =========
+   Buttons
+   ========= */
+.btn{
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--tg-btn) 70%, transparent);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--tg-btn);
+  color: var(--tg-btn-text);
+  font-weight: 700;
+  font-size: var(--fs-base);
+  line-height: 1;
+  transition: transform .06s ease, filter .12s ease, opacity .12s ease;
+}
+
+.btn:active{ transform: scale(0.98); }
+.btn:disabled{ opacity: .6; cursor: not-allowed; }
+
+.btn.secondary{
+  background: transparent;
+  color: var(--tg-text);
+  border: 1px solid var(--border);
+}
+
+.btn.secondary:hover{
+  background: var(--muted-bg);
+}
+
+/* =========
+   Loader (sticks crossed + puck slide)
+   ========= */
 .loaderWrap{
   min-height: 60vh;
   display:flex;
@@ -46,6 +209,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   align-items:center;
   justify-content:center;
   gap:14px;
+  padding: 16px;
 }
 
 .loaderIce{
@@ -61,7 +225,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   width:120px;
   height:10px;
   border-radius:999px;
-  background: rgba(255,255,255,.55);
+  background: var(--loader-stick);
   transform-origin: 18px 5px;
   filter: drop-shadow(0 8px 14px rgba(0,0,0,.18));
 }
@@ -75,8 +239,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   width:28px;
   height:14px;
   border-radius:999px;
-  background: rgba(255,255,255,.75);
-  opacity:.9;
+  background: var(--loader-stick2);
+  opacity:.95;
 }
 
 /* лопатка клюшки */
@@ -88,7 +252,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   width:28px;
   height:18px;
   border-radius:4px 10px 10px 10px;
-  background: rgba(255,255,255,.65);
+  background: var(--loader-stick2);
   transform: skewX(-18deg);
 }
 
@@ -103,8 +267,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   height:24px;
   border-radius:50%;
   transform: translate(-50%,-50%);
-  background: rgba(255,255,255,.92);
-  box-shadow: 0 10px 22px rgba(0,0,0,.25) inset, 0 10px 20px rgba(0,0,0,.18);
+  background: var(--loader-puck);
+  box-shadow:
+    0 10px 22px rgba(0,0,0,.18) inset,
+    0 10px 20px rgba(0,0,0,.14);
   animation: puckSlide 1.05s ease-in-out infinite;
 }
 
@@ -115,6 +281,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 }
 
 .loaderText{
-  opacity:.8;
-  font-size:14px;
+  opacity:.85;
+  font-size: var(--fs-sm);
+  color: var(--tg-hint);
 }
