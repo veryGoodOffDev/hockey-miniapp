@@ -5,21 +5,40 @@ function getInitData() {
   return tg?.initData || "";
 }
 
-export async function apiGet(path) {
+async function request(path, { method = "GET", body } = {}) {
+  const headers = {
+    "x-telegram-init-data": getInitData(),
+  };
+
+  if (body !== undefined) headers["content-type"] = "application/json";
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "x-telegram-init-data": getInitData() }
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  return res.json();
+
+  // на всякий случай: если backend вернёт не-JSON
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: "non_json_response", status: res.status, text };
+  }
 }
 
-export async function apiPost(path, body) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-telegram-init-data": getInitData()
-    },
-    body: JSON.stringify(body || {})
-  });
-  return res.json();
+export function apiGet(path) {
+  return request(path, { method: "GET" });
+}
+
+export function apiPost(path, body) {
+  return request(path, { method: "POST", body: body ?? {} });
+}
+
+export function apiPatch(path, body) {
+  return request(path, { method: "PATCH", body: body ?? {} });
+}
+
+export function apiDelete(path) {
+  return request(path, { method: "DELETE" });
 }
