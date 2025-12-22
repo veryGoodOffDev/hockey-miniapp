@@ -101,6 +101,12 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
     await load();
     onChanged?.();
   }
+  
+  async function setGameStatus(id, status) {
+    await apiPost(`/api/games/${id}/status`, { status });
+    await load();
+    onChanged?.();
+  }
 
   async function deleteGame(id) {
     await apiDelete(`/api/games/${id}`);
@@ -274,7 +280,21 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
               <div className="row" style={{ marginTop: 10 }}>
                 <button className="btn" onClick={() => saveGame(g)}>Сохранить</button>
-                <button className="btn secondary" onClick={() => cancelGame(g.id)}>Отменить</button>
+                {g.status === "cancelled" ? (
+                  <button
+                    className="btn secondary"
+                    onClick={() => setGameStatus(g.id, "scheduled")}
+                  >
+                    Вернуть (запланирована)
+                  </button>
+                ) : (
+                  <button
+                    className="btn secondary"
+                    onClick={() => setGameStatus(g.id, "cancelled")}
+                  >
+                    Отменить
+                  </button>
+                )}
                 <button className="btn secondary" onClick={() => deleteGame(g.id)}>Удалить</button>
               </div>
             </div>
