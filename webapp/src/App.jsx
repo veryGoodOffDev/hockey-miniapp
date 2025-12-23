@@ -574,8 +574,8 @@ function StatusBlock({ title, tone, list = [], isAdmin }) {
               return (
                 <div key={r.tg_id} className={`pill pos-${pos}`}>
                   <span className="posTag">{posLabel(pos)}</span>
-                  <span className="pillName">{showName(r)}{showNum(r)}</span>
-
+                  <span className="pillName">{showName(r)}{showNum(r)}{r.is_guest ? " · 👤 гость" : ""}</span>
+                    
                   {isAdmin && r.skill != null && (
                     <span className="pillMeta">skill {r.skill}</span>
                   )}
