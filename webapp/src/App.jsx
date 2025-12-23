@@ -224,8 +224,8 @@ export default function App() {
 
       <div className="row">
         <button className={tab === "game" ? "btn" : "btn secondary"} onClick={() => setTab("game")}>Игра</button>
-        <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>Профиль</button>
         <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>Составы</button>
+        <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>Профиль</button>
         {isAdmin && (
           <button className={tab === "admin" ? "btn" : "btn secondary"} onClick={() => setTab("admin")}>Админ</button>
         )}
