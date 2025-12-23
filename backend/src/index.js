@@ -763,6 +763,59 @@ app.post("/api/admin/reminder/sendNow", async (req, res) => {
     res.status(500).json({ ok: false, reason: "send_failed" });
   }
 });
+// server.js (или где у тебя app.get/app.post)
+// импорт q уже есть у тебя из db.js
+import { q } from "./db.js";
+
+app.get("/api/stats/attendance", async (req, res) => {
+  try {
+    // сколько дней назад смотреть (по умолчанию 365)
+    let days = parseInt(String(req.query.days ?? "365"), 10);
+    if (!Number.isFinite(days) || days < 0) days = 365;
+
+    // days=0 или days очень большое -> считаем "за всё время"
+    const useDays = days > 0 && days < 100000;
+
+    const sql = `
+      SELECT
+        p.tg_id,
+        COALESCE(
+          NULLIF(BTRIM(p.display_name), ''),
+          NULLIF(BTRIM(p.first_name), ''),
+          CASE WHEN BTRIM(p.username) <> '' THEN '@' || BTRIM(p.username) ELSE NULL END,
+          p.tg_id::text
+        ) AS name,
+        p.position,
+        p.jersey_number,
+        p.is_guest,
+
+        SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END)   AS yes,
+        SUM(CASE WHEN r.status = 'maybe' THEN 1 ELSE 0 END) AS maybe,
+        SUM(CASE WHEN r.status = 'no' THEN 1 ELSE 0 END)    AS no,
+        COUNT(*) AS total
+
+      FROM rsvps r
+      JOIN games g   ON g.id = r.game_id
+      JOIN players p ON p.tg_id = r.tg_id
+
+      WHERE g.status <> 'cancelled'
+        AND g.starts_at < NOW()
+        ${useDays ? `AND g.starts_at >= NOW() - make_interval(days => $1::int)` : ""}
+        AND p.disabled IS DISTINCT FROM TRUE
+
+      GROUP BY p.tg_id, name, p.position, p.jersey_number, p.is_guest
+      ORDER BY yes DESC, maybe DESC, total DESC, name ASC;
+    `;
+
+    const params = useDays ? [days] : [];
+    const { rows } = await q(sql, params);
+
+    res.json({ ok: true, days: useDays ? days : 0, rows });
+  } catch (e) {
+    console.error("attendance stats error:", e);
+    res.status(500).json({ ok: false, error: "stats_error" });
+  }
+});
 
 const port = process.env.PORT || 10000;
 app.listen(port, () => console.log("Backend listening on", port));
