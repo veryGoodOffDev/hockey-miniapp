@@ -601,7 +601,8 @@ export default function App() {
     </div>
   </>
 )}
-
+</div>
+)}
       {tab === "admin" && isAdmin && (
         <AdminPanel
           apiGet={apiGet}
