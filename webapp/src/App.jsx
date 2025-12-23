@@ -553,8 +553,9 @@ function posLabel(posRaw) {
 }
 
 
-function StatusBlock({ title, tone, list, isAdmin }) {
+function StatusBlock({ title, tone, list = [], isAdmin }) {
   const cls = `statusBlock ${tone}`;
+
   return (
     <div className={cls}>
       <div className="statusHeader">
@@ -566,7 +567,7 @@ function StatusBlock({ title, tone, list, isAdmin }) {
         <div className="small" style={{ opacity: 0.8 }}>—</div>
       ) : (
         <div className="pills">
-          {[...(list || [])]
+          {[...list]
             .sort((a, b) => posOrder(a) - posOrder(b))
             .map((r) => {
               const pos = (r.position || "F").toUpperCase();
@@ -574,7 +575,7 @@ function StatusBlock({ title, tone, list, isAdmin }) {
                 <div key={r.tg_id} className={`pill pos-${pos}`}>
                   <span className="posTag">{posLabel(pos)}</span>
                   <span className="pillName">{showName(r)}{showNum(r)}</span>
-        
+
                   {isAdmin && r.skill != null && (
                     <span className="pillMeta">skill {r.skill}</span>
                   )}
@@ -582,8 +583,6 @@ function StatusBlock({ title, tone, list, isAdmin }) {
               );
             })}
         </div>
-        ))}
-      </div>
       )}
     </div>
   );
