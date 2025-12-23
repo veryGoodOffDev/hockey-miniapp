@@ -242,6 +242,77 @@ export default function App() {
   }, [rsvps]);
 
   const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
+  const POS_LABEL = {
+  G: "🥅 Вратарь",
+  D: "🛡️ Защитники",
+  F: "⚡ Нападающие",
+  U: "❓ Без позиции",
+};
+
+function groupByPos(list = []) {
+  const g = { G: [], D: [], F: [], U: [] };
+  for (const p of list) {
+    const pos = String(p?.position ?? "").toUpperCase();
+    if (pos === "G" || pos === "D" || pos === "F") g[pos].push(p);
+    else g.U.push(p);
+  }
+  return g;
+}
+
+function onPick(teamKey, tg_id) {
+  if (!editTeams) return;
+
+  if (!picked) return setPicked({ team: teamKey, tg_id });
+
+  // смена выбора в той же команде
+  if (picked.team === teamKey) return setPicked({ team: teamKey, tg_id });
+
+  // picked из другой команды → swap
+  swapPicked(teamKey, tg_id);
+}
+
+function renderPosGroup(teamKey, title, players) {
+  if (!players?.length) return null;
+
+  return (
+    <>
+      <div className="teamGroupTitle">{title}</div>
+      <div className="pills">
+        {players.map((p) => {
+          const selected =
+            picked &&
+            picked.team === teamKey &&
+            String(picked.tg_id) === String(p.tg_id);
+
+          return (
+            <div
+              key={p.tg_id}
+              className={"pill " + (selected ? "pillSelected" : "")}
+              onClick={() => onPick(teamKey, p.tg_id)}
+              style={{ cursor: editTeams ? "pointer" : "default" }}
+            >
+              <span className="pillName">{showName(p)}{showNum(p)}</span>
+              {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function renderTeam(teamKey, title, list) {
+  const g = groupByPos(list || []);
+  return (
+    <>
+      <h3>{title}</h3>
+      {renderPosGroup(teamKey, POS_LABEL.G, g.G)}
+      {renderPosGroup(teamKey, POS_LABEL.D, g.D)}
+      {renderPosGroup(teamKey, POS_LABEL.F, g.F)}
+      {renderPosGroup(teamKey, POS_LABEL.U, g.U)}
+    </>
+  );
+}
 
   if (loading) return <HockeyLoader text="Загружаем..." />;
 
