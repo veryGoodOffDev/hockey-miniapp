@@ -1,6 +1,7 @@
 /* =========
    Telegram theme tokens + fallbacks
    ========= */
+*, *::before, *::after { box-sizing: border-box; }
 :root{
   /* Base tg theme vars */
   --tg-bg: var(--tg-theme-bg-color, #ffffff);
