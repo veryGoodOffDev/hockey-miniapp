@@ -514,8 +514,8 @@ textarea:focus{
 .pill .posTag {
   font-weight: 900;
   font-size: 12px;
-  padding: 4px 7px;
+  padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--tg-text) 6%, transparent);
+  background: color-mix(in srgb, var(--tg-text) 7%, transparent);
 }
