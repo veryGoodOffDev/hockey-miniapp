@@ -65,4 +65,8 @@ export async function ensureSchema(q) {
 
   await q(`CREATE INDEX IF NOT EXISTS idx_games_starts_at ON games(starts_at);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS display_name TEXT`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS jersey_number INT`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`);
+
 }
