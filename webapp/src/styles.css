@@ -2,6 +2,11 @@
    Telegram theme tokens + fallbacks
    ========= */
 *, *::before, *::after { box-sizing: border-box; }
+.input, input, select, textarea {
+  width: 100%;
+  max-width: 100%;
+}
+
 :root{
   /* Base tg theme vars */
   --tg-bg: var(--tg-theme-bg-color, #ffffff);
