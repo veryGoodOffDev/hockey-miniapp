@@ -550,3 +550,16 @@ textarea:focus{
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--tg-text) 7%, transparent);
 }
+.datetimeRow{
+  display:flex;
+  gap:10px;
+}
+
+.datetimeRow > *{
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+@media (max-width: 420px){
+  .datetimeRow{ flex-direction: column; }
+}
