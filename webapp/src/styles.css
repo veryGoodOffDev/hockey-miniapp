@@ -463,3 +463,59 @@ textarea:focus{
   border-radius: 10px;
   background: color-mix(in srgb, var(--tg-text) 4%, transparent);
 }
+/* Пилюли игроков */
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--muted-bg);
+  color: var(--tg-text);
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pill .pillName {
+  font-weight: 800;
+}
+
+.pill .pillMeta {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Цвета по позиции */
+.pill.pos-F {
+  background: color-mix(in srgb, #7dd3fc 22%, var(--tg-bg));
+  border-color: color-mix(in srgb, #7dd3fc 55%, var(--border));
+}
+
+.pill.pos-D {
+  background: color-mix(in srgb, #fdba74 22%, var(--tg-bg));
+  border-color: color-mix(in srgb, #fdba74 55%, var(--border));
+}
+
+.pill.pos-G {
+  background: color-mix(in srgb, #86efac 22%, var(--tg-bg));
+  border-color: color-mix(in srgb, #86efac 55%, var(--border));
+}
+
+/* маленький маркер позиции */
+.pill .posTag {
+  font-weight: 900;
+  font-size: 12px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--tg-text) 6%, transparent);
+}
