@@ -147,17 +147,21 @@ async function getSetting(key, def = null) {
 
 
 async function ensurePlayer(user) {
+  const rootAdmin = envAdminSet().has(String(user.id));
+
   await q(
-    `INSERT INTO players(tg_id, first_name, last_name, username)
-     VALUES($1,$2,$3,$4)
+    `INSERT INTO players(tg_id, first_name, last_name, username, is_admin)
+     VALUES($1,$2,$3,$4,$5)
      ON CONFLICT(tg_id) DO UPDATE SET
        first_name=EXCLUDED.first_name,
        last_name=EXCLUDED.last_name,
        username=EXCLUDED.username,
+       is_admin = players.is_admin OR EXCLUDED.is_admin,
        updated_at=NOW()`,
-    [user.id, user.first_name || "", user.last_name || "", user.username || ""]
+    [user.id, user.first_name || "", user.last_name || "", user.username || "", rootAdmin]
   );
 }
+
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
@@ -169,9 +173,9 @@ app.get("/api/me", async (req, res) => {
   await ensurePlayer(user);
 
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
-
-  const is_admin = adminIds().has(String(user.id));
-  res.json({ ok: true, player: pr.rows[0], is_admin });
+  const player = pr.rows[0];
+  const admin = await isAdminId(user.id);
+  res.json({ ok: true, player, is_admin: admin });
 });
 
 app.post("/api/me", async (req, res) => {
@@ -183,10 +187,15 @@ app.post("/api/me", async (req, res) => {
 
   await q(
     `UPDATE players SET
-      position=$2, skill=$3, skating=$4, iq=$5, stamina=$6, passing=$7, shooting=$8, notes=$9, updated_at=NOW()
+      display_name=$2,
+      jersey_number=$3,
+      position=$4, skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10, notes=$11,
+      updated_at=NOW()
      WHERE tg_id=$1`,
     [
       user.id,
+      (b.display_name || "").trim().slice(0, 40) || null,
+      jersey(b.jersey_number),
       b.position || "F",
       int(b.skill, 5),
       int(b.skating, 5),
@@ -197,6 +206,7 @@ app.post("/api/me", async (req, res) => {
       (b.notes || "").slice(0, 500),
     ]
   );
+
 
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
   res.json({ ok: true, player: pr.rows[0] });
@@ -250,7 +260,7 @@ app.get("/api/game", async (req, res) => {
   
   if (is_admin) {
     rr = await q(
-      `SELECT r.status, p.tg_id, p.first_name, p.username, p.position, p.skill
+      `SELECT r.status, p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number, p.position, p.skill
        FROM rsvps r
        JOIN players p ON p.tg_id = r.tg_id
        WHERE r.game_id = $1
@@ -259,7 +269,7 @@ app.get("/api/game", async (req, res) => {
     );
   } else {
     rr = await q(
-      `SELECT r.status, p.tg_id, p.first_name, p.username
+      `SELECT r.status, p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number
        FROM rsvps r
        JOIN players p ON p.tg_id = r.tg_id
        WHERE r.game_id = $1
@@ -423,59 +433,63 @@ app.delete("/api/games/:id", async (req, res) => {
 });
 
 /** ====== ADMIN: players list + patch ====== */
-app.get("/api/players", async (req, res) => {
+app.get("/api/admin/players", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
-  if (!requireAdmin(req, res, user)) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
 
-  const pr = await q(
-    `SELECT tg_id, first_name, last_name, username, position, skill, skating, iq, stamina, passing, shooting, notes, disabled, updated_at
+  const r = await q(
+    `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
+            skill, skating, iq, stamina, passing, shooting, notes, is_admin, updated_at
      FROM players
-     ORDER BY disabled ASC, skill DESC, updated_at DESC NULLS LAST, first_name ASC`
+     ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
   );
 
-  res.json({ ok: true, players: pr.rows });
+  res.json({ ok: true, players: r.rows, is_super_admin: isSuperAdmin(user.id) });
 });
 
-app.patch("/api/players/:tg_id", async (req, res) => {
+
+app.patch("/api/admin/players/:tg_id", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
-  if (!requireAdmin(req, res, user)) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
 
   const tgId = Number(req.params.tg_id);
-  const p = req.body || {};
+  const b = req.body || {};
 
   await q(
     `UPDATE players SET
-       first_name=$2,
-       last_name=$3,
-       username=$4,
-       position=$5,
-       skill=$6, skating=$7, iq=$8, stamina=$9, passing=$10, shooting=$11,
-       notes=$12,
-       disabled=$13,
-       updated_at=NOW()
+      display_name=$2,
+      jersey_number=$3,
+      updated_at=NOW()
      WHERE tg_id=$1`,
     [
       tgId,
-      String(p.first_name ?? ""),
-      String(p.last_name ?? ""),
-      String(p.username ?? ""),
-      String(p.position ?? "F"),
-      int(p.skill, 5),
-      int(p.skating, 5),
-      int(p.iq, 5),
-      int(p.stamina, 5),
-      int(p.passing, 5),
-      int(p.shooting, 5),
-      String(p.notes ?? "").slice(0, 500),
-      Boolean(p.disabled ?? false),
+      (b.display_name || "").trim().slice(0, 40) || null,
+      jersey(b.jersey_number),
     ]
   );
 
-  const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [tgId]);
+  const pr = await q(`SELECT tg_id, first_name, username, display_name, jersey_number, is_admin FROM players WHERE tg_id=$1`, [tgId]);
   res.json({ ok: true, player: pr.rows[0] });
 });
+
+app.post("/api/admin/players/:tg_id/admin", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  if (!isSuperAdmin(user.id)) {
+    return res.status(403).json({ ok: false, reason: "not_super_admin" });
+  }
+
+  const tgId = Number(req.params.tg_id);
+  const makeAdmin = !!req.body?.is_admin;
+
+  await q(`UPDATE players SET is_admin=$2, updated_at=NOW() WHERE tg_id=$1`, [tgId, makeAdmin]);
+
+  res.json({ ok: true });
+});
+
 
 app.post("/api/admin/reminder/sendNow", async (req, res) => {
   const user = requireWebAppAuth(req, res);
@@ -500,6 +514,43 @@ function int(v, def) {
   const n = Number(v);
   if (!Number.isFinite(n)) return def;
   return Math.max(1, Math.min(10, Math.round(n)));
+}
+function envAdminSet() {
+  return new Set(
+    (process.env.ADMIN_IDS || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean)
+  );
+}
+
+async function isAdminId(tgId) {
+  const env = envAdminSet();
+  if (env.has(String(tgId))) return true;
+  const r = await q(`SELECT is_admin FROM players WHERE tg_id=$1`, [tgId]);
+  return r.rows[0]?.is_admin === true;
+}
+
+async function requireAdminAsync(req, res, user) {
+  const ok = await isAdminId(user.id);
+  if (!ok) {
+    res.status(403).json({ ok: false, reason: "not_admin" });
+    return false;
+  }
+  return true;
+}
+function jersey(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  const x = Math.trunc(n);
+  if (x < 0 || x > 99) return null;
+  return x;
+}
+
+// супер-админ: только из ENV (чтобы никто случайно не “забрал” права)
+function isSuperAdmin(tgId) {
+  return envAdminSet().has(String(tgId));
 }
 
 const port = process.env.PORT || 10000;
