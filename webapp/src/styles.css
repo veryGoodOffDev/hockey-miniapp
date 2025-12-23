@@ -562,3 +562,9 @@ textarea:focus{
 @media (max-width: 420px){
   .datetimeRow{ flex-direction: column; }
 }
+.teamGroupTitle{
+  margin: 10px 0 6px;
+  font-size: 13px;
+  opacity: .75;
+  font-weight: 600;
+}
