@@ -323,7 +323,30 @@ export default function App() {
         
                     <hr />
         
-                    {/* тут твой блок списков yes/maybe/no как у тебя уже сделано */}
+                     <div className="small">Отметки:</div>
+              
+                      <div style={{ marginTop: 10 }}>
+                        <StatusBlock
+                          title="✅ Будут на игре"
+                          tone="yes"
+                          list={grouped.yes}
+                          isAdmin={isAdmin}
+                        />
+                      
+                        <StatusBlock
+                          title="❓ Под вопросом"
+                          tone="maybe"
+                          list={grouped.maybe}
+                          isAdmin={isAdmin}
+                        />
+                      
+                        <StatusBlock
+                          title="❌ Не будут"
+                          tone="no"
+                          list={grouped.no}
+                          isAdmin={isAdmin}
+                        />
+                      </div>
                   </>
                 )}
               </>
