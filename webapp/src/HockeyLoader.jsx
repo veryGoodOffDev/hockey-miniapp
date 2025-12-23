@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-
+import logo from "./logo.png";
 export default function HockeyLoader({ text = "Загрузка..." }) {
   const [direction, setDirection] = useState("right"); // 'left' | 'right'
 
@@ -22,7 +22,7 @@ export default function HockeyLoader({ text = "Загрузка..." }) {
           </div>
           {/* LOGO */}
           <div className="hkLogoWrap" aria-hidden="true">
-            <img className="hkLogo" src="logo.png" alt="Team logo" />
+            <img className="hkLogo" src={logo} alt="Team logo" />
           </div>
           <div className={`hkStickWrap hkRight ${direction === "right" ? "isActive" : ""}`}>
             <svg width="80" height="80" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" className="hkStickSvg hkFlip">
