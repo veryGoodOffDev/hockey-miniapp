@@ -227,7 +227,6 @@ export default function App() {
 
       <div className="row">
         <button className={tab === "game" ? "btn" : "btn secondary"} onClick={() => setTab("game")}>Игра</button>
-        <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>Составы</button>
         <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>Профиль</button>
         {isAdmin && (
           <button className={tab === "admin" ? "btn" : "btn secondary"} onClick={() => setTab("admin")}>Админ</button>
@@ -303,6 +302,7 @@ export default function App() {
                           <>
                             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                               <h2 style={{ margin: 0 }}>Игра</h2>
+                               <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>Составы</button>
                               <button className="btn secondary" style={{ marginBottom:"10" }} onClick={() => setGameView("list")}>
                                 ← К списку
                               </button>
