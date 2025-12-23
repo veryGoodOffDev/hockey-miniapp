@@ -51,29 +51,7 @@ export default function App() {
   const [tab, setTab] = useState("game");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  const POS_LABEL = {
-  G: "🥅 Вратарь",
-  D: "🛡️ Защитники",
-  F: "⚡ Нападающие",
-  U: "❓ Без позиции",
-};
-
-function getPosKey(p) {
-  const pos = String(p.position ?? "").toUpperCase();
-  if (pos === "G" || pos === "D" || pos === "F") return pos;
-  return "U";
-}
-
-function groupByPos(players = []) {
-  return players.reduce(
-    (acc, p) => {
-      acc[getPosKey(p)].push(p);
-      return acc;
-    },
-    { G: [], D: [], F: [], U: [] }
-  );
-}
+  
   function normalizeTeams(t) {
     if (!t) return null;
     if (t.ok && (t.teamA || t.teamB)) return t;
@@ -573,9 +551,53 @@ function groupByPos(players = []) {
     )}
 
     <hr />
-    <TeamBlock title="⬜ Белые" teamKey="A" players={teams.teamA || []} />
+    <h3>⬜ Белые</h3>
+    <div className="pills">
+      {(teams.teamA || []).map((p) => {
+        const selected = picked && picked.team === "A" && String(picked.tg_id) === String(p.tg_id);
+        return (
+          <div
+            key={p.tg_id}
+            className={"pill " + (selected ? "pillSelected" : "")}
+            onClick={() => {
+              if (!editTeams) return;
+              if (!picked) return setPicked({ team: "A", tg_id: p.tg_id });
+              if (picked.team === "A") return setPicked({ team: "A", tg_id: p.tg_id }); // смена выбора
+              // picked из B, а кликнули A → swap
+              swapPicked("A", p.tg_id);
+            }}
+            style={{ cursor: editTeams ? "pointer" : "default" }}
+          >
+            <span className="pillName">{showName(p)}{showNum(p)}</span>
+            {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
+          </div>
+        );
+      })}
+    </div>
     <hr />
-    <TeamBlock title="🟦 Синие" teamKey="B" players={teams.teamB || []} />
+        <h3>🟦 Синие</h3>
+    <div className="pills">
+      {(teams.teamB || []).map((p) => {
+        const selected = picked && picked.team === "B" && String(picked.tg_id) === String(p.tg_id);
+        return (
+          <div
+            key={p.tg_id}
+            className={"pill " + (selected ? "pillSelected" : "")}
+            onClick={() => {
+              if (!editTeams) return;
+              if (!picked) return setPicked({ team: "B", tg_id: p.tg_id });
+              if (picked.team === "B") return setPicked({ team: "B", tg_id: p.tg_id });
+              // picked из A, а кликнули B → swap
+              swapPicked("B", p.tg_id);
+            }}
+            style={{ cursor: editTeams ? "pointer" : "default" }}
+          >
+            <span className="pillName">{showName(p)}{showNum(p)}</span>
+            {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
+          </div>
+        );
+      })}
+    </div>
   </>
 )}
 </div>
@@ -635,52 +657,6 @@ function posLabel(posRaw) {
   const pos = (posRaw || "F").toUpperCase();
   return pos === "G" ? "🥅 G" : pos === "D" ? "🛡 D" : "🏒 F";
 }
-const PlayerPill = ({ p, teamKey }) => {
-  const selected =
-    picked &&
-    picked.team === teamKey &&
-    String(picked.tg_id) === String(p.tg_id);
-
-  return (
-    <div
-      className={"pill " + (selected ? "pillSelected" : "")}
-      onClick={() => onPick(teamKey, p.tg_id)}
-      style={{ cursor: editTeams ? "pointer" : "default" }}
-    >
-      <span className="pillName">{showName(p)}{showNum(p)}</span>
-      {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
-    </div>
-  );
-};
-
-const PosGroup = ({ title, players, teamKey }) => {
-  if (!players?.length) return null;
-  return (
-    <>
-      <div className="teamGroupTitle">{title}</div>
-      <div className="pills">
-        {players.map((p) => (
-          <PlayerPill key={p.tg_id} p={p} teamKey={teamKey} />
-        ))}
-      </div>
-    </>
-  );
-};
-
-const TeamBlock = ({ title, teamKey, players }) => {
-  const g = groupByPos(players);
-
-  return (
-    <div className="teamBlock">
-      <h3 style={{ marginBottom: 8 }}>{title}</h3>
-      <PosGroup title={POS_LABEL.G} players={g.G} teamKey={teamKey} />
-      <PosGroup title={POS_LABEL.D} players={g.D} teamKey={teamKey} />
-      <PosGroup title={POS_LABEL.F} players={g.F} teamKey={teamKey} />
-      <PosGroup title={POS_LABEL.U} players={g.U} teamKey={teamKey} />
-    </div>
-  );
-};
-
 
 
 function StatusBlock({ title, tone, list = [], isAdmin }) {
