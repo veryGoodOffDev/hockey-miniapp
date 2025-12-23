@@ -15,7 +15,19 @@ export default function App() {
   const [editTeams, setEditTeams] = useState(false);
   const [picked, setPicked] = useState(null); // { team:'A'|'B', tg_id }
   const [teamsBusy, setTeamsBusy] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsDays, setStatsDays] = useState(365);
+  const [attendance, setAttendance] = useState([]);
 
+async function loadAttendance(days = statsDays) {
+  try {
+    setStatsLoading(true);
+    const res = await apiGet(`/api/stats/attendance?days=${days}`);
+    if (res?.ok) setAttendance(res.rows || []);
+  } finally {
+    setStatsLoading(false);
+  }
+}
 
   if (!inTelegramWebApp) {
     return (
@@ -157,7 +169,11 @@ export default function App() {
     setRsvps(g.rsvps || []);
     setTeams(normalizeTeams(g.teams));
   }
-
+  useEffect(() => {
+  if (tab === "stats") loadAttendance(statsDays);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  
   useEffect(() => {
     const applyTheme = () => {
       document.documentElement.dataset.tg = tg.colorScheme;
@@ -375,6 +391,9 @@ function renderTeam(teamKey, title, list) {
       <div className="row">
         <button className={tab === "game" ? "btn" : "btn secondary"} onClick={() => setTab("game")}>Игры</button>
         <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>Профиль</button>
+        <button className={tab === "stats" ? "btn" : "btn secondary"} onClick={() => setTab("stats")}>
+        Статистика
+      </button>
         {isAdmin && (
           <button className={tab === "admin" ? "btn" : "btn secondary"} onClick={() => setTab("admin")}>Админ</button>
         )}
@@ -710,6 +729,65 @@ function renderTeam(teamKey, title, list) {
 )}
 </div>
 )}
+      {tab === "stats" && (
+      <div className="card">
+        <h2>Статистика посещений</h2>
+    
+        <div className="row" style={{ marginTop: 10 }}>
+          <select
+            value={statsDays}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setStatsDays(v);
+              loadAttendance(v);
+            }}
+          >
+            <option value={30}>30 дней</option>
+            <option value={90}>90 дней</option>
+            <option value={365}>365 дней</option>
+            <option value={0}>Всё время</option>
+          </select>
+    
+          <button className="btn secondary" onClick={() => loadAttendance(statsDays)} disabled={statsLoading}>
+            {statsLoading ? "Считаю..." : "Обновить"}
+          </button>
+        </div>
+    
+        <hr />
+    
+        {attendance.length === 0 ? (
+          <div className="small">Пока нет данных.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {attendance.map((r, idx) => {
+              const medal =
+                idx === 0 ? "🐑🥇" :
+                idx === 1 ? "🐑🥈" :
+                idx === 2 ? "🐑🥉" : "";
+    
+              return (
+                <div key={r.tg_id} className="row" style={{ justifyContent: "space-between" }}>
+                  <div>
+                    <b>{idx + 1}. {medal} {r.name}{r.jersey_number != null ? ` №${r.jersey_number}` : ""}</b>
+                    <div className="small" style={{ opacity: 0.8 }}>
+                      {r.position ? `Позиция: ${r.position}` : ""}
+                      {r.is_guest ? " · 👤 гость" : ""}
+                    </div>
+                  </div>
+    
+                  <div className="row">
+                    <span className="badge">✅ {r.yes ?? 0}</span>
+                    <span className="badge">❓ {r.maybe ?? 0}</span>
+                    <span className="badge">❌ {r.no ?? 0}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    )}
+
       {tab === "admin" && isAdmin && (
         <AdminPanel
           apiGet={apiGet}
