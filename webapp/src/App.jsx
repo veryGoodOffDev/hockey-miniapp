@@ -510,34 +510,97 @@ export default function App() {
           </div>
 
           {teams?.ok && (
-            <>
-              <hr />
-              <div className="row">
-                <span className="badge">ΣA {Number(teams.meta?.sumA ?? 0).toFixed(1)}</span>
-                <span className="badge">ΣB {Number(teams.meta?.sumB ?? 0).toFixed(1)}</span>
-                <span className="badge">diff {Number(teams.meta?.diff ?? 0).toFixed(1)}</span>
-              </div>
+  <>
+    <hr />
+    <div className="row">
+      <span className="badge">ΣA {Number(teams.meta?.sumA ?? 0).toFixed(1)}</span>
+      <span className="badge">ΣB {Number(teams.meta?.sumB ?? 0).toFixed(1)}</span>
+      <span className="badge">
+        diff {Number(teams.meta?.diff ?? 0).toFixed(1)}
+        {Number(teams.meta?.diff ?? 0) >= 3 ? " ⚠️" : ""}
+      </span>
+    </div>
 
-              <hr />
-             <h3>⬜ Белые</h3>
-            {(teams.teamA || []).map((p) => (
-              <div key={p.tg_id} className="small">
-                • {showName(p)}{showNum(p)} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
-              </div>
-            ))}
-            
-            <hr />
-            
-            <h3>🟦 Синие</h3>
-            {(teams.teamB || []).map((p) => (
-              <div key={p.tg_id} className="small">
-                • {showName(p)}{showNum(p)} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
-              </div>
-            ))}
-            </>
-          )}
-        </div>
-      )}
+    {isAdmin && (
+      <div className="row" style={{ marginTop: 10 }}>
+        <button
+          className={editTeams ? "btn" : "btn secondary"}
+          onClick={() => { setEditTeams(v => !v); setPicked(null); }}
+          disabled={teamsBusy}
+        >
+          {editTeams ? "✅ Режим правки" : "✏️ Править составы"}
+        </button>
+
+        {editTeams && (
+          <button
+            className="btn secondary"
+            onClick={movePicked}
+            disabled={!picked || teamsBusy}
+            title="Перенести выбранного в другую команду"
+          >
+            ⇄ Перенести
+          </button>
+        )}
+
+        {editTeams && picked && (
+          <span className="small" style={{ opacity: 0.8 }}>
+            Выбран: {picked.team} · {picked.tg_id}
+          </span>
+        )}
+      </div>
+    )}
+
+    <hr />
+    <h3>⬜ Белые</h3>
+    <div className="pills">
+      {(teams.teamA || []).map((p) => {
+        const selected = picked && picked.team === "A" && String(picked.tg_id) === String(p.tg_id);
+        return (
+          <div
+            key={p.tg_id}
+            className={"pill " + (selected ? "pillSelected" : "")}
+            onClick={() => {
+              if (!editTeams) return;
+              if (!picked) return setPicked({ team: "A", tg_id: p.tg_id });
+              if (picked.team === "A") return setPicked({ team: "A", tg_id: p.tg_id }); // смена выбора
+              // picked из B, а кликнули A → swap
+              swapPicked("A", p.tg_id);
+            }}
+            style={{ cursor: editTeams ? "pointer" : "default" }}
+          >
+            <span className="pillName">{showName(p)}{showNum(p)}</span>
+            {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
+          </div>
+        );
+      })}
+    </div>
+
+    <hr />
+    <h3>🟦 Синие</h3>
+    <div className="pills">
+      {(teams.teamB || []).map((p) => {
+        const selected = picked && picked.team === "B" && String(picked.tg_id) === String(p.tg_id);
+        return (
+          <div
+            key={p.tg_id}
+            className={"pill " + (selected ? "pillSelected" : "")}
+            onClick={() => {
+              if (!editTeams) return;
+              if (!picked) return setPicked({ team: "B", tg_id: p.tg_id });
+              if (picked.team === "B") return setPicked({ team: "B", tg_id: p.tg_id });
+              // picked из A, а кликнули B → swap
+              swapPicked("B", p.tg_id);
+            }}
+            style={{ cursor: editTeams ? "pointer" : "default" }}
+          >
+            <span className="pillName">{showName(p)}{showNum(p)}</span>
+            {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
+          </div>
+        );
+      })}
+    </div>
+  </>
+)}
 
       {tab === "admin" && isAdmin && (
         <AdminPanel
