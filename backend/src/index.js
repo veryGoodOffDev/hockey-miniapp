@@ -375,6 +375,94 @@ app.post("/api/teams/generate", async (req, res) => {
 
   res.json({ ok: true, teamA, teamB, meta });
 });
+// ====== TEAMS MANUAL EDIT (admin) ======
+app.post("/api/teams/manual", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const { game_id, op, from, tg_id, a_id, b_id } = req.body || {};
+  const gid = Number(game_id);
+  if (!gid) return res.status(400).json({ ok: false, reason: "no_game_id" });
+
+  const tr = await q(`SELECT team_a, team_b, meta FROM teams WHERE game_id=$1`, [gid]);
+  const row = tr.rows[0];
+  if (!row) return res.status(400).json({ ok: false, reason: "no_teams" });
+
+  const A = Array.isArray(row.team_a) ? row.team_a : [];
+  const B = Array.isArray(row.team_b) ? row.team_b : [];
+
+  const idEq = (x, id) => String(x?.tg_id) === String(id);
+
+  const calcRating = (p) => {
+    const skill = Number(p?.skill ?? 5);
+    const skating = Number(p?.skating ?? 5);
+    const iq = Number(p?.iq ?? 5);
+    const stamina = Number(p?.stamina ?? 5);
+    const passing = Number(p?.passing ?? 5);
+    const shooting = Number(p?.shooting ?? 5);
+    // простая, стабильная формула (можешь подстроить)
+    const r =
+      skill * 0.45 +
+      skating * 0.15 +
+      iq * 0.15 +
+      stamina * 0.1 +
+      passing * 0.075 +
+      shooting * 0.075;
+    return Math.round(r * 10) / 10;
+  };
+
+  const ensureRating = (p) => {
+    const r = Number(p?.rating);
+    return Number.isFinite(r) ? { ...p, rating: r } : { ...p, rating: calcRating(p) };
+  };
+
+  const sum = (arr) =>
+    arr.reduce((acc, p) => acc + Number(ensureRating(p).rating || 0), 0);
+
+  function removeOne(arr, id) {
+    const idx = arr.findIndex(x => idEq(x, id));
+    if (idx < 0) return { item: null, idx: -1 };
+    const item = arr[idx];
+    arr.splice(idx, 1);
+    return { item, idx };
+  }
+
+  if (op === "move") {
+    if (!tg_id || !from) return res.status(400).json({ ok: false, reason: "bad_args" });
+    const src = from === "A" ? A : B;
+    const dst = from === "A" ? B : A;
+
+    const { item } = removeOne(src, tg_id);
+    if (!item) return res.status(404).json({ ok: false, reason: "player_not_found" });
+
+    dst.push(ensureRating(item));
+  } else if (op === "swap") {
+    if (!a_id || !b_id) return res.status(400).json({ ok: false, reason: "bad_args" });
+    const ia = A.findIndex(x => idEq(x, a_id));
+    const ib = B.findIndex(x => idEq(x, b_id));
+    if (ia < 0 || ib < 0) return res.status(404).json({ ok: false, reason: "player_not_found" });
+
+    const tmp = ensureRating(A[ia]);
+    A[ia] = ensureRating(B[ib]);
+    B[ib] = tmp;
+  } else {
+    return res.status(400).json({ ok: false, reason: "bad_op" });
+  }
+
+  const sumA = sum(A);
+  const sumB = sum(B);
+  const meta = { sumA, sumB, diff: Math.abs(sumA - sumB) };
+
+  await q(
+    `UPDATE teams
+     SET team_a=$2, team_b=$3, meta=$4, generated_at=NOW()
+     WHERE game_id=$1`,
+    [gid, JSON.stringify(A), JSON.stringify(B), JSON.stringify(meta)]
+  );
+
+  res.json({ ok: true, teamA: A, teamB: B, meta });
+});
 
 /** ====== ADMIN: games CRUD ====== */
 app.post("/api/games", async (req, res) => {
