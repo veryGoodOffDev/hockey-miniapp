@@ -10,6 +10,8 @@ export default function App() {
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
+  const [gameView, setGameView] = useState("list"); // "list" | "detail"
+
 
   if (!inTelegramWebApp) {
     return (
@@ -231,93 +233,104 @@ export default function App() {
         )}
       </div>
 
-      {tab === "game" && (
-        <div className="card">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h2 style={{ margin: 0 }}>Игры</h2>
-            <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>Обновить</button>
-          </div>
-
-          {games.length > 0 && (
-            <>
-              <label>Выбор игры</label>
-              <select
-                value={selectedGameId || ""}
-                onChange={(e) => {
-                  const id = Number(e.target.value);
-                  setSelectedGameId(id);
-                  refreshAll(id);
-                }}
-              >
-                {games.map((g) => {
-                  const d = new Date(g.starts_at);
-                  const label = `${d.toLocaleDateString("ru-RU")} ${d.toLocaleTimeString("ru-RU", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })} · ${g.location}${g.status === "cancelled" ? " (отменена)" : ""}`;
-                  return <option key={g.id} value={g.id}>{label}</option>;
-                })}
-              </select>
-              <hr />
-            </>
-          )}
-
-          {!game ? (
-            <div className="small">
-              Игры ещё нет. {isAdmin ? "Создай игру во вкладке “Админ”." : "Попроси админа создать игру."}
-            </div>
-          ) : (
-            <>
-              <div className="row">
-                <span className="badge">⏱ {new Date(game.starts_at).toLocaleString("ru-RU")}</span>
-                <span className="badge">📍 {game.location || "—"}</span>
-                <span className="badge">Статус: {gameStatusLabel(game.status)}</span>
-                {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
-              </div>
-
-              <hr />
-
-              {game.status === "cancelled" ? (
-                <div className="small">Эта игра отменена.</div>
-              ) : (
-                <div className="row">
-                  <button className={btnClass("yes")} onClick={() => rsvp("yes")}>✅ Буду</button>
-                  <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>❓ Под вопросом</button>
-                  <button className={btnClass("no")} onClick={() => rsvp("no")}>❌ Не буду</button>
+        {tab === "game" && (
+          <div className="card">
+            {gameView === "list" && (
+              <>
+                <h2>Игры</h2>
+        
+                {(games || []).length === 0 ? (
+                  <div className="small">Пока игр нет.</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                    {games.map((g) => {
+                      const d = new Date(g.starts_at);
+                      const when = d.toLocaleString("ru-RU");
+                      return (
+                        <div
+                          key={g.id}
+                          className="card"
+                          style={{ cursor: "pointer" }}
+                          onClick={async () => {
+                            setSelectedGameId(g.id);
+                            setGameView("detail");
+                            await refreshAll(g.id);
+                          }}
+                        >
+                          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ fontWeight: 900 }}>
+                              {when}
+                            </div>
+                            <span className="badge">
+                              {({scheduled:"Запланирована", cancelled:"Отменена"}[g.status] || g.status)}
+                            </span>
+                          </div>
+        
+                          <div className="small" style={{ marginTop: 6 }}>
+                            📍 {g.location || "—"}
+                          </div>
+        
+                          <div className="row" style={{ marginTop: 10 }}>
+                            <span className="badge">✅ {g.yes_count ?? 0}</span>
+                            <span className="badge">❓ {g.maybe_count ?? 0}</span>
+                            <span className="badge">❌ {g.no_count ?? 0}</span>
+                          </div>
+        
+                          <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+                            Нажми, чтобы открыть игру
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+        
+            {gameView === "detail" && (
+              <>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <h2 style={{ margin: 0 }}>Игра</h2>
+                  <button className="btn secondary" onClick={() => setGameView("list")}>
+                    ← К списку
+                  </button>
                 </div>
-              )}
+        
+                {/* дальше оставь твой текущий “детальный” блок игры как есть */}
+                {/* он уже использует game / rsvps / myRsvp / rsvp() */}
+                {!game ? (
+                  <div className="small">Не удалось загрузить игру.</div>
+                ) : (
+                  <>
+                    <div className="row">
+                      <span className="badge">⏱ {new Date(game.starts_at).toLocaleString("ru-RU")}</span>
+                      <span className="badge">📍 {game.location || "—"}</span>
+                      <span className="badge">Статус: {({scheduled:"Запланирована", cancelled:"Отменена"}[game.status] || game.status)}</span>
+                      {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
+                    </div>
+        
+                    <hr />
+        
+                    {game.status === "cancelled" ? (
+                      <div className="small">Эта игра отменена.</div>
+                    ) : (
+                      <div className="row">
+                        <button className={btnClass("yes")} onClick={() => rsvp("yes")}>✅ Буду</button>
+                        <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>❓ Под вопросом</button>
+                        <button className={btnClass("no")} onClick={() => rsvp("no")}>❌ Не буду</button>
+                      </div>
+                    )}
+        
+                    <hr />
+        
+                    {/* тут твой блок списков yes/maybe/no как у тебя уже сделано */}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
-              <hr />
-
-              <div className="small">Отметки:</div>
-              
-              <div style={{ marginTop: 10 }}>
-                <StatusBlock
-                  title="✅ Будут на игре"
-                  tone="yes"
-                  list={grouped.yes}
-                  isAdmin={isAdmin}
-                />
-              
-                <StatusBlock
-                  title="❓ Под вопросом"
-                  tone="maybe"
-                  list={grouped.maybe}
-                  isAdmin={isAdmin}
-                />
-              
-                <StatusBlock
-                  title="❌ Не будут"
-                  tone="no"
-                  list={grouped.no}
-                  isAdmin={isAdmin}
-                />
-              </div>
-
-            </>
-          )}
-        </div>
-      )}
 
       {tab === "profile" && (
         <div className="card">
