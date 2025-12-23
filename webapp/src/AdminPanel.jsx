@@ -46,6 +46,14 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [location, setLocation] = useState("");
   const [weeks, setWeeks] = useState(4);
   const [reminderMsg, setReminderMsg] = useState("");
+  const [guestGameId, setGuestGameId] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [guestPos, setGuestPos] = useState("F");
+  const [guestSkill, setGuestSkill] = useState(5);
+  const [guestStatus, setGuestStatus] = useState("yes");
+  const [guestNum, setGuestNum] = useState("");
+  const [guestMsg, setGuestMsg] = useState("");
+
 
   // bulk selection for games
   const [selected, setSelected] = useState(() => new Set());
