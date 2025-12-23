@@ -11,6 +11,7 @@ export default function App() {
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
   const [gameView, setGameView] = useState("list"); // "list" | "detail"
+  const [detailLoading, setDetailLoading] = useState(false);
 
 
   if (!inTelegramWebApp) {
@@ -251,11 +252,22 @@ export default function App() {
                           key={g.id}
                           className="card"
                           style={{ cursor: "pointer" }}
-                          onClick={async () => {
-                            setSelectedGameId(g.id);
-                            setGameView("detail");
-                            await refreshAll(g.id);
-                          }}
+                          onClick={() => {
+                              const id = g.id;
+                            
+                              // сразу показываем экран деталки и лоадер
+                              setSelectedGameId(id);
+                              setGameView("detail");
+                            
+                              // сбрасываем старые данные, чтобы не мигали
+                              setGame(null);
+                              setRsvps([]);
+                              setTeams(null);
+                            
+                              setDetailLoading(true);
+                              refreshAll(id)
+                                .finally(() => setDetailLoading(false));
+                            }}
                         >
                           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                             <div style={{ fontWeight: 900 }}>
@@ -288,20 +300,22 @@ export default function App() {
             )}
         
             {gameView === "detail" && (
-              <>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                  <h2 style={{ margin: 0 }}>Игра</h2>
-                  <button className="btn secondary" onClick={() => setGameView("list")}>
-                    ← К списку
-                  </button>
-                </div>
-        
-                {/* дальше оставь твой текущий “детальный” блок игры как есть */}
-                {/* он уже использует game / rsvps / myRsvp / rsvp() */}
-                {!game ? (
-                  <div className="small">Не удалось загрузить игру.</div>
-                ) : (
-                  <>
+                          <>
+                            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                              <h2 style={{ margin: 0 }}>Игра</h2>
+                              <button className="btn secondary" style={{ marginBottom:"10" }} onClick={() => setGameView("list")}>
+                                ← К списку
+                              </button>
+                            </div>
+                        
+                            <hr />
+                        
+                            {detailLoading ? (
+                              <HockeyLoader text="Загружаем игру..." />
+                            ) : !game ? (
+                              <div className="small">Не удалось загрузить игру.</div>
+                            ) : (
+                          <>
                     <div className="row">
                       <span className="badge">⏱ {new Date(game.starts_at).toLocaleString("ru-RU")}</span>
                       <span className="badge">📍 {game.location || "—"}</span>
