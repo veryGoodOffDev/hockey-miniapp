@@ -194,16 +194,49 @@ export default function App() {
     async function saveProfile() {
       setSaving(true);
     
-      const numeric = ["skill","skating","iq","stamina","passing","shooting"];
-      const payload = { ...me };
-      for (const k of numeric) {
-        if (payload[k] == null || payload[k] === "") payload[k] = 5;
-      }
+      try {
+        const numeric = ["skill","skating","iq","stamina","passing","shooting"];
+        const payload = { ...me };
+        for (const k of numeric) {
+          if (payload[k] == null || payload[k] === "") payload[k] = 5;
+        }
     
-      const res = await apiPost("/api/me", payload);
-      if (res?.player) setMe(res.player);
-      setSaving(false);
+        const res = await apiPost("/api/me", payload);
+    
+        if (res?.player) {
+          setMe(res.player);
+    
+          const pid = res.player.tg_id;
+          const newPos = res.player.position;
+    
+          // ✅ обновим позицию в списке отметок (если используешь position там)
+          setRsvps(prev =>
+            (prev || []).map(r =>
+              String(r.tg_id) === String(pid) ? { ...r, position: newPos } : r
+            )
+          );
+    
+          // ✅ обновим позицию в составах — тогда группировка сразу пересчитается
+          setTeams(prev => {
+            if (!prev?.ok) return prev;
+    
+            const patch = (arr = []) =>
+              arr.map(p =>
+                String(p.tg_id) === String(pid) ? { ...p, position: newPos } : p
+              );
+    
+            return {
+              ...prev,
+              teamA: patch(prev.teamA || []),
+              teamB: patch(prev.teamB || []),
+            };
+          });
+        }
+      } finally {
+        setSaving(false);
+      }
     }
+
 
   async function generateTeams() {
     if (!selectedGameId) return;
