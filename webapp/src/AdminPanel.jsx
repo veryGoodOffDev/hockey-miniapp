@@ -14,11 +14,32 @@ function toIsoFromLocal(dateStr, timeStr) {
   return d.toISOString();
 }
 
+function gameStatusRu(s) {
+  return ({ scheduled: "Запланирована", cancelled: "Отменена" }[s] || s);
+}
+
+function clampNum(v, min, max, def) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.max(min, Math.min(max, Math.trunc(n)));
+}
+
+function normalizeJersey(v) {
+  if (v === null || v === undefined) return null;
+  const raw = String(v).trim();
+  if (!raw) return null;
+  const digits = raw.replace(/[^\d]/g, "");
+  if (!digits) return null;
+  return clampNum(digits, 0, 99, null);
+}
+
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
 
-  const [q, setQ] = useState("");
+  // separate searches
+  const [gameQ, setGameQ] = useState("");
+  const [playerQ, setPlayerQ] = useState("");
 
   const [date, setDate] = useState("");
   const [time, setTime] = useState("19:00");
@@ -26,22 +47,46 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [weeks, setWeeks] = useState(4);
   const [reminderMsg, setReminderMsg] = useState("");
 
-  // bulk selection
+  // bulk selection for games
   const [selected, setSelected] = useState(() => new Set());
+
+  // drafts for players edits (tg_id -> fields)
+  const [draftPlayers, setDraftPlayers] = useState({});
 
   async function load() {
     const g = await apiGet("/api/games?days=180");
     setGames(g.games || []);
-    const p = await apiGet("/api/players");
+
+    // IMPORTANT: admin endpoint, чтобы видеть is_admin и скрытые поля
+    const p = await apiGet("/api/admin/players");
     setPlayers(p.players || []);
+
+    // init drafts once per load (keeps UI stable)
+    const nextDraft = {};
+    for (const pl of (p.players || [])) {
+      nextDraft[pl.tg_id] = {
+        display_name: pl.display_name ?? "",
+        jersey_number: pl.jersey_number ?? "",
+        position: pl.position ?? "F",
+        skill: pl.skill ?? 5,
+        skating: pl.skating ?? 5,
+        iq: pl.iq ?? 5,
+        stamina: pl.stamina ?? 5,
+        passing: pl.passing ?? 5,
+        shooting: pl.shooting ?? 5,
+        notes: pl.notes ?? "",
+        disabled: !!pl.disabled,
+      };
+    }
+    setDraftPlayers(nextDraft);
   }
 
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    // при перезагрузке списка — чистим выбор тех, кого больше нет
-    setSelected(prev => {
-      const ids = new Set((games || []).map(g => g.id));
+    // при перезагрузке списка — чистим выбор тех игр, кого больше нет
+    setSelected((prev) => {
+      const ids = new Set((games || []).map((g) => g.id));
       const next = new Set();
       for (const id of prev) if (ids.has(id)) next.add(id);
       return next;
@@ -49,15 +94,53 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [games.length]);
 
+  const filteredGames = useMemo(() => {
+    const s = gameQ.trim().toLowerCase();
+    if (!s) return games;
+    return (games || []).filter((g) => {
+      const dt = toLocal(g.starts_at);
+      const hay = `${g.id} ${dt.date} ${dt.time} ${g.location || ""} ${g.status || ""}`.toLowerCase();
+      return hay.includes(s);
+    });
+  }, [games, gameQ]);
+
   const filteredPlayers = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = playerQ.trim().toLowerCase();
     if (!s) return players;
-    return players.filter((p) =>
-      (p.first_name || "").toLowerCase().includes(s) ||
-      (p.username || "").toLowerCase().includes(s) ||
-      String(p.tg_id).includes(s)
-    );
-  }, [players, q]);
+    return (players || []).filter((p) => {
+      const hay = [
+        p.display_name,
+        p.first_name,
+        p.last_name,
+        p.username,
+        String(p.tg_id),
+        p.jersey_number == null ? "" : String(p.jersey_number),
+        p.is_admin ? "admin" : "user",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(s);
+    });
+  }, [players, playerQ]);
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set((games || []).map((g) => g.id)));
+  }
+
+  function clearAll() {
+    setSelected(new Set());
+  }
+
   async function sendReminderNow() {
     setReminderMsg("");
     const r = await apiPost("/api/admin/reminder/sendNow", {});
@@ -96,12 +179,6 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
     onChanged?.();
   }
 
-  async function cancelGame(id) {
-    await apiPost(`/api/games/${id}/cancel`, {});
-    await load();
-    onChanged?.();
-  }
-  
   async function setGameStatus(id, status) {
     await apiPost(`/api/games/${id}/status`, { status });
     await load();
@@ -119,7 +196,6 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
     const ok = confirm(`Удалить выбранные игры (${selected.size} шт.)?`);
     if (!ok) return;
 
-    // удаляем по одной (быстро и надёжно)
     for (const id of selected) {
       await apiDelete(`/api/games/${id}`);
     }
@@ -135,66 +211,76 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
     const ok2 = confirm("Последнее подтверждение: удалить ВСЕ игры?");
     if (!ok2) return;
 
-    await apiDelete("/api/games"); // новый endpoint
+    await apiDelete("/api/games"); // если у тебя есть этот endpoint
     setSelected(new Set());
     await load();
     onChanged?.();
   }
 
-  function toggle(id) {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  function setDraft(tgId, key, value) {
+    setDraftPlayers((prev) => ({
+      ...prev,
+      [tgId]: { ...(prev[tgId] || {}), [key]: value },
+    }));
   }
 
-  function selectAll() {
-    setSelected(new Set((games || []).map(g => g.id)));
-  }
-
-  function clearAll() {
-    setSelected(new Set());
-  }
-
-  async function savePlayer(p) {
-    await apiPatch(`/api/players/${p.tg_id}`, {
-      first_name: p._first_name ?? p.first_name,
-      last_name: p._last_name ?? p.last_name,
-      username: p._username ?? p.username,
-      position: p._position ?? p.position,
-      skill: Number(p._skill ?? p.skill),
-      skating: Number(p._skating ?? p.skating),
-      iq: Number(p._iq ?? p.iq),
-      stamina: Number(p._stamina ?? p.stamina),
-      passing: Number(p._passing ?? p.passing),
-      shooting: Number(p._shooting ?? p.shooting),
-      notes: p._notes ?? p.notes,
-      disabled: Boolean(p._disabled ?? p.disabled),
+  async function savePlayer(tgId) {
+    const d = draftPlayers[tgId] || {};
+    await apiPatch(`/api/admin/players/${tgId}`, {
+      display_name: (d.display_name || "").trim(),
+      jersey_number: normalizeJersey(d.jersey_number),
+      position: (d.position || "F").trim().toUpperCase(),
+      skill: clampNum(d.skill, 1, 10, 5),
+      skating: clampNum(d.skating, 1, 10, 5),
+      iq: clampNum(d.iq, 1, 10, 5),
+      stamina: clampNum(d.stamina, 1, 10, 5),
+      passing: clampNum(d.passing, 1, 10, 5),
+      shooting: clampNum(d.shooting, 1, 10, 5),
+      notes: (d.notes || "").slice(0, 500),
+      disabled: !!d.disabled,
     });
     await load();
     onChanged?.();
+  }
+
+  function showName(p) {
+    const dn = (p.display_name || "").trim();
+    if (dn) return dn;
+    const fn = (p.first_name || "").trim();
+    if (fn) return fn;
+    if (p.username) return `@${p.username}`;
+    return String(p.tg_id);
+  }
+
+  function showNum(p) {
+    if (p.jersey_number === null || p.jersey_number === undefined || p.jersey_number === "") return "";
+    return ` №${p.jersey_number}`;
   }
 
   return (
     <div className="card">
-        <h2>Админ</h2>
-        <div className="card">
-          <h2>Напоминания</h2>
-          <div className="small">
-            Сначала в нужной группе напиши боту команду <b>/setchat</b>, чтобы назначить чат для уведомлений.
-          </div>
-        
-          <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn" onClick={sendReminderNow}>
-              Отправить напоминание сейчас
-            </button>
-          </div>
-        
-          {reminderMsg && <div className="small" style={{ marginTop: 8 }}>{reminderMsg}</div>}
+      <h2>Админ</h2>
+
+      {/* --- reminders --- */}
+      <div className="card">
+        <h2>Напоминания</h2>
+        <div className="small">
+          Сначала в нужной группе напиши боту команду <b>/setchat</b>, чтобы назначить чат для уведомлений.
         </div>
 
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn" onClick={sendReminderNow}>
+            Отправить напоминание сейчас
+          </button>
+          <button className="btn secondary" onClick={load}>
+            Обновить
+          </button>
+        </div>
+
+        {reminderMsg && <div className="small" style={{ marginTop: 8 }}>{reminderMsg}</div>}
+      </div>
+
+      {/* --- create game --- */}
       <div className="card">
         <h2>Создать игру</h2>
 
@@ -205,24 +291,44 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
         <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
 
         <label>Арена</label>
-        <input className="input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Например: Ледовая арена" />
+        <input
+          className="input"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="Например: Ледовая арена"
+        />
 
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn" onClick={createOne}>Создать</button>
 
           <div style={{ flex: 1, minWidth: 140 }}>
             <label>Недель вперёд</label>
-            <input className="input" type="number" min={1} max={52} value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} />
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={52}
+              value={weeks}
+              onChange={(e) => setWeeks(Number(e.target.value))}
+            />
           </div>
 
           <button className="btn secondary" onClick={createSeries}>Создать расписание</button>
         </div>
       </div>
 
+      {/* --- games list --- */}
       <div className="card">
         <h2>Список игр</h2>
 
-        <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
+        <input
+          className="input"
+          placeholder="Поиск по играм (id/дата/арена/статус)"
+          value={gameQ}
+          onChange={(e) => setGameQ(e.target.value)}
+        />
+
+        <div className="row" style={{ alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
           <div className="small">
             Выбрано: <b>{selected.size}</b>
           </div>
@@ -244,7 +350,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
         <hr />
 
-        {(games || []).map((g) => {
+        {(filteredGames || []).map((g) => {
           const dt = toLocal(g.starts_at);
           const cancelled = g.status === "cancelled";
           const checked = selected.has(g.id);
@@ -266,7 +372,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
                     <div className="small">{g.location}</div>
                   </div>
                 </div>
-                <span className="badge">{g.status}</span>
+                <span className="badge">{gameStatusRu(g.status)}</span>
               </div>
 
               <label>Дата/время</label>
@@ -280,79 +386,121 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
               <div className="row" style={{ marginTop: 10 }}>
                 <button className="btn" onClick={() => saveGame(g)}>Сохранить</button>
+
                 {g.status === "cancelled" ? (
-                  <button
-                    className="btn secondary"
-                    onClick={() => setGameStatus(g.id, "scheduled")}
-                  >
+                  <button className="btn secondary" onClick={() => setGameStatus(g.id, "scheduled")}>
                     Вернуть (запланирована)
                   </button>
                 ) : (
-                  <button
-                    className="btn secondary"
-                    onClick={() => setGameStatus(g.id, "cancelled")}
-                  >
+                  <button className="btn secondary" onClick={() => setGameStatus(g.id, "cancelled")}>
                     Отменить
                   </button>
                 )}
+
                 <button className="btn secondary" onClick={() => deleteGame(g.id)}>Удалить</button>
               </div>
             </div>
           );
         })}
 
-        {games.length === 0 && <div className="small">Пока игр нет.</div>}
+        {filteredGames.length === 0 && <div className="small">Пока игр нет.</div>}
       </div>
 
+      {/* --- players list --- */}
       <div className="card">
         <h2>Игроки</h2>
-        <input className="input" placeholder="Поиск по имени/username/id" value={q} onChange={(e) => setQ(e.target.value)} />
+
+        <input
+          className="input"
+          placeholder="Поиск по игрокам (имя/username/id/номер/admin)"
+          value={playerQ}
+          onChange={(e) => setPlayerQ(e.target.value)}
+        />
+
         <hr />
 
-        {filteredPlayers.map((p) => (
-          <div key={p.tg_id} className="card">
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontWeight: 800 }}>
-                  {p.first_name || "Без имени"} {p.last_name ? p.last_name : ""} {p.username ? `(@${p.username})` : ""}
+        {filteredPlayers.map((p) => {
+          const d = draftPlayers[p.tg_id] || {};
+          return (
+            <div key={p.tg_id} className="card">
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 900 }}>
+                    {showName(p)}{showNum(p)}
+                  </div>
+                  <div className="small">
+                    tg_id: {p.tg_id} {p.username ? `• @${p.username}` : ""} {p.first_name ? `• tg: ${p.first_name}` : ""}
+                  </div>
                 </div>
-                <div className="small">tg_id: {p.tg_id}</div>
+                <span className="badge">{p.is_admin ? "admin" : "user"}</span>
               </div>
-              <span className="badge">{p.disabled ? "disabled" : "active"}</span>
+
+              <label>Отображаемое имя</label>
+              <input
+                className="input"
+                value={d.display_name ?? ""}
+                onChange={(e) => setDraft(p.tg_id, "display_name", e.target.value)}
+                placeholder={p.first_name || "Имя"}
+              />
+
+              <label>Номер (0–99)</label>
+              <input
+                className="input"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={d.jersey_number ?? ""}
+                onChange={(e) => setDraft(p.tg_id, "jersey_number", e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Например: 17"
+              />
+
+              <label>Позиция (F/D/G)</label>
+              <input
+                className="input"
+                value={d.position ?? "F"}
+                onChange={(e) => setDraft(p.tg_id, "position", e.target.value)}
+              />
+
+              <div className="row">
+                {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+                  <div key={k} style={{ flex: 1, minWidth: 120 }}>
+                    <label>{k}</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={d[k] ?? 5}
+                      onChange={(e) => setDraft(p.tg_id, k, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <label>Заметки</label>
+              <textarea
+                className="input"
+                rows={2}
+                value={d.notes ?? ""}
+                onChange={(e) => setDraft(p.tg_id, "notes", e.target.value)}
+              />
+
+              <div className="row" style={{ alignItems: "center" }}>
+                <label style={{ margin: 0 }}>Отключить</label>
+                <input
+                  type="checkbox"
+                  checked={!!d.disabled}
+                  onChange={(e) => setDraft(p.tg_id, "disabled", e.target.checked)}
+                />
+              </div>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn" onClick={() => savePlayer(p.tg_id)}>Сохранить игрока</button>
+              </div>
             </div>
+          );
+        })}
 
-            <label>Позиция (F/D/G)</label>
-            <input className="input" defaultValue={p.position || "F"} onChange={(e) => (p._position = e.target.value)} />
-
-            <div className="row">
-              {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
-                <div key={k} style={{ flex: 1, minWidth: 120 }}>
-                  <label>{k}</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    max={10}
-                    defaultValue={p[k] ?? 5}
-                    onChange={(e) => (p[`_${k}`] = e.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <label>Заметки</label>
-            <textarea className="input" rows={2} defaultValue={p.notes || ""} onChange={(e) => (p._notes = e.target.value)} />
-
-            <div className="row" style={{ alignItems: "center" }}>
-              <label style={{ margin: 0 }}>Отключить</label>
-              <input type="checkbox" defaultChecked={!!p.disabled} onChange={(e) => (p._disabled = e.target.checked)} />
-            </div>
-
-            <div className="row" style={{ marginTop: 10 }}>
-              <button className="btn" onClick={() => savePlayer(p)}>Сохранить игрока</button>
-            </div>
-          </div>
-        ))}
+        {filteredPlayers.length === 0 && <div className="small">Игроков пока нет.</div>}
       </div>
     </div>
   );
