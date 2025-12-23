@@ -182,7 +182,7 @@ export default function App() {
   function displayName(r) {
     return r.first_name || (r.username ? `@${r.username}` : "") || String(r.tg_id);
   }
-  
+
   const grouped = useMemo(() => {
     const g = { yes: [], maybe: [], no: [] };
     for (const r of (rsvps || [])) {
@@ -323,6 +323,34 @@ export default function App() {
         <div className="card">
           <h2>Мой профиль</h2>
           <div className="small">Заполни один раз — дальше просто отмечайся.</div>
+          <div style={{ marginTop: 10 }}>
+            <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
+            <input
+              className="input"
+              type="text"
+              placeholder={me?.first_name || "Например: Илья"}
+              value={me?.display_name ?? ""}
+              onChange={(e) => setMe({ ...me, display_name: e.target.value })}
+            />
+          </div>
+          
+          <div style={{ marginTop: 10 }}>
+            <label>Номер игрока (0–99)</label>
+            <input
+              className="input"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Например: 17"
+              value={me?.jersey_number == null ? "" : String(me.jersey_number)}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^\d]/g, "");
+                if (raw === "") return setMe({ ...me, jersey_number: null });
+                const n = Math.max(0, Math.min(99, parseInt(raw, 10)));
+                setMe({ ...me, jersey_number: n });
+              }}
+            />
+          </div>
 
           <div style={{ marginTop: 10 }}>
             <label>Позиция</label>
@@ -398,20 +426,21 @@ export default function App() {
               </div>
 
               <hr />
-              <h3>⬜ Белые </h3>
-              {(teams.teamA || []).map((p) => (
-                <div key={p.tg_id} className="small">
-                  • {p.first_name || p.username || p.tg_id} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
-                </div>
-              ))}
-
-              <hr />
-              <h3>🟦 Синие </h3>
-              {(teams.teamB || []).map((p) => (
-                <div key={p.tg_id} className="small">
-                  • {p.first_name || p.username || p.tg_id} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
-                </div>
-              ))}
+             <h3>⬜ Белые</h3>
+            {(teams.teamA || []).map((p) => (
+              <div key={p.tg_id} className="small">
+                • {showName(p)}{showNum(p)} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
+              </div>
+            ))}
+            
+            <hr />
+            
+            <h3>🟦 Синие</h3>
+            {(teams.teamB || []).map((p) => (
+              <div key={p.tg_id} className="small">
+                • {showName(p)}{showNum(p)} ({p.position}, {Number(p.rating ?? 0).toFixed(1)})
+              </div>
+            ))}
             </>
           )}
         </div>
@@ -441,6 +470,25 @@ function label(k) {
   };
   return m[k] || k;
 }
+function showName(p) {
+  const dn = (p?.display_name || "").trim();
+  if (dn) return dn;
+
+  const fn = (p?.first_name || "").trim();
+  if (fn) return fn;
+
+  if (p?.username) return `@${p.username}`;
+
+  return String(p?.tg_id ?? "—");
+}
+
+function showNum(p) {
+  const n = p?.jersey_number;
+  if (n === null || n === undefined || n === "") return "";
+  const nn = Number(n);
+  if (!Number.isFinite(nn)) return "";
+  return ` №${Math.trunc(nn)}`;
+}
 
 function StatusBlock({ title, tone, list, isAdmin }) {
   const cls = `statusBlock ${tone}`;
@@ -455,17 +503,18 @@ function StatusBlock({ title, tone, list, isAdmin }) {
         <div className="small" style={{ opacity: 0.8 }}>—</div>
       ) : (
         <div className="statusList">
-          {list.map((r) => (
-            <div key={r.tg_id} className="statusRow">
-              <div>{r.first_name || (r.username ? `@${r.username}` : r.tg_id)}</div>
-              {isAdmin && r.skill != null && (
-                <div className="small" style={{ opacity: 0.8 }}>
-                  ({r.position}, skill {r.skill})
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        {list.map((r) => (
+          <div key={r.tg_id} className="statusRow">
+            <div>{showName(r)}{showNum(r)}</div>
+      
+            {isAdmin && r.skill != null && (
+              <div className="small" style={{ opacity: 0.8 }}>
+                ({r.position}, skill {r.skill})
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
       )}
     </div>
   );
