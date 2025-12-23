@@ -430,11 +430,11 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
       <div className="card">
         <h2>Создать игру</h2>
-        <div className="datetimeRow">
+        <div className="datetimeRow" style={{ paddingRight: 15 }}>
         <label>Дата</label>
         <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
-        <div className="datetimeRow" style={{ marginTop: 10 }}>
+        <div className="datetimeRow" style={{ marginTop: 10, paddingRight: 15 }}>
         <label>Время</label>
         <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         </div>
