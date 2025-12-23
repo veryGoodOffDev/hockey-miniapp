@@ -640,6 +640,23 @@ app.post("/api/admin/players/:tg_id/admin", async (req, res) => {
   await q(`UPDATE players SET is_admin=$2, updated_at=NOW() WHERE tg_id=$1`, [tgId, makeAdmin]);
   res.json({ ok: true });
 });
+app.delete("/api/admin/players/:tg_id", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const tgId = Number(req.params.tg_id);
+  const pr = await q(`SELECT tg_id, is_guest FROM players WHERE tg_id=$1`, [tgId]);
+  if (!pr.rows[0]) return res.status(404).json({ ok: false, reason: "not_found" });
+
+  // Удалять разрешаем только гостей (чтобы случайно не снести живого игрока)
+  if (pr.rows[0].is_guest !== true) {
+    return res.status(400).json({ ok: false, reason: "not_guest" });
+  }
+
+  await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]); // rsvps удалятся каскадом
+  res.json({ ok: true });
+});
 
 /** ====== ADMIN: reminder ====== */
 app.post("/api/admin/reminder/sendNow", async (req, res) => {
