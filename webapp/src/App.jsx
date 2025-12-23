@@ -622,7 +622,11 @@ function renderTeam(teamKey, title, list) {
     )}
 
     <hr />
-    <h3>⬜ Белые</h3>
+    {renderTeam("A", "⬜ Белые", teams.teamA || [])}
+    
+    <hr />
+    {renderTeam("B", "🟦 Синие", teams.teamB || [])}
+    {/* <h3>⬜ Белые</h3>
     <div className="pills">
       {(teams.teamA || []).map((p) => {
         const selected = picked && picked.team === "A" && String(picked.tg_id) === String(p.tg_id);
@@ -668,7 +672,7 @@ function renderTeam(teamKey, title, list) {
           </div>
         );
       })}
-    </div>
+    </div> */}
   </>
 )}
 </div>
