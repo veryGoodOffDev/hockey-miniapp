@@ -214,21 +214,24 @@ app.post("/api/me", async (req, res) => {
 
 /** ====== GAMES LIST ====== */
 app.get("/api/games", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
-
-  const days = Math.max(1, Math.min(180, Number(req.query.days || 35)));
-
-  const gr = await q(
-    `SELECT * FROM games
-     WHERE starts_at >= NOW() - INTERVAL '1 day'
-       AND starts_at <= NOW() + ($1::int || ' days')::interval
-     ORDER BY starts_at ASC`,
+  const days = Number(req.query.days || 35);
+  const r = await q(
+    `
+    SELECT g.*,
+      COALESCE(SUM(CASE WHEN r.status='yes' THEN 1 ELSE 0 END),0) AS yes_count,
+      COALESCE(SUM(CASE WHEN r.status='maybe' THEN 1 ELSE 0 END),0) AS maybe_count,
+      COALESCE(SUM(CASE WHEN r.status='no' THEN 1 ELSE 0 END),0) AS no_count
+    FROM games g
+    LEFT JOIN rsvps r ON r.game_id = g.id
+    WHERE g.starts_at >= NOW() - ($1::int || ' days')::interval
+    GROUP BY g.id
+    ORDER BY g.starts_at ASC
+    `,
     [days]
   );
-
-  res.json({ ok: true, games: gr.rows });
+  res.json({ ok: true, games: r.rows });
 });
+
 
 /** ====== GAME DETAILS (supports game_id) ====== */
 app.get("/api/game", async (req, res) => {
