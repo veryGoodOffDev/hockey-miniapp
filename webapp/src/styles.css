@@ -322,7 +322,7 @@ textarea:focus{
   position:absolute;
   left:50%;
   top:50%;
-  transform: translate(-50%, -58%); /* чуть выше центра, чтобы шайба не залезала */
+  transform: translate(-50%, -64%); /* чуть выше центра, чтобы шайба не залезала */
   width:90px;
   height:90px;
   background: color-mix(in srgb, var(--tg-bg) 55%, transparent);
