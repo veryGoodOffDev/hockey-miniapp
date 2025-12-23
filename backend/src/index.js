@@ -763,9 +763,6 @@ app.post("/api/admin/reminder/sendNow", async (req, res) => {
     res.status(500).json({ ok: false, reason: "send_failed" });
   }
 });
-// server.js (или где у тебя app.get/app.post)
-// импорт q уже есть у тебя из db.js
-import { q } from "./db.js";
 
 app.get("/api/stats/attendance", async (req, res) => {
   try {
