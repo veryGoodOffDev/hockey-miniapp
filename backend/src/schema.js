@@ -63,10 +63,17 @@ export async function ensureSchema(q) {
 
   await q(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
 
+  // ✅ последовательность для гостевых id (tg_id будет отрицательным)
+  await q(`CREATE SEQUENCE IF NOT EXISTS guest_seq START 1`);
+
   await q(`CREATE INDEX IF NOT EXISTS idx_games_starts_at ON games(starts_at);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);`);
+
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS display_name TEXT`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS jersey_number INT`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`);
 
+  // ✅ поля гостей
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS created_by BIGINT`);
 }
