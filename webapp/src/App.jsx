@@ -12,6 +12,9 @@ export default function App() {
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
   const [gameView, setGameView] = useState("list"); // "list" | "detail"
   const [detailLoading, setDetailLoading] = useState(false);
+  const [editTeams, setEditTeams] = useState(false);
+  const [picked, setPicked] = useState(null); // { team:'A'|'B', tg_id }
+  const [teamsBusy, setTeamsBusy] = useState(false);
 
 
   if (!inTelegramWebApp) {
@@ -62,7 +65,47 @@ export default function App() {
     }
     return t;
   }
-
+  async function movePicked() {
+    if (!picked || !selectedGameId) return;
+    try {
+      setTeamsBusy(true);
+      const res = await apiPost("/api/teams/manual", {
+        game_id: selectedGameId,
+        op: "move",
+        from: picked.team,
+        tg_id: picked.tg_id,
+      });
+      if (res?.ok) {
+        setTeams(normalizeTeams(res));
+        setPicked(null);
+      }
+    } finally {
+      setTeamsBusy(false);
+    }
+  }
+  
+  async function swapPicked(withTeam, withId) {
+    if (!picked || !selectedGameId) return;
+    // picked из A, второй из B (или наоборот) — делаем swap
+    const a_id = picked.team === "A" ? picked.tg_id : withId;
+    const b_id = picked.team === "B" ? picked.tg_id : withId;
+  
+    try {
+      setTeamsBusy(true);
+      const res = await apiPost("/api/teams/manual", {
+        game_id: selectedGameId,
+        op: "swap",
+        a_id,
+        b_id,
+      });
+      if (res?.ok) {
+        setTeams(normalizeTeams(res));
+        setPicked(null);
+      }
+    } finally {
+      setTeamsBusy(false);
+    }
+  }
   async function refreshAll(forceGameId) {
     const m = await apiGet("/api/me");
 
