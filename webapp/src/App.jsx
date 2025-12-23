@@ -540,6 +540,19 @@ function showNum(p) {
   return ` №${Math.trunc(nn)}`;
 }
 
+const posOrder = (p) => {
+  const pos = (p?.position || "F").toUpperCase();
+  if (pos === "G") return 0;
+  if (pos === "D") return 1;
+  return 2; // F по умолчанию
+};
+
+function posLabel(posRaw) {
+  const pos = (posRaw || "F").toUpperCase();
+  return pos === "G" ? "🥅 G" : pos === "D" ? "🛡 D" : "🏒 F";
+}
+
+
 function StatusBlock({ title, tone, list, isAdmin }) {
   const cls = `statusBlock ${tone}`;
   return (
@@ -552,17 +565,23 @@ function StatusBlock({ title, tone, list, isAdmin }) {
       {list.length === 0 ? (
         <div className="small" style={{ opacity: 0.8 }}>—</div>
       ) : (
-        <div className="statusList">
-        {list.map((r) => (
-          <div key={r.tg_id} className="statusRow">
-            <div>{showName(r)}{showNum(r)}</div>
-      
-            {isAdmin && r.skill != null && (
-              <div className="small" style={{ opacity: 0.8 }}>
-                ({r.position}, skill {r.skill})
-              </div>
-            )}
-          </div>
+        <div className="pills">
+          {[...(list || [])]
+            .sort((a, b) => posOrder(a) - posOrder(b))
+            .map((r) => {
+              const pos = (r.position || "F").toUpperCase();
+              return (
+                <div key={r.tg_id} className={`pill pos-${pos}`}>
+                  <span className="posTag">{posLabel(pos)}</span>
+                  <span className="pillName">{showName(r)}{showNum(r)}</span>
+        
+                  {isAdmin && r.skill != null && (
+                    <span className="pillMeta">skill {r.skill}</span>
+                  )}
+                </div>
+              );
+            })}
+        </div>
         ))}
       </div>
       )}
