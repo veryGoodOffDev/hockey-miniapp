@@ -531,7 +531,7 @@ if (!me && accessReason) {
           {gameView === "list" ? (
             <>
               <h2>Игры</h2>
-
+              
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
                 <button className="btn secondary" onClick={() => setShowPast((v) => !v)}>
                   {showPast ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastGames.length})`}
@@ -547,16 +547,44 @@ if (!me && accessReason) {
                   {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
                 </div>
               ) : (
+                <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                <button
+                  className="btn secondary"
+                  onClick={async () => {
+                    if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
+                    await apiPost("/api/rsvp/bulk", { status: "yes" });
+                    await refreshAll(selectedGameId);
+                  }}
+                >
+                  ✅ Буду на все будущие
+                </button>
+              
+                <button
+                  className="btn secondary"
+                  onClick={async () => {
+                    if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
+                    await apiPost("/api/rsvp/bulk", { status: "no" });
+                    await refreshAll(selectedGameId);
+                  }}
+                >
+                  ❌ Не буду на все будущие
+                </button>
+              </div>
+
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {listToShow.map((g) => {
                     const when = formatWhen(g.starts_at);
                     const isNext = !showPast && nextUpcomingId && g.id === nextUpcomingId;
                     const tone = cardToneByMyStatus(g.my_status);
+                    const status = g.my_status || "maybe";
+                    const isNext = !showPast && listToShow[0]?.id === g.id; // ближайшая сверху
                   
                     return (
                       <div
                         key={g.id}
                         className={`card gameCard ${tone} ${isNext ? "isNext" : ""} ${isPastGame(g) ? "isPast" : ""}`}
+                        className={`card gameCard status-${status} ${isNext ? "isNext" : ""}`}
+                        style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
                         style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
                         onClick={() => {
                           const id = g.id;
@@ -596,6 +624,21 @@ if (!me && accessReason) {
                         ) : null}
                         <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
                           Нажми, чтобы открыть игру
+                        </div>
+                          <div className="row" style={{ marginTop: 10, gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
+                            onClick={async () => { await apiPost("/api/rsvp", { game_id: g.id, status: "yes" }); await refreshAll(g.id); }}
+                          >
+                            ✅ Буду
+                          </button>
+                      
+                          <button
+                            className={status === "no" ? "btn tiny" : "btn secondary tiny"}
+                            onClick={async () => { await apiPost("/api/rsvp", { game_id: g.id, status: "no" }); await refreshAll(g.id); }}
+                          >
+                            ❌ Не буду
+                          </button>
                         </div>
                       </div>
                     );
