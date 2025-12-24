@@ -104,18 +104,7 @@ const filteredPlayersDir = useMemo(() => {
 async function refreshAll(forceGameId) {
   const m = await apiGet("/api/me");
 
-  if (m?.ok === false) {
-    const reason = m?.reason || m?.error || "auth_failed";
-
-    // доступ по чату
-    if (reason === "not_member" || reason === "access_chat_not_set") {
-      setAccessReason(reason);
-      setAuthReason(null);
-    } else {
-      setAuthReason(reason);
-      setAccessReason(null);
-    }
-
+  if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
     setMe(null);
     setIsAdmin(false);
     setGames([]);
@@ -123,12 +112,21 @@ async function refreshAll(forceGameId) {
     setGame(null);
     setRsvps([]);
     setTeams(null);
+    setAccessReason(m.reason);
     return;
   }
 
-  // авторизация ок
-  setAccessReason(null);
-  setAuthReason(null);
+  if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
+    setMe(null);
+    setIsAdmin(false);
+    setGames([]);
+    setSelectedGameId(null);
+    setGame(null);
+    setRsvps([]);
+    setTeams(null);
+    setAccessReason(null);
+    return;
+  }
 
   if (m?.player) {
     setMe(m.player);
@@ -149,6 +147,36 @@ async function refreshAll(forceGameId) {
   }
 
   setIsAdmin(!!m?.is_admin);
+  setAccessReason(null);
+
+  const gl = await apiGet("/api/games?days=365");
+  if (gl?.ok === false && gl?.reason) {
+    // если ты добавил защиту на /api/games тоже
+    setMe(null);
+    setIsAdmin(false);
+    setGames([]);
+    setAccessReason(gl.reason);
+    return;
+  }
+
+  const list = gl.games || [];
+  setGames(list);
+
+  const safeNext =
+    list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
+    list.find((g) => !isPastGame(g))?.id ??
+    list[0]?.id ??
+    null;
+
+  const nextId = forceGameId ?? selectedGameId ?? safeNext;
+  if (nextId) setSelectedGameId(nextId);
+
+  const gg = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
+  setGame(gg.game);
+  setRsvps(gg.rsvps || []);
+  setTeams(normalizeTeams(gg.teams));
+}
+
 
   // --- GAMES ---
   const gl = await apiGet("/api/games?days=365");
