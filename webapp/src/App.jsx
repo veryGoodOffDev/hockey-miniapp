@@ -177,58 +177,6 @@ async function refreshAll(forceGameId) {
   setTeams(normalizeTeams(gg.teams));
 }
 
-
-  // --- GAMES ---
-  const gl = await apiGet("/api/games?days=365");
-
-  if (gl?.ok === false) {
-    setGamesError(gl);
-    setGames([]);
-    return; // важно: не продолжаем
-  }
-
-  setGamesError(null);
-  const list = gl?.games || [];
-  setGames(list);
-
-  const safeNext =
-    list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
-    list.find((g) => !isPastGame(g))?.id ??
-    list[0]?.id ??
-    null;
-
-  const nextId = forceGameId ?? selectedGameId ?? safeNext;
-  if (nextId) setSelectedGameId(nextId);
-
-  const g = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
-  setGame(g.game);
-  setRsvps(g.rsvps || []);
-  setTeams(normalizeTeams(g.teams));
-}
-
-
-    setIsAdmin(!!m?.is_admin);
-    setAccessReason(null);
-    const gl = await apiGet("/api/games?days=365");
-    const list = gl.games || [];
-    setGames(list);
-
-    const safeNext =
-      list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
-      list.find((g) => !isPastGame(g))?.id ??
-      list[0]?.id ??
-      null;
-
-    const nextId = forceGameId ?? selectedGameId ?? safeNext;
-
-    if (nextId) setSelectedGameId(nextId);
-
-    const g = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
-    setGame(g.game);
-    setRsvps(g.rsvps || []);
-    setTeams(normalizeTeams(g.teams));
-  }
-
   // init
   useEffect(() => {
     if (!inTelegramWebApp) {
