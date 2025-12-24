@@ -89,6 +89,38 @@ function requireWebAppAuth(req, res) {
   }
   return v.user;
 }
+async function requireGroupMember(req, res, user) {
+  const chatIdRaw = await getSetting("notify_chat_id", null); // используем тот же чат
+  if (!chatIdRaw) {
+    res.status(403).json({ ok: false, reason: "access_chat_not_set" });
+    return false;
+  }
+
+  const chatId = Number(chatIdRaw);
+
+  try {
+    const m = await bot.api.getChatMember(chatId, user.id);
+
+    // статусы: creator | administrator | member | restricted | left | kicked
+    if (m.status === "left" || m.status === "kicked") {
+      res.status(403).json({ ok: false, reason: "not_member" });
+      return false;
+    }
+
+    // В редких случаях restricted может быть is_member=false
+    if (m.status === "restricted" && m.is_member === false) {
+      res.status(403).json({ ok: false, reason: "not_member" });
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    console.error("getChatMember failed:", e);
+    // Частая причина: бот не в группе / нет прав / chat_id неверный
+    res.status(403).json({ ok: false, reason: "member_check_failed" });
+    return false;
+  }
+}
 
 function int(v, def) {
   const n = Number(v);
@@ -198,8 +230,9 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== ME ====== */
 app.get("/api/me", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
 
   await ensurePlayer(user);
 
@@ -212,7 +245,8 @@ app.get("/api/me", async (req, res) => {
 
 app.post("/api/me", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-  if (!user) return;
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
 
   await ensurePlayer(user);
   const b = req.body || {};
@@ -247,8 +281,9 @@ app.post("/api/me", async (req, res) => {
 
 /** ====== GAMES LIST ====== */
 app.get("/api/games", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+ const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
 
   const days = Number(req.query.days || 35);
 
@@ -274,8 +309,9 @@ app.get("/api/games", async (req, res) => {
 
 /** ====== GAME DETAILS (supports game_id) ====== */
 app.get("/api/game", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+ const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
 
   const gameId = req.query.game_id ? Number(req.query.game_id) : null;
 
@@ -338,7 +374,8 @@ app.get("/api/game", async (req, res) => {
 /** ====== RSVP (requires game_id) ====== */
 app.post("/api/rsvp", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-  if (!user) return;
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
 
   const status = req.body?.status;
   const gid = Number(req.body?.game_id);
@@ -363,7 +400,8 @@ app.post("/api/rsvp", async (req, res) => {
 /** ====== TEAMS GENERATE (admin) ====== */
 app.post("/api/teams/generate", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-  if (!user) return;
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const gid = Number(req.body?.game_id);
@@ -396,7 +434,8 @@ app.post("/api/teams/generate", async (req, res) => {
 // ====== TEAMS MANUAL EDIT (admin) ======
 app.post("/api/teams/manual", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-  if (!user) return;
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const { game_id, op, from, tg_id, a_id, b_id } = req.body || {};
@@ -485,7 +524,8 @@ app.post("/api/teams/manual", async (req, res) => {
 /** ====== ADMIN: games CRUD ====== */
 app.post("/api/games", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-  if (!user) return;
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
 const { starts_at, location, video_url } = req.body || {};
@@ -507,7 +547,8 @@ res.json({ ok: true, game: ir.rows[0] });
 
 app.patch("/api/games/:id", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-  if (!user) return;
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const id = Number(req.params.id);
@@ -547,8 +588,9 @@ app.patch("/api/games/:id", async (req, res) => {
 });
 
 app.post("/api/games/:id/status", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+ const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const id = Number(req.params.id);
@@ -566,8 +608,9 @@ app.post("/api/games/:id/status", async (req, res) => {
 });
 
 app.delete("/api/games/:id", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+ const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const id = Number(req.params.id);
@@ -578,8 +621,9 @@ app.delete("/api/games/:id", async (req, res) => {
 /** ====== ADMIN: guests ====== */
 // create guest (+ optional RSVP on game)
 app.post("/api/admin/guests", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const b = req.body || {};
@@ -635,8 +679,9 @@ app.post("/api/admin/guests", async (req, res) => {
 
 // admin set RSVP for any player/guest
 app.post("/api/admin/rsvp", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const b = req.body || {};
@@ -665,8 +710,9 @@ app.post("/api/admin/rsvp", async (req, res) => {
 
 /** ====== ADMIN: players list + patch ====== */
 app.get("/api/admin/players", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const r = await q(
@@ -693,8 +739,9 @@ app.get("/api/admin/players", async (req, res) => {
 });
 
 app.patch("/api/admin/players/:tg_id", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const tgId = Number(req.params.tg_id);
@@ -741,8 +788,9 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
 });
 
 app.post("/api/admin/players/:tg_id/admin", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
 
   if (!isSuperAdmin(user.id)) {
     return res.status(403).json({ ok: false, reason: "not_super_admin" });
@@ -755,8 +803,9 @@ app.post("/api/admin/players/:tg_id/admin", async (req, res) => {
   res.json({ ok: true });
 });
 app.delete("/api/admin/players/:tg_id", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const tgId = Number(req.params.tg_id);
@@ -774,8 +823,9 @@ app.delete("/api/admin/players/:tg_id", async (req, res) => {
 
 /** ====== ADMIN: reminder ====== */
 app.post("/api/admin/reminder/sendNow", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+const user = requireWebAppAuth(req, res);
+if (!user) return;
+if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const chatId = await getSetting("notify_chat_id", null);
