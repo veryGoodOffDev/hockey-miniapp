@@ -17,6 +17,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
 
   const [me, setMe] = useState(null);
+  const [accessReason, setAccessReason] = useState(null); // "not_member" | "access_chat_not_set" | null
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [games, setGames] = useState([]);
@@ -83,7 +84,20 @@ export default function App() {
 
   async function refreshAll(forceGameId) {
     const m = await apiGet("/api/me");
-
+    // ✅ доступ только участникам командного чата
+    if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
+      setMe(null);
+      setIsAdmin(false);
+      setGames([]);
+      setSelectedGameId(null);
+      setGame(null);
+      setRsvps([]);
+      setTeams(null);
+    
+      // можно сохранить причину, чтобы показать красивый экран
+      setAccessReason(m.reason);
+      return;
+    }
     // если backend не принял initData — покажем понятный экран
     if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
       setMe(null);
@@ -115,7 +129,7 @@ export default function App() {
     }
 
     setIsAdmin(!!m?.is_admin);
-
+    setAccessReason(null);
     const gl = await apiGet("/api/games?days=365");
     const list = gl.games || [];
     setGames(list);
