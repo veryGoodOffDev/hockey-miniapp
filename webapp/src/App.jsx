@@ -48,6 +48,10 @@ export default function App() {
   const [playerView, setPlayerView] = useState("list"); // list|detail
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
+  const [authReason, setAuthReason] = useState(null);   // invalid_init_data | no_user | ...
+  const [gamesError, setGamesError] = useState(null);   // объект ошибки /api/games
+
+  
   function normalizeTeams(t) {
     if (!t) return null;
     if (t.ok && (t.teamA || t.teamB)) return t;
@@ -97,51 +101,83 @@ const filteredPlayersDir = useMemo(() => {
     }
   }
 
-  async function refreshAll(forceGameId) {
-    const m = await apiGet("/api/me");
-    // ✅ доступ только участникам командного чата
-    if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
-      setMe(null);
-      setIsAdmin(false);
-      setGames([]);
-      setSelectedGameId(null);
-      setGame(null);
-      setRsvps([]);
-      setTeams(null);
-    
-      // можно сохранить причину, чтобы показать красивый экран
-      setAccessReason(m.reason);
-      return;
-    }
-    // если backend не принял initData — покажем понятный экран
-    if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
-      setMe(null);
-      setIsAdmin(false);
-      setGames([]);
-      setSelectedGameId(null);
-      setGame(null);
-      setRsvps([]);
-      setTeams(null);
-      return;
+async function refreshAll(forceGameId) {
+  const m = await apiGet("/api/me");
+
+  if (m?.ok === false) {
+    const reason = m?.reason || m?.error || "auth_failed";
+
+    // доступ по чату
+    if (reason === "not_member" || reason === "access_chat_not_set") {
+      setAccessReason(reason);
+      setAuthReason(null);
+    } else {
+      setAuthReason(reason);
+      setAccessReason(null);
     }
 
-    if (m?.player) {
-      setMe(m.player);
-    } else if (tgUser?.id) {
-      setMe({
-        tg_id: tgUser.id,
-        first_name: tgUser.first_name || "",
-        username: tgUser.username || "",
-        position: "F",
-        skill: 5,
-        skating: 5,
-        iq: 5,
-        stamina: 5,
-        passing: 5,
-        shooting: 5,
-        notes: "",
-      });
-    }
+    setMe(null);
+    setIsAdmin(false);
+    setGames([]);
+    setSelectedGameId(null);
+    setGame(null);
+    setRsvps([]);
+    setTeams(null);
+    return;
+  }
+
+  // авторизация ок
+  setAccessReason(null);
+  setAuthReason(null);
+
+  if (m?.player) {
+    setMe(m.player);
+  } else if (tgUser?.id) {
+    setMe({
+      tg_id: tgUser.id,
+      first_name: tgUser.first_name || "",
+      username: tgUser.username || "",
+      position: "F",
+      skill: 5,
+      skating: 5,
+      iq: 5,
+      stamina: 5,
+      passing: 5,
+      shooting: 5,
+      notes: "",
+    });
+  }
+
+  setIsAdmin(!!m?.is_admin);
+
+  // --- GAMES ---
+  const gl = await apiGet("/api/games?days=365");
+
+  if (gl?.ok === false) {
+    setGamesError(gl);
+    setGames([]);
+    return; // важно: не продолжаем
+  }
+
+  setGamesError(null);
+  const list = gl?.games || [];
+  setGames(list);
+
+  const safeNext =
+    list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
+    list.find((g) => !isPastGame(g))?.id ??
+    list[0]?.id ??
+    null;
+
+  const nextId = forceGameId ?? selectedGameId ?? safeNext;
+  if (nextId) setSelectedGameId(nextId);
+
+  const g = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
+  setGame(g.game);
+  setRsvps(g.rsvps || []);
+  setTeams(normalizeTeams(g.teams));
+}
+
 
     setIsAdmin(!!m?.is_admin);
     setAccessReason(null);
@@ -501,8 +537,29 @@ if (!me && accessReason) {
     </div>
   );
 }
+if (!me && authReason) {
+  return (
+    <div className="container">
+      <h1>🏒 Хоккей: отметки и составы</h1>
 
+      <div className="card">
+        <div style={{ fontWeight: 900 }}>Не удалось авторизоваться</div>
+        <div className="small" style={{ opacity: 0.85, marginTop: 6, lineHeight: 1.5 }}>
+          Telegram не передал корректные данные для входа.
+          <br />
+          Причина: <b>{String(authReason)}</b>
+          <br />
+          Попробуй открыть Mini App заново из Telegram или через бота.
+        </div>
 
+        <div className="row" style={{ marginTop: 12, gap: 10, flexWrap: "wrap" }}>
+          <button className="btn" onClick={() => refreshAll(selectedGameId)}>🔄 Повторить</button>
+          <a className="btn secondary" href={BOT_DEEPLINK}>💬 Открыть бота</a>
+        </div>
+      </div>
+    </div>
+  );
+}
   return (
     <div className="container appShell">
       <h1>🏒 Хоккей: отметки и составы</h1>
@@ -541,6 +598,18 @@ if (!me && accessReason) {
                   {showPast ? `Показаны прошедшие: ${pastGames.length}` : `Показаны предстоящие: ${upcomingGames.length}`}
                 </span>
               </div> 
+              {gamesError ? (
+                          <div className="card" style={{ border: "1px solid rgba(255,0,0,.25)" }}>
+                            <div style={{ fontWeight: 900 }}>Не удалось загрузить игры</div>
+                            <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                              Причина: <b>{gamesError.reason || gamesError.error || gamesError.status || "unknown"}</b>
+                            </div>
+                            <div className="row" style={{ marginTop: 10 }}>
+                              <button className="btn" onClick={() => refreshAll(selectedGameId)}>🔄 Обновить</button>
+                            </div>
+                          </div>
+                        ) : null}
+
               {listToShow.length === 0 ? (
                 <div className="small" style={{ marginTop: 10 }}>
                   {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
