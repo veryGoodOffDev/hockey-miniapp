@@ -459,13 +459,7 @@ export default function App() {
               ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {listToShow.map((g) => {
-                    const when = new Date(g.starts_at).toLocaleString("ru-RU", {
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
+                    const when = formatWhen(g.starts_at);
 
                     return (
                       <div
@@ -533,9 +527,9 @@ export default function App() {
               ) : (
                 <>
                   <div className="row">
-                    <span className="badge">⏱ {new Date(game.starts_at).toLocaleString("ru-RU")}</span>
+                    <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
                     <span className="badge">📍 {game.location || "—"}</span>
-                    <span className="badge">{uiStatus(g)}</span>
+                    <span className="badge">{uiStatus(game)}</span>
                     {game.video_url ? (
                       <button
                         className="btn secondary"
@@ -833,7 +827,15 @@ function showNum(p) {
   if (!Number.isFinite(nn)) return "";
   return ` №${Math.trunc(nn)}`;
 }
-
+function formatWhen(starts_at) {
+  return new Date(starts_at).toLocaleString("ru-RU", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",      // чтобы было 7, а не 07 (если хочешь 07 — поставь "2-digit")
+    minute: "2-digit",
+  });
+}
 const posOrder = (p) => {
   const pos = (p?.position || "F").toUpperCase();
   if (pos === "G") return 0;
