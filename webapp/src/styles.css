@@ -568,3 +568,36 @@ textarea:focus{
   opacity: .75;
   font-weight: 600;
 }
+.gameCard {
+  position: relative;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+}
+
+/* Ближайшая игра */
+.gameCard.isNext {
+  border: 1px solid rgba(0, 200, 120, 0.55);
+  box-shadow: 0 0 0 2px rgba(0, 200, 120, 0.18);
+  transform: scale(1.01);
+}
+
+/* Прошедшие */
+.gameCard.isPast {
+  opacity: 0.85;
+}
+
+/* Мой RSVP → мягкий фон */
+.gameCard.tone-yes {
+  background: linear-gradient(135deg, rgba(0, 200, 120, 0.12), rgba(0, 200, 120, 0.03));
+}
+
+.gameCard.tone-maybe {
+  background: linear-gradient(135deg, rgba(255, 200, 0, 0.14), rgba(255, 200, 0, 0.03));
+}
+
+.gameCard.tone-no {
+  background: linear-gradient(135deg, rgba(255, 80, 80, 0.14), rgba(255, 80, 80, 0.03));
+}
+
+.gameCard.tone-none {
+  /* как было */
+}
