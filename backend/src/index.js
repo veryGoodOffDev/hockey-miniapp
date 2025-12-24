@@ -251,29 +251,30 @@ if (!(await requireGroupMember(req, res, user))) return;
   await ensurePlayer(user);
   const b = req.body || {};
 
-  await q(
-    `UPDATE players SET
-      display_name=$2,
-      jersey_number=$3,
-      position=$4,
-      skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10,
-      notes=$11,
-      updated_at=NOW()
-     WHERE tg_id=$1`,
-    [
-      user.id,
-      (b.display_name || "").trim().slice(0, 40) || null,
-      jersey(b.jersey_number),
-      (b.position || "F").toUpperCase(),
-      int(b.skill, 5),
-      int(b.skating, 5),
-      int(b.iq, 5),
-      int(b.stamina, 5),
-      int(b.passing, 5),
-      int(b.shooting, 5),
-      (b.notes || "").slice(0, 500),
-    ]
-  );
+await q(
+  `UPDATE players SET
+    display_name=$2,
+    jersey_number=$3,
+    position=$4, skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10, notes=$11,
+    photo_url=$12,
+    updated_at=NOW()
+   WHERE tg_id=$1`,
+  [
+    user.id,
+    (b.display_name || "").trim().slice(0, 40) || null,
+    jersey(b.jersey_number),
+    b.position || "F",
+    int(b.skill, 5),
+    int(b.skating, 5),
+    int(b.iq, 5),
+    int(b.stamina, 5),
+    int(b.passing, 5),
+    int(b.shooting, 5),
+    (b.notes || "").slice(0, 500),
+    (b.photo_url || "").trim().slice(0, 500) || "",
+  ]
+);
+
 
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
   res.json({ ok: true, player: pr.rows[0] });
@@ -820,6 +821,50 @@ if (!(await requireGroupMember(req, res, user))) return;
   await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]); // rsvps удалятся каскадом
   res.json({ ok: true });
 });
+
+app.get("/api/players", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  await ensurePlayer(user);
+
+  const is_admin = await isAdminId(user.id);
+
+  // для обычных — минимум, для админа — можно больше
+  const sql = is_admin
+    ? `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
+              photo_url, notes, skill, skating, iq, stamina, passing, shooting, is_admin, disabled
+       FROM players
+       WHERE disabled=FALSE
+       ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
+    : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
+              photo_url, notes
+       FROM players
+       WHERE disabled=FALSE
+       ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`;
+
+  const r = await q(sql);
+  res.json({ ok: true, players: r.rows });
+});
+
+app.get("/api/players/:tg_id", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  const tgId = Number(req.params.tg_id);
+  const is_admin = await isAdminId(user.id);
+
+  const sql = is_admin
+    ? `SELECT * FROM players WHERE tg_id=$1`
+    : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position, photo_url, notes
+       FROM players WHERE tg_id=$1`;
+
+  const r = await q(sql, [tgId]);
+  res.json({ ok: true, player: r.rows[0] || null });
+});
+
 
 /** ====== ADMIN: reminder ====== */
 app.post("/api/admin/reminder/sendNow", async (req, res) => {
