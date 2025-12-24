@@ -104,6 +104,17 @@ function jersey(v) {
   if (x < 0 || x > 99) return null;
   return x;
 }
+function cleanUrl(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (!/^https?:$/.test(u.protocol)) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
 
 async function setSetting(key, value) {
   await q(
@@ -470,19 +481,21 @@ app.post("/api/games", async (req, res) => {
   if (!user) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
-  const { starts_at, location } = req.body || {};
-  const d = new Date(starts_at);
-  if (Number.isNaN(d.getTime()))
-    return res.status(400).json({ ok: false, reason: "bad_starts_at" });
+const { starts_at, location, video_url } = req.body || {};
+const d = new Date(starts_at);
+if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
 
-  const ir = await q(
-    `INSERT INTO games(starts_at, location, status)
-     VALUES($1,$2,'scheduled')
-     RETURNING *`,
-    [d.toISOString(), String(location || "").trim()]
-  );
+const vu = cleanUrl(video_url);
+if (video_url && !vu) return res.status(400).json({ ok: false, reason: "bad_video_url" });
 
-  res.json({ ok: true, game: ir.rows[0] });
+const ir = await q(
+  `INSERT INTO games(starts_at, location, status, video_url)
+   VALUES($1,$2,'scheduled',$3)
+   RETURNING *`,
+  [d.toISOString(), String(location || "").trim(), vu]
+);
+
+res.json({ ok: true, game: ir.rows[0] });
 });
 
 app.patch("/api/games/:id", async (req, res) => {
@@ -509,6 +522,12 @@ app.patch("/api/games/:id", async (req, res) => {
   if (b.status) {
     sets.push(`status=$${i++}`); vals.push(String(b.status));
   }
+  if (b.video_url !== undefined) {
+  const vu = cleanUrl(b.video_url);
+  if (b.video_url && !vu) return res.status(400).json({ ok:false, reason:"bad_video_url" });
+  sets.push(`video_url=$${i++}`); 
+  vals.push(vu);
+}
   sets.push(`updated_at=NOW()`);
 
   vals.push(id);
