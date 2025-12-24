@@ -541,13 +541,7 @@ if (!me && accessReason) {
                   {showPast ? `Показаны прошедшие: ${pastGames.length}` : `Показаны предстоящие: ${upcomingGames.length}`}
                 </span>
               </div>
-
-              {listToShow.length === 0 ? (
-                <div className="small" style={{ marginTop: 10 }}>
-                  {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
-                </div>
-              ) : (
-                <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                              <div className="row" style={{ marginTop: 10, gap: 8 }}>
                 <button
                   className="btn secondary"
                   onClick={async () => {
@@ -570,7 +564,11 @@ if (!me && accessReason) {
                   ❌ Не буду на все будущие
                 </button>
               </div>
-
+              {listToShow.length === 0 ? (
+                <div className="small" style={{ marginTop: 10 }}>
+                  {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
+                </div>
+              ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {listToShow.map((g) => {
                     const when = formatWhen(g.starts_at);
