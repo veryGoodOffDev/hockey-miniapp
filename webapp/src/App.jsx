@@ -547,6 +547,29 @@ if (!me && accessReason) {
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                  <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                  <button
+                    className="btn secondary"
+                    onClick={async () => {
+                      if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
+                      await apiPost("/api/rsvp/bulk", { status: "yes" });
+                      await refreshAll(selectedGameId);
+                    }}
+                  >
+                    ✅ Буду на все будущие
+                  </button>
+                
+                  <button
+                    className="btn secondary"
+                    onClick={async () => {
+                      if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
+                      await apiPost("/api/rsvp/bulk", { status: "no" });
+                      await refreshAll(selectedGameId);
+                    }}
+                  >
+                    ❌ Не буду на все будущие
+                  </button>
+                </div>
                   {listToShow.map((g, idx) => {
   const when = formatWhen(g.starts_at);
   const status = g.my_status || "maybe"; // yes | no | maybe
