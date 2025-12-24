@@ -411,28 +411,68 @@ export default function App() {
     );
   }
 
-  // если /api/me вернул ошибку по initData
-  if (!me) {
-    return (
-      <div className="container">
-        <h1>🏒 Хоккей: отметки и составы</h1>
-        <div className="card">
-          <div className="small">
-            Backend не принял данные Telegram (initData). Обычно это означает неправильный BOT_TOKEN на backend или открытие
-            не через Mini App.
-          </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <a className="btn" href={BOT_DEEPLINK}>
-              Открыть бота
-            </a>
-            <button className="btn secondary" onClick={() => refreshAll()}>
-              Повторить
-            </button>
-          </div>
+// если /api/me не пустил по доступу
+if (!me && accessReason) {
+  const isNotMember = accessReason === "not_member";
+  const isChatNotSet = accessReason === "access_chat_not_set";
+
+  return (
+    <div className="container">
+      <h1>🏒 Хоккей: отметки и составы</h1>
+
+      <div className="card accessCard">
+        <div className="accessIcon">{isNotMember ? "🔒" : "⚙️"}</div>
+
+        <h2 style={{ marginTop: 6, marginBottom: 8 }}>
+          {isNotMember ? "Доступ ограничен" : "Доступ ещё не настроен"}
+        </h2>
+
+        <div className="small" style={{ lineHeight: 1.5, opacity: 0.9 }}>
+          {isNotMember && (
+            <>
+              Это мини-приложение доступно <b>только участникам командного чата</b>.
+              <br />
+              Если ты знаешь администратора — напиши ему, чтобы тебя добавили в чат.
+            </>
+          )}
+
+          {isChatNotSet && (
+            <>
+              Администратор ещё не назначил командный чат для доступа.
+              <br />
+              Попроси админа зайти в чат команды и выполнить команду <b>/setchat</b>.
+            </>
+          )}
+        </div>
+
+        <hr style={{ opacity: 0.4 }} />
+
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <button
+            className="btn"
+            onClick={() => refreshAll(selectedGameId)}
+            style={{ flex: 1, minWidth: 160 }}
+          >
+            🔄 Проверить доступ
+          </button>
+
+          <a
+            className="btn secondary"
+            href={BOT_DEEPLINK}
+            style={{ flex: 1, minWidth: 160, textAlign: "center" }}
+          >
+            💬 Открыть бота
+          </a>
+        </div>
+
+        <div className="small" style={{ marginTop: 10, opacity: 0.75 }}>
+          Подсказка: после добавления в чат просто открой Mini App ещё раз из Telegram.
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   return (
     <div className="container">
