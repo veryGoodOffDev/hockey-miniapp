@@ -1037,7 +1037,7 @@ if (!me && authReason) {
         ) : filteredPlayersDir.length === 0 ? (
           <div className="small">Пока нет игроков.</div>
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 1 }}>
             {filteredPlayersDir.map((p) => (
               <div
                 key={p.tg_id}
