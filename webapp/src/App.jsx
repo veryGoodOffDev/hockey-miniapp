@@ -302,7 +302,14 @@ export default function App() {
   );
 
   const listToShow = showPast ? pastGames : upcomingGames;
+  const nextUpcomingId = upcomingGames[0]?.id ?? null;
 
+  function cardToneByMyStatus(s) {
+    if (s === "yes") return "tone-yes";
+    if (s === "maybe") return "tone-maybe";
+    if (s === "no") return "tone-no";
+    return "tone-none";
+  }
   const POS_LABEL = {
     G: "🥅 Вратари",
     D: "🛡️ Защитники",
@@ -460,11 +467,13 @@ export default function App() {
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {listToShow.map((g) => {
                     const when = formatWhen(g.starts_at);
-
+                    const isNext = !showPast && nextUpcomingId && g.id === nextUpcomingId;
+                    const tone = cardToneByMyStatus(g.my_status);
+                  
                     return (
                       <div
                         key={g.id}
-                        className="card"
+                        className={`card gameCard ${tone} ${isNext ? "isNext" : ""} ${isPastGame(g) ? "isPast" : ""}`}
                         style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
                         onClick={() => {
                           const id = g.id;
@@ -497,6 +506,11 @@ export default function App() {
                           <span className="badge">❓ {g.maybe_count ?? 0}</span>
                           <span className="badge">❌ {g.no_count ?? 0}</span>
                         </div>
+                        {g.my_status ? (
+                          <span className="badge" title="Мой статус">
+                            {g.my_status === "yes" ? "✅ Я иду" : g.my_status === "maybe" ? "❓ Я под вопросом" : "❌ Я не иду"}
+                          </span>
+                        ) : null}
                         <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
                           Нажми, чтобы открыть игру
                         </div>
