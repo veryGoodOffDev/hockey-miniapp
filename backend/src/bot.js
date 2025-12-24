@@ -46,7 +46,7 @@ export function createBot() {
       [String(ctx.chat.id)]
     );
 
-    return ctx.reply("Ок, этот чат назначен для уведомлений и публикации составов.");
+    return ctx.reply("Всем привет, этот чат назначен для уведомлений и публикации составов.");
   });
 
   bot.command("setgame", async (ctx) => {
