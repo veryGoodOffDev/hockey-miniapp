@@ -1042,7 +1042,7 @@ if (!me && authReason) {
               <div
                 key={p.tg_id}
                 className="card"
-                style={{ cursor: "pointer" }}
+                style={{ cursor: "pointer",marginTop: 1, borderRadius: 0 }}
                 onClick={async () => {
                   setPlayerView("detail");
                   setSelectedPlayer(null);
@@ -1224,7 +1224,7 @@ function Avatar({ p, big = false }) {
       <img
         src={url}
         alt=""
-        style={{ width: size, height: size, borderRadius: 999, objectFit: "cover" }}
+        style={{ width: size, height: size, objectFit: "cover" }}
       />
     );
   }
@@ -1235,7 +1235,6 @@ function Avatar({ p, big = false }) {
       style={{
         width: size,
         height: size,
-        borderRadius: 999,
         display: "grid",
         placeItems: "center",
         fontWeight: 900,
