@@ -498,8 +498,7 @@ function renderTeam(teamKey, title, list) {
     })}
   </div>
 )}
-
-        
+                }    
             {gameView === "detail" && (
                           <>
                             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
