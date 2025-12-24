@@ -424,9 +424,7 @@ export default function App() {
         <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>
           Профиль
         </button>
-        <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>
-          Составы
-        </button>
+
         <button className={tab === "stats" ? "btn" : "btn secondary"} onClick={() => setTab("stats")}>
           Статистика
         </button>
@@ -509,6 +507,9 @@ export default function App() {
             <>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <h2 style={{ margin: 0 }}>Игра</h2>
+                        <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>
+                        Составы
+                      </button>
                 <button className="btn secondary" onClick={() => setGameView("list")}>
                   ← К списку
                 </button>
