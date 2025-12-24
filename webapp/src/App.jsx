@@ -489,6 +489,9 @@ export default function App() {
                         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                           <div style={{ fontWeight: 900 }}>{when}</div>
                           <span className="badge">{uiStatus(g)}</span>
+                          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                          {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+                        </div>
                         </div>
 
                         <div className="small" style={{ marginTop: 6 }}>
@@ -499,10 +502,6 @@ export default function App() {
                           <span className="badge">✅ {g.yes_count ?? 0}</span>
                           <span className="badge">❓ {g.maybe_count ?? 0}</span>
                           <span className="badge">❌ {g.no_count ?? 0}</span>
-                        </div>
-                        <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                          {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
-                          <span className="badge">{uiStatus(g)}</span>
                         </div>
                         <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
                           Нажми, чтобы открыть игру
