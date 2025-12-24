@@ -507,7 +507,7 @@ export default function App() {
                           <span className="badge">❌ {g.no_count ?? 0}</span>
                         </div>
                         {g.my_status ? (
-                          <span className="badge" title="Мой статус">
+                          <span className="badge" style={{ marginTop: 10 }} title="Мой статус">
                             {g.my_status === "yes" ? "✅ Я иду" : g.my_status === "maybe" ? "❓ Я под вопросом" : "❌ Я не иду"}
                           </span>
                         ) : null}
