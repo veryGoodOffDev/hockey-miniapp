@@ -459,7 +459,14 @@ export default function App() {
               ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {listToShow.map((g) => {
-                    const when = new Date(g.starts_at).toLocaleString("ru-RU");
+                    const when = new Date(g.starts_at).toLocaleString("ru-RU", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+
                     return (
                       <div
                         key={g.id}
