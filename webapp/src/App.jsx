@@ -493,7 +493,10 @@ export default function App() {
                           <span className="badge">❓ {g.maybe_count ?? 0}</span>
                           <span className="badge">❌ {g.no_count ?? 0}</span>
                         </div>
-
+                        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                          {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+                          <span className="badge">{uiStatus(g)}</span>
+                        </div>
                         <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
                           Нажми, чтобы открыть игру
                         </div>
@@ -529,6 +532,14 @@ export default function App() {
                     <span className="badge">
                       Статус: {({ scheduled: "Запланирована", cancelled: "Отменена" }[game.status] || game.status)}
                     </span>
+                    {game.video_url ? (
+                      <button
+                        className="btn secondary"
+                        onClick={() => tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank")}
+                      >
+                        ▶️ Видео
+                      </button>
+                    ) : null}
                     {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
                   </div>
 
