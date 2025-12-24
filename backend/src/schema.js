@@ -42,6 +42,7 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS photo_url TEXT DEFAULT '';`);
 
   await q(`
     CREATE TABLE IF NOT EXISTS rsvps (
