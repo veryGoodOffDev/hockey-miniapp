@@ -78,7 +78,15 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
   // загруженные гости по игре (чтобы показывать “пилюли” прямо в карточке игры)
   const [guestsByGame, setGuestsByGame] = useState({}); // { [gameId]: { loading:boolean, list: [] } }
+  const [videoOpen, setVideoOpen] = useState(() => new Set());
 
+function toggleVideo(id) {
+  setVideoOpen(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+}
   async function load() {
     const g = await apiGet("/api/games?days=180");
     setGames(g.games || []);
@@ -146,7 +154,9 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
       starts_at,
       location: g._editLocation ?? g.location,
       status: g._editStatus ?? g.status,
+      video_url: g._editVideoUrl ?? g.video_url ?? "",
     });
+
     await load();
     onChanged?.();
   }
@@ -542,7 +552,30 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
                 <button className="btn secondary" onClick={() => deleteGame(g.id)}>Удалить</button>
               </div>
-
+              <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                <button className="btn secondary" onClick={() => toggleVideo(g.id)}>
+                  {videoOpen.has(g.id)
+                    ? "Скрыть ссылку"
+                    : (g.video_url ? "Изменить видео" : "Добавить видео")}
+                </button>
+              
+                {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+              </div>
+              
+              {videoOpen.has(g.id) && (
+                <>
+                  <label>Ссылка на видео (YouTube)</label>
+                  <input
+                    className="input"
+                    defaultValue={g.video_url || ""}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    onChange={(e) => (g._editVideoUrl = e.target.value)}
+                  />
+                  <div className="small" style={{ opacity: 0.8 }}>
+                    Оставь пустым и нажми “Сохранить” — ссылка удалится
+                  </div>
+                </>
+              )}
               <hr />
 
               {/* ГОСТИ В ЭТОЙ ИГРЕ */}
