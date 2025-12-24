@@ -504,10 +504,10 @@ if (!me && accessReason) {
 
 
   return (
-    <div className="container">
+    <div className="container appShell">
       <h1>🏒 Хоккей: отметки и составы</h1>
 
-      <div className="row">
+      {/* <div className="row">
         <button className={tab === "game" ? "btn" : "btn secondary"} onClick={() => setTab("game")}>
           Игры
         </button>
@@ -523,7 +523,7 @@ if (!me && accessReason) {
             Админ
           </button>
         )}
-      </div>
+      </div> */}
 
       {/* ====== GAMES ====== */}
       {tab === "game" && (
@@ -735,6 +735,19 @@ if (!me && accessReason) {
               />
             </div>
           ))}
+          <div style={{ marginTop: 10 }}>
+          <label>Фото (ссылка на картинку)</label>
+            <input
+              className="input"
+              type="text"
+              placeholder="https://...jpg/png/webp"
+              value={me?.photo_url ?? ""}
+              onChange={(e) => setMe({ ...me, photo_url: e.target.value })}
+            />
+            <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
+              Быстрый вариант: вставь ссылку (позже сделаем загрузку через бота).
+            </div>
+          </div>
 
           <div style={{ marginTop: 10 }}>
             <label>Комментарий</label>
@@ -887,6 +900,110 @@ if (!me && accessReason) {
           onChanged={() => refreshAll(selectedGameId)}
         />
       )}
+
+      
+      {tab === "players" && (
+  <div className="card">
+    {playerView === "list" ? (
+      <>
+        <h2>Игроки</h2>
+
+        <input
+          className="input"
+          placeholder="Поиск: имя / номер / id"
+          value={playerQ}
+          onChange={(e) => setPlayerQ(e.target.value)}
+        />
+
+        <hr />
+
+        {playersLoading ? (
+          <HockeyLoader text="Загружаем игроков..." />
+        ) : filteredPlayersDir.length === 0 ? (
+          <div className="small">Пока нет игроков.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {filteredPlayersDir.map((p) => (
+              <div
+                key={p.tg_id}
+                className="card"
+                style={{ cursor: "pointer" }}
+                onClick={async () => {
+                  setPlayerView("detail");
+                  setSelectedPlayer(null);
+                  setPlayerDetailLoading(true);
+                  try {
+                    const r = await apiGet(`/api/players/${p.tg_id}`);
+                    setSelectedPlayer(r.player || null);
+                  } finally {
+                    setPlayerDetailLoading(false);
+                  }
+                }}
+              >
+                <div className="row" style={{ alignItems: "center", gap: 12 }}>
+                  <Avatar p={p} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 900 }}>
+                      {showName(p)}{showNum(p)}
+                    </div>
+                    <div className="small" style={{ opacity: 0.8 }}>
+                      {posHuman(p.position)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    ) : (
+      <>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ margin: 0 }}>Профиль игрока</h2>
+          <button className="btn secondary" onClick={() => setPlayerView("list")}>← К списку</button>
+        </div>
+
+        <hr />
+
+        {playerDetailLoading ? (
+          <HockeyLoader text="Загружаем профиль..." />
+        ) : !selectedPlayer ? (
+          <div className="small">Игрок не найден.</div>
+        ) : (
+          <div className="card">
+            <div className="row" style={{ alignItems: "center", gap: 14 }}>
+              <Avatar p={selectedPlayer} big />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 900, fontSize: 18 }}>
+                  {showName(selectedPlayer)}{showNum(selectedPlayer)}
+                </div>
+                <div className="small" style={{ opacity: 0.8 }}>{posHuman(selectedPlayer.position)}</div>
+              </div>
+            </div>
+
+            {!!selectedPlayer.notes && (
+              <>
+                <hr />
+                <div className="small" style={{ opacity: 0.9 }}>Комментарий:</div>
+                <div>{selectedPlayer.notes}</div>
+              </>
+            )}
+
+            {isAdmin && (
+              <>
+                <hr />
+                <div className="small" style={{ opacity: 0.8 }}>
+                  skill: {selectedPlayer.skill} · skating: {selectedPlayer.skating} · iq: {selectedPlayer.iq} · stamina: {selectedPlayer.stamina} · passing: {selectedPlayer.passing} · shooting: {selectedPlayer.shooting}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </>
+    )}
+  </div>
+)}
+<BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </div>
   );
 }
@@ -981,5 +1098,66 @@ function StatusBlock({ title, tone, list = [], isAdmin }) {
         </div>
       )}
     </div>
+  );
+}
+function Avatar({ p, big = false }) {
+  const size = big ? 72 : 44;
+  const url = (p?.photo_url || "").trim();
+
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        style={{ width: size, height: size, borderRadius: 999, objectFit: "cover" }}
+      />
+    );
+  }
+
+  const letter = (showName(p)[0] || "•").toUpperCase();
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        fontWeight: 900,
+        background: "rgba(255,255,255,0.08)",
+      }}
+    >
+      {letter}
+    </div>
+  );
+}
+
+function posHuman(posRaw) {
+  const pos = String(posRaw || "F").toUpperCase();
+  return pos === "G" ? "🥅 Вратарь" : pos === "D" ? "🛡️ Защитник" : "⚡ Нападающий";
+}
+function BottomNav({ tab, setTab, isAdmin }) {
+  const items = [
+    { key: "game", label: "Игры", icon: "📅" },
+    { key: "players", label: "Игроки", icon: "👥" },
+    { key: "stats", label: "Статистика", icon: "📊" },
+    { key: "profile", label: "Профиль", icon: "👤" },
+    ...(isAdmin ? [{ key: "admin", label: "Админ", icon: "🛠" }] : []),
+  ];
+
+  return (
+    <nav className="bottomNav" role="navigation" aria-label="Навигация">
+      {items.map((it) => (
+        <button
+          key={it.key}
+          className={"bottomNavItem " + (tab === it.key ? "isActive" : "")}
+          onClick={() => setTab(it.key)}
+          type="button"
+        >
+          <span className="bottomNavIcon" aria-hidden="true">{it.icon}</span>
+          <span className="bottomNavLabel">{it.label}</span>
+        </button>
+      ))}
+    </nav>
   );
 }
