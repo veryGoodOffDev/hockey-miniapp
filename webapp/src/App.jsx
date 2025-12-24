@@ -540,107 +540,89 @@ if (!me && accessReason) {
                 <span className="small" style={{ opacity: 0.8 }}>
                   {showPast ? `Показаны прошедшие: ${pastGames.length}` : `Показаны предстоящие: ${upcomingGames.length}`}
                 </span>
-              </div>
-                              <div className="row" style={{ marginTop: 10, gap: 8 }}>
-                <button
-                  className="btn secondary"
-                  onClick={async () => {
-                    if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
-                    await apiPost("/api/rsvp/bulk", { status: "yes" });
-                    await refreshAll(selectedGameId);
-                  }}
-                >
-                  ✅ Буду на все будущие
-                </button>
-              
-                <button
-                  className="btn secondary"
-                  onClick={async () => {
-                    if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
-                    await apiPost("/api/rsvp/bulk", { status: "no" });
-                    await refreshAll(selectedGameId);
-                  }}
-                >
-                  ❌ Не буду на все будущие
-                </button>
-              </div>
+              </div> 
               {listToShow.length === 0 ? (
                 <div className="small" style={{ marginTop: 10 }}>
                   {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                  {listToShow.map((g) => {
-                    const when = formatWhen(g.starts_at);
-                    const isNext = !showPast && nextUpcomingId && g.id === nextUpcomingId;
-                    const tone = cardToneByMyStatus(g.my_status);
-                    const status = g.my_status || "maybe";
-                    const isNext = !showPast && listToShow[0]?.id === g.id; // ближайшая сверху
-                  
-                    return (
-                      <div
-                        key={g.id}
-                        className={`card gameCard ${tone} ${isNext ? "isNext" : ""} ${isPastGame(g) ? "isPast" : ""}`}
-                        className={`card gameCard status-${status} ${isNext ? "isNext" : ""}`}
-                        style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
-                        style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
-                        onClick={() => {
-                          const id = g.id;
+                  {listToShow.map((g, idx) => {
+  const when = formatWhen(g.starts_at);
+  const status = g.my_status || "maybe"; // yes | no | maybe
+  const tone = cardToneByMyStatus(status);
 
-                          setSelectedGameId(id);
-                          setGameView("detail");
+  // ближайшая игра — первая в списке предстоящих
+  const isNext = !showPast && idx === 0;
 
-                          setGame(null);
-                          setRsvps([]);
-                          setTeams(null);
+  return (
+    <div
+      key={g.id}
+      className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${isPastGame(g) ? "isPast" : ""}`}
+      style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
+      onClick={() => {
+        const id = g.id;
 
-                          setDetailLoading(true);
-                          refreshAll(id).finally(() => setDetailLoading(false));
-                        }}
-                      >
-                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ fontWeight: 900 }}>{when}</div>
-                          <span className="badge">{uiStatus(g)}</span>
-                          <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                          {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
-                        </div>
-                        </div>
+        setSelectedGameId(id);
+        setGameView("detail");
 
-                        <div className="small" style={{ marginTop: 6 }}>
-                          📍 {g.location || "—"}
-                        </div>
+        setGame(null);
+        setRsvps([]);
+        setTeams(null);
 
-                        <div className="row" style={{ marginTop: 10 }}>
-                          <span className="badge">✅ {g.yes_count ?? 0}</span>
-                          <span className="badge">❓ {g.maybe_count ?? 0}</span>
-                          <span className="badge">❌ {g.no_count ?? 0}</span>
-                        </div>
-                        {g.my_status ? (
-                          <span className="badge" style={{ marginTop: 10 }} title="Мой статус">
-                            {g.my_status === "yes" ? "✅ Я иду" : g.my_status === "maybe" ? "❓ Я под вопросом" : "❌ Я не иду"}
-                          </span>
-                        ) : null}
-                        <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-                          Нажми, чтобы открыть игру
-                        </div>
-                          <div className="row" style={{ marginTop: 10, gap: 8 }} onClick={(e) => e.stopPropagation()}>
-                          <button
-                            className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
-                            onClick={async () => { await apiPost("/api/rsvp", { game_id: g.id, status: "yes" }); await refreshAll(g.id); }}
-                          >
-                            ✅ Буду
-                          </button>
-                      
-                          <button
-                            className={status === "no" ? "btn tiny" : "btn secondary tiny"}
-                            onClick={async () => { await apiPost("/api/rsvp", { game_id: g.id, status: "no" }); await refreshAll(g.id); }}
-                          >
-                            ❌ Не буду
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+        setDetailLoading(true);
+        refreshAll(id).finally(() => setDetailLoading(false));
+      }}
+    >
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontWeight: 900 }}>{when}</div>
+
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          <span className="badge">{uiStatus(g)}</span>
+          {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+        </div>
+      </div>
+
+      <div className="small" style={{ marginTop: 6 }}>
+        📍 {g.location || "—"}
+      </div>
+
+      <div className="row" style={{ marginTop: 10 }}>
+        <span className="badge">✅ {g.yes_count ?? 0}</span>
+        <span className="badge">❓ {g.maybe_count ?? 0}</span>
+        <span className="badge">❌ {g.no_count ?? 0}</span>
+      </div>
+
+      <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+        Нажми, чтобы открыть игру
+      </div>
+
+      {/* быстрые кнопки RSVP */}
+      <div className="row" style={{ marginTop: 10, gap: 8 }} onClick={(e) => e.stopPropagation()}>
+        <button
+          className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
+          onClick={async () => {
+            await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
+            await refreshAll(g.id);
+          }}
+        >
+          ✅ Буду
+        </button>
+
+        <button
+          className={status === "no" ? "btn tiny" : "btn secondary tiny"}
+          onClick={async () => {
+            await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
+            await refreshAll(g.id);
+          }}
+        >
+          ❌ Не буду
+        </button>
+      </div>
+    </div>
+  );
+})}
+
                 </div>
               )}
             </>
