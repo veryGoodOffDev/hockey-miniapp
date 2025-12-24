@@ -335,33 +335,48 @@ if (!(await requireGroupMember(req, res, user))) return;
 
   const is_admin = await isAdminId(user.id);
 
-  const rr = is_admin
-    ? await q(
-        `SELECT
-           r.status,
-           p.tg_id, p.first_name, p.username,
-           p.display_name, p.jersey_number,
-           p.position, p.skill,
-           p.is_guest
-         FROM rsvps r
-         JOIN players p ON p.tg_id = r.tg_id
-         WHERE r.game_id = $1
-         ORDER BY r.status ASC, p.skill DESC, COALESCE(p.display_name,p.first_name,p.username,p.tg_id::text) ASC`,
-        [game.id]
-      )
-    : await q(
-        `SELECT
-           r.status,
-           p.tg_id, p.first_name, p.username,
-           p.display_name, p.jersey_number,
-           p.position,
-           p.is_guest
-         FROM rsvps r
-         JOIN players p ON p.tg_id = r.tg_id
-         WHERE r.game_id = $1
-         ORDER BY r.status ASC, COALESCE(p.display_name,p.first_name,p.username,p.tg_id::text) ASC`,
-        [game.id]
-      );
+let rr;
+if (is_admin) {
+  rr = await q(
+    `SELECT
+        COALESCE(r.status, 'maybe') AS status,
+        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
+        p.position, p.skill
+     FROM players p
+     LEFT JOIN rsvps r
+       ON r.game_id=$1 AND r.tg_id=p.tg_id
+     WHERE p.disabled=FALSE
+     ORDER BY
+       CASE COALESCE(r.status,'maybe')
+         WHEN 'yes' THEN 1
+         WHEN 'maybe' THEN 2
+         WHEN 'no' THEN 3
+         ELSE 9
+       END,
+       p.skill DESC,
+       COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
+    [game.id]
+  );
+} else {
+  rr = await q(
+    `SELECT
+        COALESCE(r.status, 'maybe') AS status,
+        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number, p.position
+     FROM players p
+     LEFT JOIN rsvps r
+       ON r.game_id=$1 AND r.tg_id=p.tg_id
+     WHERE p.disabled=FALSE
+     ORDER BY
+       CASE COALESCE(r.status,'maybe')
+         WHEN 'yes' THEN 1
+         WHEN 'maybe' THEN 2
+         WHEN 'no' THEN 3
+         ELSE 9
+       END,
+       COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
+    [game.id]
+  );
+}
 
   const tr = await q(
     `SELECT team_a, team_b, meta, generated_at FROM teams WHERE game_id=$1`,
@@ -375,11 +390,10 @@ if (!(await requireGroupMember(req, res, user))) return;
 /** ====== RSVP (requires game_id) ====== */
 app.post("/api/rsvp", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  if (!user) return;
 
-  const status = req.body?.status;
   const gid = Number(req.body?.game_id);
+  const status = String(req.body?.status || "").trim(); // 'yes' | 'no' | 'maybe'
 
   if (!gid) return res.status(400).json({ ok: false, reason: "no_game_id" });
   if (!["yes", "no", "maybe"].includes(status)) {
@@ -388,15 +402,23 @@ if (!(await requireGroupMember(req, res, user))) return;
 
   await ensurePlayer(user);
 
+  // ✅ maybe = "сбросить" → удаляем строку
+  if (status === "maybe") {
+    await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, user.id]);
+    return res.json({ ok: true });
+  }
+
   await q(
     `INSERT INTO rsvps(game_id, tg_id, status)
      VALUES($1,$2,$3)
-     ON CONFLICT(game_id, tg_id) DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+     ON CONFLICT(game_id, tg_id)
+     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
     [gid, user.id, status]
   );
 
   res.json({ ok: true });
 });
+
 
 /** ====== TEAMS GENERATE (admin) ====== */
 app.post("/api/teams/generate", async (req, res) => {
@@ -933,6 +955,42 @@ app.get("/api/stats/attendance", async (req, res) => {
     console.error("attendance stats error:", e);
     res.status(500).json({ ok: false, error: "stats_error" });
   }
+});
+
+app.post("/api/rsvp/bulk", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const status = String(req.body?.status || "").trim(); // yes | no | maybe
+  if (!["yes", "no", "maybe"].includes(status)) {
+    return res.status(400).json({ ok: false, reason: "bad_status" });
+  }
+
+  await ensurePlayer(user);
+
+  // какие игры считаем будущими: scheduled и starts_at >= сейчас
+  if (status === "maybe") {
+    await q(
+      `DELETE FROM rsvps
+       WHERE tg_id=$1 AND game_id IN (
+         SELECT id FROM games WHERE status='scheduled' AND starts_at >= NOW()
+       )`,
+      [user.id]
+    );
+    return res.json({ ok: true });
+  }
+
+  await q(
+    `INSERT INTO rsvps(game_id, tg_id, status)
+     SELECT g.id, $1, $2
+     FROM games g
+     WHERE g.status='scheduled' AND g.starts_at >= NOW()
+     ON CONFLICT(game_id, tg_id)
+     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+    [user.id, status]
+  );
+
+  res.json({ ok: true });
 });
 
 const port = process.env.PORT || 10000;
