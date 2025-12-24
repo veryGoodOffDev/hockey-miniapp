@@ -42,7 +42,12 @@ export default function App() {
 
   // прошедшие игры
   const [showPast, setShowPast] = useState(false);
-
+  const [playersDir, setPlayersDir] = useState([]);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  const [playerQ, setPlayerQ] = useState("");
+  const [playerView, setPlayerView] = useState("list"); // list|detail
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
   function normalizeTeams(t) {
     if (!t) return null;
     if (t.ok && (t.teamA || t.teamB)) return t;
@@ -56,6 +61,16 @@ export default function App() {
     }
     return t;
   }
+
+const filteredPlayersDir = useMemo(() => {
+  const s = playerQ.trim().toLowerCase();
+  if (!s) return playersDir;
+  return playersDir.filter(p =>
+    showName(p).toLowerCase().includes(s) ||
+    String(p.jersey_number ?? "").includes(s) ||
+    String(p.tg_id).includes(s)
+  );
+}, [playersDir, playerQ]);
 
   function isPastGame(g) {
     if (!g?.starts_at) return false;
@@ -183,6 +198,20 @@ export default function App() {
     if (tab === "stats") loadAttendance(statsDays);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+  
+  useEffect(() => {
+  if (tab !== "players") return;
+
+  (async () => {
+    try {
+      setPlayersLoading(true);
+      const r = await apiGet("/api/players");
+      setPlayersDir(r.players || []);
+    } finally {
+      setPlayersLoading(false);
+    }
+  })();
+}, [tab]);
 
   async function rsvp(status) {
     if (!selectedGameId) return;
