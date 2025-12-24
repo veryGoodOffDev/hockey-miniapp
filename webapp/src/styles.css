@@ -601,3 +601,72 @@ textarea:focus{
 .gameCard.tone-none {
   /* как было */
 }
+/* чтобы контент не прятался под нижним меню */
+.appShell {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+.bottomNav {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 8px;
+
+  padding: 10px;
+  border-radius: 18px;
+
+  background: rgba(20, 20, 25, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.10);
+
+  /* safe area */
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 999;
+}
+
+.bottomNavItem {
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,0.85);
+  border-radius: 14px;
+  padding: 10px 8px;
+
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.bottomNavItem.isActive {
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+.bottomNavIcon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.bottomNavLabel {
+  font-size: 11px;
+  line-height: 1.1;
+  opacity: 0.95;
+}
+
+/* на совсем узких экранах можно скрыть подписи */
+@media (max-width: 360px) {
+  .bottomNavLabel { display: none; }
+  .bottomNavItem { padding: 12px 8px; }
+  .bottomNavIcon { font-size: 20px; }
+}
