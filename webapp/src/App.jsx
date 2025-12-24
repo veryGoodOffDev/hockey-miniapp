@@ -18,7 +18,8 @@ export default function App() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsDays, setStatsDays] = useState(365);
   const [attendance, setAttendance] = useState([]);
-
+  const [showPast, setShowPast] = useState(false);
+  
 async function loadAttendance(days = statsDays) {
   try {
     setStatsLoading(true);
@@ -319,6 +320,30 @@ function onPick(teamKey, tg_id) {
   // picked из другой команды → swap
   swapPicked(teamKey, tg_id);
 }
+const GAME_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone; // можно заменить на "Europe/Moscow"
+
+function isPastGame(g) {
+  if (!g?.starts_at) return false;
+  const t = new Date(g.starts_at).getTime();
+  // считаем "прошла", если начало было больше чем 3 часа назад (буфер на затянувшуюся игру)
+  return t < (Date.now() - 3 * 60 * 60 * 1000);
+}
+
+function uiStatus(g) {
+  if (!g) return "";
+  if (g.status === "cancelled") return "Отменена";
+  if (isPastGame(g)) return "Прошла";
+  return "Запланирована";
+}
+const upcomingGames = (games || [])
+  .filter(g => !isPastGame(g))
+  .sort((a,b) => new Date(a.starts_at) - new Date(b.starts_at));
+
+const pastGames = (games || [])
+  .filter(g => isPastGame(g))
+  .sort((a,b) => new Date(b.starts_at) - new Date(a.starts_at)); // последние сверху
+
+const listToShow = showPast ? pastGames : upcomingGames;
 
 function renderPosGroup(teamKey, title, players) {
   if (!players?.length) return null;
@@ -404,65 +429,76 @@ function renderTeam(teamKey, title, list) {
             {gameView === "list" && (
               <>
                 <h2>Игры</h2>
-        
-                {(games || []).length === 0 ? (
-                  <div className="small">Пока игр нет.</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                    {games.map((g) => {
-                      const d = new Date(g.starts_at);
-                      const when = d.toLocaleString("ru-RU");
-                      return (
-                        <div
-                          key={g.id}
-                          className="card"
-                          style={{ cursor: "pointer" }}
-                          onClick={() => {
-                              const id = g.id;
-                            
-                              // сразу показываем экран деталки и лоадер
-                              setSelectedGameId(id);
-                              setGameView("detail");
-                            
-                              // сбрасываем старые данные, чтобы не мигали
-                              setGame(null);
-                              setRsvps([]);
-                              setTeams(null);
-                            
-                              setDetailLoading(true);
-                              refreshAll(id)
-                                .finally(() => setDetailLoading(false));
-                            }}
-                        >
-                          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                            <div style={{ fontWeight: 900 }}>
-                              {when}
-                            </div>
-                            <span className="badge">
-                              {({scheduled:"Запланирована", cancelled:"Отменена"}[g.status] || g.status)}
-                            </span>
-                          </div>
-        
-                          <div className="small" style={{ marginTop: 6 }}>
-                            📍 {g.location || "—"}
-                          </div>
-        
-                          <div className="row" style={{ marginTop: 10 }}>
-                            <span className="badge">✅ {g.yes_count ?? 0}</span>
-                            <span className="badge">❓ {g.maybe_count ?? 0}</span>
-                            <span className="badge">❌ {g.no_count ?? 0}</span>
-                          </div>
-        
-                          <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-                            Нажми, чтобы открыть игру
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
+
+<div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+  <button
+    className="btn secondary"
+    onClick={() => setShowPast(v => !v)}
+  >
+    {showPast ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastGames.length})`}
+  </button>
+
+  <span className="small" style={{ opacity: 0.8 }}>
+    {showPast ? `Показаны прошедшие: ${pastGames.length}` : `Показаны предстоящие: ${upcomingGames.length}`}
+  </span>
+</div>
+
+{listToShow.length === 0 ? (
+  <div className="small" style={{ marginTop: 10 }}>
+    {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
+  </div>
+) : (
+  <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+    {listToShow.map((g) => {
+      const d = new Date(g.starts_at);
+      const when = d.toLocaleString("ru-RU"); // если нужно — можно задать timeZone через Intl.DateTimeFormat
+
+      return (
+        <div
+          key={g.id}
+          className="card"
+          style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
+          onClick={() => {
+            const id = g.id;
+
+            setSelectedGameId(id);
+            setGameView("detail");
+
+            setGame(null);
+            setRsvps([]);
+            setTeams(null);
+
+            setDetailLoading(true);
+            refreshAll(id).finally(() => setDetailLoading(false));
+          }}
+        >
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontWeight: 900 }}>{when}</div>
+
+            <span className="badge">
+              {uiStatus(g)}
+            </span>
+          </div>
+
+          <div className="small" style={{ marginTop: 6 }}>
+            📍 {g.location || "—"}
+          </div>
+
+          <div className="row" style={{ marginTop: 10 }}>
+            <span className="badge">✅ {g.yes_count ?? 0}</span>
+            <span className="badge">❓ {g.maybe_count ?? 0}</span>
+            <span className="badge">❌ {g.no_count ?? 0}</span>
+          </div>
+
+          <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+            Нажми, чтобы открыть игру
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
+
         
             {gameView === "detail" && (
                           <>
