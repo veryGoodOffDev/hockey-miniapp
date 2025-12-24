@@ -670,3 +670,25 @@ textarea:focus{
   .bottomNavItem { padding: 12px 8px; }
   .bottomNavIcon { font-size: 20px; }
 }
+.gameCard.isNext {
+  transform: scale(1.01);
+  border: 1px solid rgba(0, 255, 120, 0.35);
+  box-shadow: 0 12px 30px rgba(0, 255, 120, 0.08);
+}
+
+.gameCard.status-yes {
+  background: linear-gradient(135deg, rgba(0,255,120,0.16), rgba(255,255,255,0.02));
+}
+
+.gameCard.status-no {
+  background: linear-gradient(135deg, rgba(255,70,70,0.16), rgba(255,255,255,0.02));
+}
+
+.gameCard.status-maybe {
+  background: linear-gradient(135deg, rgba(255,200,0,0.14), rgba(255,255,255,0.02));
+}
+
+.btn.tiny, .btn.secondary.tiny {
+  padding: 8px 10px;
+  font-size: 12px;
+}
