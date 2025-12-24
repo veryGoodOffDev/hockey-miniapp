@@ -247,21 +247,28 @@ app.post("/api/me", async (req, res) => {
 
 /** ====== GAMES LIST ====== */
 app.get("/api/games", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
   const days = Number(req.query.days || 35);
+
   const r = await q(
     `
     SELECT g.*,
       COALESCE(SUM(CASE WHEN r.status='yes' THEN 1 ELSE 0 END),0) AS yes_count,
       COALESCE(SUM(CASE WHEN r.status='maybe' THEN 1 ELSE 0 END),0) AS maybe_count,
-      COALESCE(SUM(CASE WHEN r.status='no' THEN 1 ELSE 0 END),0) AS no_count
+      COALESCE(SUM(CASE WHEN r.status='no' THEN 1 ELSE 0 END),0) AS no_count,
+      my.status AS my_status
     FROM games g
     LEFT JOIN rsvps r ON r.game_id = g.id
+    LEFT JOIN rsvps my ON my.game_id = g.id AND my.tg_id = $2
     WHERE g.starts_at >= NOW() - ($1::int || ' days')::interval
-    GROUP BY g.id
+    GROUP BY g.id, my.status
     ORDER BY g.starts_at ASC
     `,
-    [days]
+    [days, user.id]
   );
+
   res.json({ ok: true, games: r.rows });
 });
 
