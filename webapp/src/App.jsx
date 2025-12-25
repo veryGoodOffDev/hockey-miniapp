@@ -539,25 +539,6 @@ if (!me && authReason) {
   return (
     <div className="container appShell">
       <h1>🏒 Хоккей: отметки и составы</h1>
-
-      {/* <div className="row">
-        <button className={tab === "game" ? "btn" : "btn secondary"} onClick={() => setTab("game")}>
-          Игры
-        </button>
-        <button className={tab === "profile" ? "btn" : "btn secondary"} onClick={() => setTab("profile")}>
-          Профиль
-        </button>
-
-        <button className={tab === "stats" ? "btn" : "btn secondary"} onClick={() => setTab("stats")}>
-          Статистика
-        </button>
-        {isAdmin && (
-          <button className={tab === "admin" ? "btn" : "btn secondary"} onClick={() => setTab("admin")}>
-            Админ
-          </button>
-        )}
-      </div> */}
-
       {/* ====== GAMES ====== */}
       {tab === "game" && (
         <div className="card">
@@ -616,12 +597,12 @@ if (!me && authReason) {
                   </button>
                 </div>
                   {listToShow.map((g, idx) => {
-  const when = formatWhen(g.starts_at);
-  const status = g.my_status || "maybe"; // yes | no | maybe
-  const tone = cardToneByMyStatus(status);
-
-  // ближайшая игра — первая в списке предстоящих
-  const isNext = !showPast && idx === 0;
+                    const when = formatWhen(g.starts_at);
+                    const status = g.my_status || "maybe"; // yes | no | maybe
+                    const tone = cardToneByMyStatus(status);
+                  
+                    // ближайшая игра — первая в списке предстоящих
+                    const isNext = !showPast && idx === 0;
 
   return (
     <div
@@ -657,7 +638,6 @@ if (!me && authReason) {
 
       <div className="row" style={{ marginTop: 10 }}>
         <span className="badge">✅ {g.yes_count ?? 0}</span>
-        <span className="badge">❓ {g.maybe_count ?? 0}</span>
         <span className="badge">❌ {g.no_count ?? 0}</span>
       </div>
 
