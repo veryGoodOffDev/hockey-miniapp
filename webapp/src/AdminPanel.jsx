@@ -113,6 +113,26 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
   // video toggle in game sheet
   const [videoOpen, setVideoOpen] = useState(false);
+  const [attendanceRows, setAttendanceRows] = useState([]);
+  const [attLoading, setAttLoading] = useState(false);
+
+async function loadAttendance() {
+  if (!gameDraft?.id) return;
+  setAttLoading(true);
+  try {
+    const r = await apiGet(`/api/game?game_id=${gameDraft.id}`);
+    setAttendanceRows(r.rsvps || []);
+  } finally {
+    setAttLoading(false);
+  }
+}
+
+async function setAttend(tg_id, status) {
+  await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id, status });
+  // обновим локально без перезагрузки
+  setAttendanceRows(prev => prev.map(x => String(x.tg_id) === String(tg_id) ? { ...x, status } : x));
+  // если у тебя статистика/счётчики — можешь refreshAll дернуть
+}
 
   async function load() {
     const g = await apiGet("/api/games?days=180");
@@ -764,6 +784,53 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
                 </button>
               </div>
             </div>
+            <div className="card">
+            <div className="rowBetween">
+              <h2 style={{ margin: 0 }}>Посещаемость</h2>
+              <button className="btn secondary" onClick={loadAttendance}>Обновить</button>
+            </div>
+          
+            {attLoading ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю игроков…</div>
+            ) : (
+              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                {attendanceRows.map((p) => {
+                  const st = p.status || "maybe";
+                  return (
+                    <div key={p.tg_id} className="listItem">
+                      <div className="rowBetween">
+                        <div style={{ fontWeight: 900 }}>
+                          {showName(p)}{showNum(p)}
+                        </div>
+                        <span className="badgeMini">{st}</span>
+                      </div>
+          
+                      <div className="segRow" role="radiogroup" aria-label="Посещаемость">
+                        <button
+                          className={st === "yes" ? "segBtn on" : "segBtn"}
+                          onClick={() => setAttend(p.tg_id, "yes")}
+                        >
+                          ✅ Был
+                        </button>
+                        <button
+                          className={st === "no" ? "segBtn on" : "segBtn"}
+                          onClick={() => setAttend(p.tg_id, "no")}
+                        >
+                          ❌ Не был
+                        </button>
+                        <button
+                          className={st === "maybe" ? "segBtn on" : "segBtn"}
+                          onClick={() => setAttend(p.tg_id, "maybe")}
+                        >
+                          ⭕ Не отмечено
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
             {guestsState.loading ? (
               <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю гостей…</div>
