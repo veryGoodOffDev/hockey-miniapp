@@ -685,7 +685,13 @@ textarea:focus{
 }
 
 .gameCard.status-maybe {
-  background: linear-gradient(135deg, rgba(255,200,0,0.14), rgba(255,255,255,0.02));
+  background: linear-gradient(
+    135deg,
+    rgba(120,120,120,0.12),
+    rgba(255,255,255,0.02)
+  );
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.16);
 }
 
 .btn.tiny, .btn.secondary.tiny {
