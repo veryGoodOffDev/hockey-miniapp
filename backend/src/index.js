@@ -218,6 +218,70 @@ async function getSetting(key, def = null) {
   return r.rows[0]?.value ?? def;
 }
 
+function replyMarkupToJson(markup) {
+  if (!markup) return null;
+  try {
+    if (typeof markup.toJSON === "function") return markup.toJSON();
+    return markup;
+  } catch {
+    return null;
+  }
+}
+
+async function logBotMessage({
+  chat_id,
+  message_id,
+  kind = "custom",
+  text,
+  parse_mode = null,
+  disable_web_page_preview = true,
+  reply_markup = null,
+  meta = null,
+  sent_by_tg_id = null,
+}) {
+  await q(
+    `INSERT INTO bot_messages(
+       chat_id, message_id, kind, text,
+       parse_mode, disable_web_page_preview,
+       reply_markup, meta, sent_by_tg_id
+     )
+     VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)`,
+    [
+      Number(chat_id),
+      Number(message_id),
+      String(kind),
+      String(text || ""),
+      parse_mode ? String(parse_mode) : null,
+      Boolean(disable_web_page_preview),
+      reply_markup ? JSON.stringify(reply_markup) : null,
+      meta ? JSON.stringify(meta) : null,
+      sent_by_tg_id ? Number(sent_by_tg_id) : null,
+    ]
+  );
+}
+
+function tgErrText(e) {
+  return String(e?.description || e?.message || e || "");
+}
+
+function tgMessageMissing(e) {
+  const s = tgErrText(e).toLowerCase();
+  return (
+    s.includes("message to delete not found") ||
+    s.includes("message to edit not found") ||
+    s.includes("message_id_invalid") ||
+    s.includes("message not found")
+  );
+}
+
+function tgMessageExistsButNotEditable(e) {
+  const s = tgErrText(e).toLowerCase();
+  return (
+    s.includes("message is not modified") ||
+    s.includes("message can't be edited")
+  );
+}
+
 async function getNextScheduledGame() {
   const gr = await q(
     `SELECT * FROM games
@@ -257,10 +321,21 @@ async function sendRsvpReminder(chatId) {
   const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(game.id))}`;
   const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
 
-  await bot.api.sendMessage(chatId, text, {
-    reply_markup: kb,
-    disable_web_page_preview: true,
-  });
+const sent = await bot.api.sendMessage(chatId, text, {
+  reply_markup: kb,
+  disable_web_page_preview: true,
+});
+
+await logBotMessage({
+  chat_id: chatId,
+  message_id: sent.message_id,
+  kind: "reminder",
+  text,
+  parse_mode: null,
+  disable_web_page_preview: true,
+  reply_markup: replyMarkupToJson(kb),
+  meta: { game_id: game.id, type: "auto_reminder" },
+});
 
   return { ok: true, game_id: game.id };
 }
@@ -1053,6 +1128,187 @@ if (!(await requireGroupMember(req, res, user))) return;
     res.status(500).json({ ok: false, reason: "send_failed" });
   }
 });
+
+app.get("/api/admin/bot-messages", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  if (!isSuperAdmin(user.id)) {
+    return res.status(403).json({ ok: false, reason: "not_super_admin" });
+  }
+
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  const chat_id = Number(chatIdRaw);
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
+  const includeDeleted = String(req.query.include_deleted || "0") === "1";
+  const kind = String(req.query.kind || "").trim(); // "" | "custom" | "reminder"
+
+  const params = [chat_id];
+  const where = [`chat_id=$1`];
+
+  if (kind) { params.push(kind); where.push(`kind=$${params.length}`); }
+  if (!includeDeleted) where.push(`deleted_at IS NULL`);
+
+  params.push(limit);
+
+  const r = await q(
+    `SELECT id, chat_id, message_id, kind, text, created_at, checked_at, deleted_at, delete_reason, sent_by_tg_id
+     FROM bot_messages
+     WHERE ${where.join(" AND ")}
+     ORDER BY created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+
+  res.json({ ok: true, messages: r.rows });
+});
+app.post("/api/admin/bot-messages/send", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  if (!isSuperAdmin(user.id)) {
+    return res.status(403).json({ ok: false, reason: "not_super_admin" });
+  }
+
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  const chat_id = Number(chatIdRaw);
+  const text = String(req.body?.text || "").trim();
+
+  if (!text) return res.status(400).json({ ok: false, reason: "empty_text" });
+  if (text.length > 3500) return res.status(400).json({ ok: false, reason: "too_long" });
+
+  try {
+    const sent = await bot.api.sendMessage(chat_id, text, {
+      disable_web_page_preview: true,
+    });
+
+    await logBotMessage({
+      chat_id,
+      message_id: sent.message_id,
+      kind: "custom",
+      text,
+      disable_web_page_preview: true,
+      meta: { type: "custom_from_admin" },
+      sent_by_tg_id: user.id,
+    });
+
+    res.json({ ok: true, message_id: sent.message_id });
+  } catch (e) {
+    console.error("custom send failed:", e);
+    res.status(500).json({ ok: false, reason: "send_failed", error: tgErrText(e) });
+  }
+});
+
+app.post("/api/admin/bot-messages/:id/delete", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  if (!isSuperAdmin(user.id)) {
+    return res.status(403).json({ ok: false, reason: "not_super_admin" });
+  }
+
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+  const row = await q(
+    `SELECT id, chat_id, message_id, deleted_at
+     FROM bot_messages
+     WHERE id=$1`,
+    [id]
+  );
+  const m = row.rows[0];
+  if (!m) return res.status(404).json({ ok: false, reason: "not_found" });
+
+  if (m.deleted_at) return res.json({ ok: true, already_deleted: true });
+
+  try {
+    await bot.api.deleteMessage(Number(m.chat_id), Number(m.message_id));
+    await q(`UPDATE bot_messages SET deleted_at=NOW(), delete_reason=$2 WHERE id=$1`, [id, "deleted_by_webapp"]);
+    res.json({ ok: true });
+  } catch (e) {
+    // если уже удалили руками — пометим как удалённое и уберём из списка
+    if (tgMessageMissing(e)) {
+      await q(`UPDATE bot_messages SET deleted_at=NOW(), delete_reason=$2 WHERE id=$1`, [id, "missing_in_chat"]);
+      return res.json({ ok: true, already_missing: true });
+    }
+
+    console.error("delete message failed:", e);
+    res.status(500).json({ ok: false, reason: "delete_failed", error: tgErrText(e) });
+  }
+});
+app.post("/api/admin/bot-messages/sync", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  if (!isSuperAdmin(user.id)) {
+    return res.status(403).json({ ok: false, reason: "not_super_admin" });
+  }
+
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  const chat_id = Number(chatIdRaw);
+  const limit = Math.max(1, Math.min(80, Number(req.body?.limit || 30)));
+
+  const r = await q(
+    `SELECT id, chat_id, message_id, text, parse_mode, disable_web_page_preview, reply_markup
+     FROM bot_messages
+     WHERE chat_id=$1 AND deleted_at IS NULL
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [chat_id, limit]
+  );
+
+  let checked = 0, missing = 0;
+
+  for (const row of r.rows) {
+    checked++;
+
+    try {
+      const opts = {
+        disable_web_page_preview: !!row.disable_web_page_preview,
+      };
+      if (row.parse_mode) opts.parse_mode = row.parse_mode;
+      if (row.reply_markup) opts.reply_markup = row.reply_markup;
+
+      // “пинг” существования
+      await bot.api.editMessageText(Number(row.chat_id), Number(row.message_id), row.text, opts);
+
+      await q(`UPDATE bot_messages SET checked_at=NOW() WHERE id=$1`, [row.id]);
+    } catch (e) {
+      if (tgMessageExistsButNotEditable(e)) {
+        await q(`UPDATE bot_messages SET checked_at=NOW() WHERE id=$1`, [row.id]);
+        continue;
+      }
+
+      if (tgMessageMissing(e)) {
+        missing++;
+        await q(
+          `UPDATE bot_messages
+           SET checked_at=NOW(), deleted_at=NOW(), delete_reason=$2
+           WHERE id=$1`,
+          [row.id, "missing_in_chat"]
+        );
+        continue;
+      }
+
+      // другие ошибки (например, нет прав) — просто отметим checked_at
+      console.error("sync probe failed:", e);
+      await q(`UPDATE bot_messages SET checked_at=NOW() WHERE id=$1`, [row.id]);
+    }
+  }
+
+  res.json({ ok: true, checked, missing });
+});
+
 
 app.get("/api/stats/attendance", async (req, res) => {
   try {
