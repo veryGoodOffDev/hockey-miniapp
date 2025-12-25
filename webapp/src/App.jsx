@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import AdminPanel from "./AdminPanel.jsx";
+import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
+
 
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 
