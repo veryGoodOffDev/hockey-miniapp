@@ -55,6 +55,8 @@ export default function App() {
   // profile sub-tabs
   const [profileView, setProfileView] = useState("me"); // me | support | about
 
+  const [teamsBack, setTeamsBack] = useState({ tab: "game", gameView: "list" });
+
   function normalizeTeams(t) {
     if (!t) return null;
     if (t.ok && (t.teamA || t.teamB)) return t;
@@ -695,7 +697,10 @@ export default function App() {
 
                 <button
                   className={tab === "teams" ? "btn" : "btn secondary"}
-                  onClick={() => setTab("teams")}
+                    onClick={() => {
+                      setTeamsBack({ tab: "game", gameView }); // gameView сейчас "detail"
+                      setTab("teams");
+                    }}
                 >
                   Составы
                 </button>
@@ -905,19 +910,33 @@ export default function App() {
 
       {/* ====== TEAMS ====== */}
       {tab === "teams" && (
-        <div className="card">
-          <h2>Составы</h2>
+          <div className="card">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h2 style={{ margin: 0 }}>Составы</h2>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>
-              Обновить
-            </button>
-            {isAdmin && (
-              <button className="btn" onClick={generateTeams} disabled={!selectedGameId || game?.status === "cancelled"}>
-                Сформировать сейчас (админ)
-              </button>
-            )}
-          </div>
+                <button
+                  className="btn secondary"
+                  onClick={() => {
+                    setTab(teamsBack.tab || "game");
+                    if ((teamsBack.tab || "game") === "game") {
+                      setGameView(teamsBack.gameView || "detail");
+                    }
+                  }}
+                >
+                  ← Назад
+                </button>
+              </div>
+          
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>
+                  Обновить
+                </button>
+                {isAdmin && (
+                  <button className="btn" onClick={generateTeams} disabled={!selectedGameId || game?.status === "cancelled"}>
+                    Сформировать сейчас (админ)
+                  </button>
+                )}
+              </div>
 
           {teams?.ok ? (
             <>
