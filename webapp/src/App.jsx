@@ -4,7 +4,6 @@ import HockeyLoader from "./HockeyLoader.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
 
-
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 
 export default function App() {
@@ -13,13 +12,12 @@ export default function App() {
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
 
-  // ✅ ВСЕ ХУКИ — ДО ЛЮБЫХ return (иначе ломается React)
-  const [tab, setTab] = useState("game"); // game | profile | teams | stats | admin
+  const [tab, setTab] = useState("game"); // game | players | teams | stats | profile | admin
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [me, setMe] = useState(null);
-  const [accessReason, setAccessReason] = useState(null); // "not_member" | "access_chat_not_set" | null
+  const [accessReason, setAccessReason] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [games, setGames] = useState([]);
@@ -32,7 +30,7 @@ export default function App() {
   const [rsvps, setRsvps] = useState([]);
   const [teams, setTeams] = useState(null);
 
-  // составы — ручная правка
+  // ручная правка составов
   const [editTeams, setEditTeams] = useState(false);
   const [picked, setPicked] = useState(null); // { team:'A'|'B', tg_id }
   const [teamsBusy, setTeamsBusy] = useState(false);
@@ -42,21 +40,21 @@ export default function App() {
   const [statsDays, setStatsDays] = useState(365);
   const [attendance, setAttendance] = useState([]);
 
-  // прошедшие игры
+  // игры: прошедшие
   const [showPast, setShowPast] = useState(false);
+  const [gamesError, setGamesError] = useState(null);
+
+  // справочник игроков (вкладка players)
   const [playersDir, setPlayersDir] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(false);
   const [playerQ, setPlayerQ] = useState("");
   const [playerView, setPlayerView] = useState("list"); // list|detail
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
-  const [authReason, setAuthReason] = useState(null);   // invalid_init_data | no_user | ...
-  const [gamesError, setGamesError] = useState(null);   // объект ошибки /api/games
-  const [profileView, setProfileView] = useState("me"); 
-        // me | support | about
 
+  // profile sub-tabs
+  const [profileView, setProfileView] = useState("me"); // me | support | about
 
-  
   function normalizeTeams(t) {
     if (!t) return null;
     if (t.ok && (t.teamA || t.teamB)) return t;
@@ -71,21 +69,11 @@ export default function App() {
     return t;
   }
 
-const filteredPlayersDir = useMemo(() => {
-  const s = playerQ.trim().toLowerCase();
-  if (!s) return playersDir;
-  return playersDir.filter(p =>
-    showName(p).toLowerCase().includes(s) ||
-    String(p.jersey_number ?? "").includes(s) ||
-    String(p.tg_id).includes(s)
-  );
-}, [playersDir, playerQ]);
-
   function isPastGame(g) {
     if (!g?.starts_at) return false;
     const t = new Date(g.starts_at).getTime();
-    // "прошла", если начало было больше чем 3 часа назад
-    return t < (Date.now() - 3 * 60 * 60 * 1000);
+    // прошла, если начало было больше чем 3 часа назад
+    return t < Date.now() - 3 * 60 * 60 * 1000;
   }
 
   function uiStatus(g) {
@@ -106,81 +94,92 @@ const filteredPlayersDir = useMemo(() => {
     }
   }
 
-async function refreshAll(forceGameId) {
-  const m = await apiGet("/api/me");
+  async function refreshAll(forceGameId) {
+    try {
+      setGamesError(null);
 
-  if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
-    setMe(null);
-    setIsAdmin(false);
-    setGames([]);
-    setSelectedGameId(null);
-    setGame(null);
-    setRsvps([]);
-    setTeams(null);
-    setAccessReason(m.reason);
-    return;
+      const m = await apiGet("/api/me");
+
+      // доступ закрыт (не в чате / чат не назначен)
+      if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
+        setMe(null);
+        setIsAdmin(false);
+        setGames([]);
+        setSelectedGameId(null);
+        setGame(null);
+        setRsvps([]);
+        setTeams(null);
+        setAccessReason(m.reason);
+        return;
+      }
+
+      // invalid init data / no user
+      if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
+        setMe(null);
+        setIsAdmin(false);
+        setGames([]);
+        setSelectedGameId(null);
+        setGame(null);
+        setRsvps([]);
+        setTeams(null);
+        setAccessReason(null);
+        return;
+      }
+
+      // профиль
+      if (m?.player) {
+        setMe(m.player);
+      } else if (tgUser?.id) {
+        setMe({
+          tg_id: tgUser.id,
+          first_name: tgUser.first_name || "",
+          username: tgUser.username || "",
+          position: "F",
+          skill: 5,
+          skating: 5,
+          iq: 5,
+          stamina: 5,
+          passing: 5,
+          shooting: 5,
+          notes: "",
+        });
+      }
+
+      setIsAdmin(!!m?.is_admin);
+      setAccessReason(null);
+
+      // игры
+      const gl = await apiGet("/api/games?days=365");
+      if (gl?.ok === false) {
+        setGamesError(gl);
+        setGames([]);
+        setGame(null);
+        setRsvps([]);
+        setTeams(null);
+        return;
+      }
+
+      const list = gl.games || [];
+      setGames(list);
+
+      const safeNext =
+        list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
+        list.find((g) => !isPastGame(g))?.id ??
+        list[0]?.id ??
+        null;
+
+      const nextId = forceGameId ?? selectedGameId ?? safeNext;
+      if (nextId) setSelectedGameId(nextId);
+
+      const gg = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
+      setGame(gg.game);
+      setRsvps(gg.rsvps || []);
+      setTeams(normalizeTeams(gg.teams));
+    } catch (e) {
+      console.error("refreshAll failed", e);
+      setGamesError({ ok: false, error: "network_or_unknown" });
+    }
   }
-
-  if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
-    setMe(null);
-    setIsAdmin(false);
-    setGames([]);
-    setSelectedGameId(null);
-    setGame(null);
-    setRsvps([]);
-    setTeams(null);
-    setAccessReason(null);
-    return;
-  }
-
-  if (m?.player) {
-    setMe(m.player);
-  } else if (tgUser?.id) {
-    setMe({
-      tg_id: tgUser.id,
-      first_name: tgUser.first_name || "",
-      username: tgUser.username || "",
-      position: "F",
-      skill: 5,
-      skating: 5,
-      iq: 5,
-      stamina: 5,
-      passing: 5,
-      shooting: 5,
-      notes: "",
-    });
-  }
-
-  setIsAdmin(!!m?.is_admin);
-  setAccessReason(null);
-
-  const gl = await apiGet("/api/games?days=365");
-  if (gl?.ok === false && gl?.reason) {
-    // если ты добавил защиту на /api/games тоже
-    setMe(null);
-    setIsAdmin(false);
-    setGames([]);
-    setAccessReason(gl.reason);
-    return;
-  }
-
-  const list = gl.games || [];
-  setGames(list);
-
-  const safeNext =
-    list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
-    list.find((g) => !isPastGame(g))?.id ??
-    list[0]?.id ??
-    null;
-
-  const nextId = forceGameId ?? selectedGameId ?? safeNext;
-  if (nextId) setSelectedGameId(nextId);
-
-  const gg = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
-  setGame(gg.game);
-  setRsvps(gg.rsvps || []);
-  setTeams(normalizeTeams(gg.teams));
-}
 
   // init
   useEffect(() => {
@@ -215,20 +214,20 @@ async function refreshAll(forceGameId) {
     if (tab === "stats") loadAttendance(statsDays);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
-  
-  useEffect(() => {
-  if (tab !== "players") return;
 
-  (async () => {
-    try {
-      setPlayersLoading(true);
-      const r = await apiGet("/api/players");
-      setPlayersDir(r.players || []);
-    } finally {
-      setPlayersLoading(false);
-    }
-  })();
-}, [tab]);
+  useEffect(() => {
+    if (tab !== "players") return;
+
+    (async () => {
+      try {
+        setPlayersLoading(true);
+        const r = await apiGet("/api/players");
+        setPlayersDir(r.players || []);
+      } finally {
+        setPlayersLoading(false);
+      }
+    })();
+  }, [tab]);
 
   async function rsvp(status) {
     if (!selectedGameId) return;
@@ -264,7 +263,6 @@ async function refreshAll(forceGameId) {
     setTab("teams");
   }
 
-  // ручное редактирование составов (эндпоинт должен существовать на backend)
   async function movePicked() {
     if (!picked || !selectedGameId) return;
     try {
@@ -362,7 +360,6 @@ async function refreshAll(forceGameId) {
   );
 
   const listToShow = showPast ? pastGames : upcomingGames;
-  const nextUpcomingId = upcomingGames[0]?.id ?? null;
 
   function cardToneByMyStatus(s) {
     if (s === "yes") return "tone-yes";
@@ -370,6 +367,7 @@ async function refreshAll(forceGameId) {
     if (s === "no") return "tone-no";
     return "tone-none";
   }
+
   const POS_LABEL = {
     G: "🥅 Вратари",
     D: "🛡️ Защитники",
@@ -395,7 +393,8 @@ async function refreshAll(forceGameId) {
         <div className="teamGroupTitle">{title}</div>
         <div className="pills">
           {players.map((p) => {
-            const selected = picked && picked.team === teamKey && String(picked.tg_id) === String(p.tg_id);
+            const selected =
+              picked && picked.team === teamKey && String(picked.tg_id) === String(p.tg_id);
 
             return (
               <div
@@ -430,19 +429,31 @@ async function refreshAll(forceGameId) {
     );
   }
 
-  // === РЕНДЕРЫ ===
+  const filteredPlayersDir = useMemo(() => {
+    const s = playerQ.trim().toLowerCase();
+    if (!s) return playersDir;
+    return playersDir.filter((p) => {
+      const n = showName(p).toLowerCase();
+      return (
+        n.includes(s) ||
+        String(p.jersey_number ?? "").includes(s) ||
+        String(p.tg_id).includes(s)
+      );
+    });
+  }, [playersDir, playerQ]);
+
+  // === RENDER ===
 
   if (loading) return <HockeyLoader text="Загружаем..." />;
 
-  // если открыли не через Telegram Mini App
   if (!inTelegramWebApp) {
     return (
       <div className="container">
         <h1>🏒 Хоккей: отметки и составы</h1>
         <div className="card">
           <div className="small">
-            Ты открыл приложение как обычный сайт, поэтому Telegram не передал данные пользователя. Открой мини-приложение
-            через Telegram.
+            Ты открыл приложение как обычный сайт, поэтому Telegram не передал данные пользователя.
+            Открой мини-приложение через Telegram.
           </div>
           <div className="row" style={{ marginTop: 12 }}>
             <a className="btn" href={BOT_DEEPLINK}>
@@ -457,120 +468,106 @@ async function refreshAll(forceGameId) {
     );
   }
 
-// если /api/me не пустил по доступу
-if (!me && accessReason) {
-  const isNotMember = accessReason === "not_member";
-  const isChatNotSet = accessReason === "access_chat_not_set";
+  if (!me && accessReason) {
+    const isNotMember = accessReason === "not_member";
+    const isChatNotSet = accessReason === "access_chat_not_set";
 
-  return (
-    <div className="container">
-      <h1>🏒 Хоккей: отметки и составы</h1>
+    return (
+      <div className="container">
+        <h1>🏒 Хоккей: отметки и составы</h1>
 
-      <div className="card accessCard">
-        <div className="accessIcon">{isNotMember ? "🔒" : "⚙️"}</div>
+        <div className="card accessCard">
+          <div className="accessIcon">{isNotMember ? "🔒" : "⚙️"}</div>
 
-        <h2 style={{ marginTop: 6, marginBottom: 8 }}>
-          {isNotMember ? "Доступ ограничен" : "Доступ ещё не настроен"}
-        </h2>
+          <h2 style={{ marginTop: 6, marginBottom: 8 }}>
+            {isNotMember ? "Доступ ограничен" : "Доступ ещё не настроен"}
+          </h2>
 
-        <div className="small" style={{ lineHeight: 1.5, opacity: 0.9 }}>
-          {isNotMember && (
-            <>
-              Это мини-приложение доступно <b>только участникам командного чата</b>.
-              <br />
-              Если ты знаешь администратора — напиши ему, чтобы тебя добавили в чат.
-            </>
-          )}
+          <div className="small" style={{ lineHeight: 1.5, opacity: 0.9 }}>
+            {isNotMember && (
+              <>
+                Это мини-приложение доступно <b>только участникам командного чата</b>.
+                <br />
+                Если ты знаешь администратора — напиши ему, чтобы тебя добавили в чат.
+              </>
+            )}
 
-          {isChatNotSet && (
-            <>
-              Администратор ещё не назначил командный чат для доступа.
-              <br />
-              Попроси админа зайти в чат команды и выполнить команду <b>/setchat</b>.
-            </>
-          )}
-        </div>
+            {isChatNotSet && (
+              <>
+                Администратор ещё не назначил командный чат для доступа.
+                <br />
+                Попроси админа зайти в чат команды и выполнить команду <b>/setchat</b>.
+              </>
+            )}
+          </div>
 
-        <hr style={{ opacity: 0.4 }} />
+          <hr style={{ opacity: 0.4 }} />
 
-        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-          <button
-            className="btn"
-            onClick={() => refreshAll(selectedGameId)}
-            style={{ flex: 1, minWidth: 160 }}
-          >
-            🔄 Проверить доступ
-          </button>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <button
+              className="btn"
+              onClick={() => refreshAll(selectedGameId)}
+              style={{ flex: 1, minWidth: 160 }}
+            >
+              🔄 Проверить доступ
+            </button>
 
-          <a
-            className="btn secondary"
-            href={BOT_DEEPLINK}
-            style={{ flex: 1, minWidth: 160, textAlign: "center" }}
-          >
-            💬 Открыть бота
-          </a>
-        </div>
+            <a
+              className="btn secondary"
+              href={BOT_DEEPLINK}
+              style={{ flex: 1, minWidth: 160, textAlign: "center" }}
+            >
+              💬 Открыть бота
+            </a>
+          </div>
 
-        <div className="small" style={{ marginTop: 10, opacity: 0.75 }}>
-          Подсказка: после добавления в чат просто открой Mini App ещё раз из Telegram.
-        </div>
-      </div>
-    </div>
-  );
-}
-if (!me && authReason) {
-  return (
-    <div className="container">
-      <h1>🏒 Хоккей: отметки и составы</h1>
-
-      <div className="card">
-        <div style={{ fontWeight: 900 }}>Не удалось авторизоваться</div>
-        <div className="small" style={{ opacity: 0.85, marginTop: 6, lineHeight: 1.5 }}>
-          Telegram не передал корректные данные для входа.
-          <br />
-          Причина: <b>{String(authReason)}</b>
-          <br />
-          Попробуй открыть Mini App заново из Telegram или через бота.
-        </div>
-
-        <div className="row" style={{ marginTop: 12, gap: 10, flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => refreshAll(selectedGameId)}>🔄 Повторить</button>
-          <a className="btn secondary" href={BOT_DEEPLINK}>💬 Открыть бота</a>
+          <div className="small" style={{ marginTop: 10, opacity: 0.75 }}>
+            Подсказка: после добавления в чат просто открой Mini App ещё раз из Telegram.
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+
   return (
     <div className="container appShell">
       <h1>🏒 Хоккей: отметки и составы</h1>
+
       {/* ====== GAMES ====== */}
       {tab === "game" && (
         <div className="card">
           {gameView === "list" ? (
             <>
               <h2>Игры</h2>
-              
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+
+              <div
+                className="row"
+                style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}
+              >
                 <button className="btn secondary" onClick={() => setShowPast((v) => !v)}>
                   {showPast ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastGames.length})`}
                 </button>
 
                 <span className="small" style={{ opacity: 0.8 }}>
-                  {showPast ? `Показаны прошедшие: ${pastGames.length}` : `Показаны предстоящие: ${upcomingGames.length}`}
+                  {showPast
+                    ? `Показаны прошедшие: ${pastGames.length}`
+                    : `Показаны предстоящие: ${upcomingGames.length}`}
                 </span>
-              </div> 
+              </div>
+
               {gamesError ? (
-                          <div className="card" style={{ border: "1px solid rgba(255,0,0,.25)" }}>
-                            <div style={{ fontWeight: 900 }}>Не удалось загрузить игры</div>
-                            <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                              Причина: <b>{gamesError.reason || gamesError.error || gamesError.status || "unknown"}</b>
-                            </div>
-                            <div className="row" style={{ marginTop: 10 }}>
-                              <button className="btn" onClick={() => refreshAll(selectedGameId)}>🔄 Обновить</button>
-                            </div>
-                          </div>
-                        ) : null}
+                <div className="card" style={{ border: "1px solid rgba(255,0,0,.25)", marginTop: 10 }}>
+                  <div style={{ fontWeight: 900 }}>Не удалось загрузить игры</div>
+                  <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                    Причина: <b>{gamesError.reason || gamesError.error || gamesError.status || "unknown"}</b>
+                  </div>
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <button className="btn" onClick={() => refreshAll(selectedGameId)}>
+                      🔄 Обновить
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {listToShow.length === 0 ? (
                 <div className="small" style={{ marginTop: 10 }}>
@@ -579,124 +576,115 @@ if (!me && authReason) {
               ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   <div className="row" style={{ marginTop: 10, gap: 8 }}>
-                  <button
-                    className="btn secondary"
-                    onClick={async () => {
-                      if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
-                      await apiPost("/api/rsvp/bulk", { status: "yes" });
-                      await refreshAll(selectedGameId);
-                    }}
-                  >
-                    ✅ Буду на все будущие
-                  </button>
-                
-                  <button
-                    className="btn secondary"
-                    onClick={async () => {
-                      if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
-                      await apiPost("/api/rsvp/bulk", { status: "no" });
-                      await refreshAll(selectedGameId);
-                    }}
-                  >
-                    ❌ Не буду на все будущие
-                  </button>
-                </div>
+                    <button
+                      className="btn secondary"
+                      onClick={async () => {
+                        if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
+                        await apiPost("/api/rsvp/bulk", { status: "yes" });
+                        await refreshAll(selectedGameId);
+                      }}
+                    >
+                      ✅ Буду на все будущие
+                    </button>
+
+                    <button
+                      className="btn secondary"
+                      onClick={async () => {
+                        if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
+                        await apiPost("/api/rsvp/bulk", { status: "no" });
+                        await refreshAll(selectedGameId);
+                      }}
+                    >
+                      ❌ Не буду на все будущие
+                    </button>
+                  </div>
+
                   {listToShow.map((g, idx) => {
-                    const past = isPastGame(g); // у тебя уже есть
-                    const lockRsvp = past && !isAdmin; // закрываем только для не-админа
+                    const past = isPastGame(g);
+                    const lockRsvp = past && !isAdmin;
                     const when = formatWhen(g.starts_at);
-                    const status = g.my_status || "maybe"; // yes | no | maybe
+                    const status = g.my_status || "maybe";
                     const tone = cardToneByMyStatus(status);
-                  
-                    // ближайшая игра — первая в списке предстоящих
                     const isNext = !showPast && idx === 0;
 
-  return (
-    <div
-      key={g.id}
-      className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${isPastGame(g) ? "isPast" : ""}`}
-      style={{ cursor: "pointer", opacity: isPastGame(g) ? 0.85 : 1 }}
-      onClick={() => {
-        const id = g.id;
+                    return (
+                      <div
+                        key={g.id}
+                        className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${
+                          past ? "isPast" : ""
+                        }`}
+                        style={{ cursor: "pointer", opacity: past ? 0.85 : 1 }}
+                        onClick={() => {
+                          const id = g.id;
 
-        setSelectedGameId(id);
-        setGameView("detail");
+                          setSelectedGameId(id);
+                          setGameView("detail");
 
-        setGame(null);
-        setRsvps([]);
-        setTeams(null);
+                          setGame(null);
+                          setRsvps([]);
+                          setTeams(null);
 
-        setDetailLoading(true);
-        refreshAll(id).finally(() => setDetailLoading(false));
-      }}
-    >
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontWeight: 900 }}>{when}</div>
+                          setDetailLoading(true);
+                          refreshAll(id).finally(() => setDetailLoading(false));
+                        }}
+                      >
+                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ fontWeight: 900 }}>{when}</div>
 
-        <div className="row" style={{ gap: 8, alignItems: "center" }}>
-          <span className="badge">{uiStatus(g)}</span>
-          {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
-        </div>
-      </div>
+                          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                            <span className="badge">{uiStatus(g)}</span>
+                            {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+                          </div>
+                        </div>
 
-      <div className="small" style={{ marginTop: 6 }}>
-        📍 {g.location || "—"}
-      </div>
+                        <div className="small" style={{ marginTop: 6 }}>
+                          📍 {g.location || "—"}
+                        </div>
 
-        <button
-          disabled={lockRsvp}
-          className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
-          onClick={async () => {
-            if (lockRsvp) return;
-            await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
-            await refreshAll(g.id);
-          }}
-        >
-          ✅ Буду
-        </button>
-        
-        <button
-          disabled={lockRsvp}
-          className={status === "no" ? "btn tiny" : "btn secondary tiny"}
-          onClick={async () => {
-            if (lockRsvp) return;
-            await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
-            await refreshAll(g.id);
-          }}
-        >
-          ❌ Не буду
-        </button>
+                        <div className="row" style={{ marginTop: 10 }}>
+                          <span className="badge">✅ {g.yes_count ?? 0}</span>
+                          <span className="badge">❌ {g.no_count ?? 0}</span>
+                        </div>
 
-        <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-          {past ? "Игра прошла — отметки закрыты" : "Нажми, чтобы открыть игру"}
-        </div>
+                        <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+                          {past ? "Игра прошла — отметки закрыты" : "Нажми, чтобы открыть игру"}
+                        </div>
 
-      {/* быстрые кнопки RSVP */}
-      <div className="row" style={{ marginTop: 10, gap: 8 }} onClick={(e) => e.stopPropagation()}>
-        <button
-          className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
-          onClick={async () => {
-            await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
-            await refreshAll(g.id);
-          }}
-        >
-          ✅ Буду
-        </button>
+                        {/* быстрые кнопки RSVP — только ОДИН раз */}
+                        <div
+                          className="row"
+                          style={{ marginTop: 10, gap: 8 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            disabled={lockRsvp}
+                            className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (lockRsvp) return;
+                              await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
+                              await refreshAll(g.id);
+                            }}
+                          >
+                            ✅ Буду
+                          </button>
 
-        <button
-          className={status === "no" ? "btn tiny" : "btn secondary tiny"}
-          onClick={async () => {
-            await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
-            await refreshAll(g.id);
-          }}
-        >
-          ❌ Не буду
-        </button>
-      </div>
-    </div>
-  );
-})}
-
+                          <button
+                            disabled={lockRsvp}
+                            className={status === "no" ? "btn tiny" : "btn secondary tiny"}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (lockRsvp) return;
+                              await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
+                              await refreshAll(g.id);
+                            }}
+                          >
+                            ❌ Не буду
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -704,9 +692,14 @@ if (!me && authReason) {
             <>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <h2 style={{ margin: 0 }}>Игра</h2>
-                        <button className={tab === "teams" ? "btn" : "btn secondary"} onClick={() => setTab("teams")}>
-                        Составы
-                      </button>
+
+                <button
+                  className={tab === "teams" ? "btn" : "btn secondary"}
+                  onClick={() => setTab("teams")}
+                >
+                  Составы
+                </button>
+
                 <button className="btn secondary" onClick={() => setGameView("list")}>
                   ← К списку
                 </button>
@@ -714,67 +707,71 @@ if (!me && authReason) {
 
               <hr />
 
-                {detailLoading ? (
-                  <HockeyLoader text="Загружаем игру..." />
-                ) : !game ? (
-                  <div className="small">Не удалось загрузить игру.</div>
-                ) : (
-                  (() => {
-                    const past = isPastGame(game);
-                    const lockRsvp = past && !isAdmin;
-                
-                    return (
-                      <>
-                        <div className="row">
-                          <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
-                          <span className="badge">📍 {game.location || "—"}</span>
-                          <span className="badge">{uiStatus(game)}</span>
-                
-                          {game.video_url ? (
-                            <button
-                              className="btn secondary"
-                              onClick={() =>
-                                tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank")
-                              }
-                            >
-                              ▶️ Видео
-                            </button>
-                          ) : null}
-                
-                          {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
+              {detailLoading ? (
+                <HockeyLoader text="Загружаем игру..." />
+              ) : !game ? (
+                <div className="small">Не удалось загрузить игру.</div>
+              ) : (
+                (() => {
+                  const past = isPastGame(game);
+                  const lockRsvp = past && !isAdmin;
+
+                  return (
+                    <>
+                      <div className="row">
+                        <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
+                        <span className="badge">📍 {game.location || "—"}</span>
+                        <span className="badge">{uiStatus(game)}</span>
+
+                        {game.video_url ? (
+                          <button
+                            className="btn secondary"
+                            onClick={() =>
+                              tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank")
+                            }
+                          >
+                            ▶️ Видео
+                          </button>
+                        ) : null}
+
+                        {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
+                      </div>
+
+                      <hr />
+
+                      {game.status === "cancelled" ? (
+                        <div className="small">Эта игра отменена.</div>
+                      ) : lockRsvp ? (
+                        <div className="small" style={{ opacity: 0.85 }}>
+                          Игра уже прошла — менять отметки нельзя.
                         </div>
-                
-                        <hr />
-                
-                        {game.status === "cancelled" ? (
-                          <div className="small">Эта игра отменена.</div>
-                        ) : lockRsvp ? (
-                          <div className="small" style={{ opacity: 0.85 }}>
-                            Игра уже прошла — менять отметки нельзя.
-                          </div>
-                        ) : (
-                          <div className="row">
-                            <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
-                              ✅ Буду
-                            </button>
-                            <button className={btnClass("no")} onClick={() => rsvp("no")}>
-                              ❌ Не буду
-                            </button>
-                            <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
-                              🗘 Сбросить
-                            </button>
-                          </div>
-                        )}
-                
-                        <hr />
-                
-                        <div className="small">Отметки:</div>
-                
-                        <div style={{ marginTop: 10 }}>
-                          <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} />
-                          <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} />
-                          <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} />
-                  )}
+                      ) : (
+                        <div className="row">
+                          <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
+                            ✅ Буду
+                          </button>
+                          <button className={btnClass("no")} onClick={() => rsvp("no")}>
+                            ❌ Не буду
+                          </button>
+                          <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
+                            🗘 Сбросить
+                          </button>
+                        </div>
+                      )}
+
+                      <hr />
+
+                      <div className="small">Отметки:</div>
+
+                      <div style={{ marginTop: 10 }}>
+                        <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} />
+                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} />
+                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} />
+                      </div>
+                    </>
+                  );
+                })()
+              )}
             </>
           )}
         </div>
@@ -784,118 +781,126 @@ if (!me && authReason) {
       {tab === "profile" && (
         <div className="card">
           <h2>Профиль</h2>
-      
+
           <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-            <button className={profileView === "me" ? "btn" : "btn secondary"} onClick={() => setProfileView("me")}>
+            <button
+              className={profileView === "me" ? "btn" : "btn secondary"}
+              onClick={() => setProfileView("me")}
+            >
               👤 Мой профиль
             </button>
-            <button className={profileView === "support" ? "btn" : "btn secondary"} onClick={() => setProfileView("support")}>
+            <button
+              className={profileView === "support" ? "btn" : "btn secondary"}
+              onClick={() => setProfileView("support")}
+            >
               🛟 Техподдержка
             </button>
-            <button className={profileView === "about" ? "btn" : "btn secondary"} onClick={() => setProfileView("about")}>
+            <button
+              className={profileView === "about" ? "btn" : "btn secondary"}
+              onClick={() => setProfileView("about")}
+            >
               ℹ️ О приложении
             </button>
           </div>
-              {profileView === "me" && (
-                <>
-                  <div className="card">
-                    <h2>Мой профиль</h2>
-                    <div className="small">Заполни один раз — дальше просто отмечайся.</div>
-          
-                    <div style={{ marginTop: 10 }}>
-                      <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
-                      <input
-                        className="input"
-                        type="text"
-                        placeholder={me?.first_name || "Например: Илья"}
-                        value={me?.display_name ?? ""}
-                        onChange={(e) => setMe({ ...me, display_name: e.target.value })}
-                      />
-                    </div>
-          
-                    <div style={{ marginTop: 10 }}>
-                      <label>Номер игрока (0–99)</label>
-                      <input
-                        className="input"
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="Например: 17"
-                        value={me?.jersey_number == null ? "" : String(me.jersey_number)}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^\d]/g, "");
-                          if (raw === "") return setMe({ ...me, jersey_number: null });
-                          const n = Math.max(0, Math.min(99, parseInt(raw, 10)));
-                          setMe({ ...me, jersey_number: n });
-                        }}
-                      />
-                    </div>
-          
-                    <div style={{ marginTop: 10 }}>
-                      <label>Позиция</label>
-                      <select value={me?.position || "F"} onChange={(e) => setMe({ ...me, position: e.target.value })}>
-                        <option value="F">F (нападающий)</option>
-                        <option value="D">D (защитник)</option>
-                        <option value="G">G (вратарь)</option>
-                      </select>
-                    </div>
-          
-                    {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
-                      <div key={k} style={{ marginTop: 10 }}>
-                        <label>{label(k)} (1–10)</label>
-                        <input
-                          className="input"
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          placeholder="1–10"
-                          value={me?.[k] == null ? "" : String(me[k])}
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(/[^\d]/g, "");
-                            if (raw === "") return setMe({ ...me, [k]: null });
-                            const n = Math.max(1, Math.min(10, parseInt(raw, 10)));
-                            setMe({ ...me, [k]: n });
-                          }}
-                        />
-                      </div>
-                    ))}
-                    <div style={{ marginTop: 10 }}>
-                    <label>Фото (ссылка на картинку)</label>
-                      <input
-                        className="input"
-                        type="text"
-                        placeholder="https://...jpg/png/webp"
-                        value={me?.photo_url ?? ""}
-                        onChange={(e) => setMe({ ...me, photo_url: e.target.value })}
-                      />
-                      <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
-                        Быстрый вариант: вставь ссылку (позже сделаем загрузку через бота).
-                      </div>
-                    </div>
-          
-                    <div style={{ marginTop: 10 }}>
-                      <label>Комментарий</label>
-                      <textarea className="input" rows={3} value={me?.notes || ""} onChange={(e) => setMe({ ...me, notes: e.target.value })} />
-                    </div>
-          
-                    <div className="row" style={{ marginTop: 12 }}>
-                      <button className="btn" onClick={saveProfile} disabled={saving}>
-                        {saving ? "Сохраняю..." : "Сохранить"}
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
 
+          {profileView === "me" && (
+            <div className="card">
+              <h2>Мой профиль</h2>
+              <div className="small">Заполни один раз — дальше просто отмечайся.</div>
 
-                {profileView === "support" && (
-                  <SupportForm />
-                )}
-            
-                {profileView === "about" && (
-                  <AboutBlock />
-                )}
-          </div>
+              <div style={{ marginTop: 10 }}>
+                <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder={me?.first_name || "Например: Илья"}
+                  value={me?.display_name ?? ""}
+                  onChange={(e) => setMe({ ...me, display_name: e.target.value })}
+                />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label>Номер игрока (0–99)</label>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Например: 17"
+                  value={me?.jersey_number == null ? "" : String(me.jersey_number)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d]/g, "");
+                    if (raw === "") return setMe({ ...me, jersey_number: null });
+                    const n = Math.max(0, Math.min(99, parseInt(raw, 10)));
+                    setMe({ ...me, jersey_number: n });
+                  }}
+                />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label>Позиция</label>
+                <select value={me?.position || "F"} onChange={(e) => setMe({ ...me, position: e.target.value })}>
+                  <option value="F">F (нападающий)</option>
+                  <option value="D">D (защитник)</option>
+                  <option value="G">G (вратарь)</option>
+                </select>
+              </div>
+
+              {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+                <div key={k} style={{ marginTop: 10 }}>
+                  <label>{label(k)} (1–10)</label>
+                  <input
+                    className="input"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="1–10"
+                    value={me?.[k] == null ? "" : String(me[k])}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^\d]/g, "");
+                      if (raw === "") return setMe({ ...me, [k]: null });
+                      const n = Math.max(1, Math.min(10, parseInt(raw, 10)));
+                      setMe({ ...me, [k]: n });
+                    }}
+                  />
+                </div>
+              ))}
+
+              <div style={{ marginTop: 10 }}>
+                <label>Фото (ссылка на картинку)</label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="https://...jpg/png/webp"
+                  value={me?.photo_url ?? ""}
+                  onChange={(e) => setMe({ ...me, photo_url: e.target.value })}
+                />
+                <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
+                  Быстрый вариант: вставь ссылку (позже сделаем загрузку через бота).
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label>Комментарий</label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={me?.notes || ""}
+                  onChange={(e) => setMe({ ...me, notes: e.target.value })}
+                />
+              </div>
+
+              <div className="row" style={{ marginTop: 12 }}>
+                <button className="btn" onClick={saveProfile} disabled={saving}>
+                  {saving ? "Сохраняю..." : "Сохранить"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {profileView === "support" && <SupportForm />}
+          {profileView === "about" && <AboutBlock />}
+        </div>
       )}
 
       {/* ====== TEAMS ====== */}
@@ -940,7 +945,12 @@ if (!me && authReason) {
                   </button>
 
                   {editTeams && (
-                    <button className="btn secondary" onClick={movePicked} disabled={!picked || teamsBusy} title="Перенести выбранного в другую команду">
+                    <button
+                      className="btn secondary"
+                      onClick={movePicked}
+                      disabled={!picked || teamsBusy}
+                      title="Перенести выбранного в другую команду"
+                    >
                       ⇄ Перенести
                     </button>
                   )}
@@ -1037,114 +1047,125 @@ if (!me && authReason) {
         />
       )}
 
-      
+      {/* ====== PLAYERS ====== */}
       {tab === "players" && (
-  <div className="card">
-    {playerView === "list" ? (
-      <>
-        <h2>Игроки</h2>
+        <div className="card">
+          {playerView === "list" ? (
+            <>
+              <h2>Игроки</h2>
 
-        <input
-          className="input"
-          placeholder="Поиск: имя / номер / id"
-          value={playerQ}
-          onChange={(e) => setPlayerQ(e.target.value)}
-        />
+              <input
+                className="input"
+                placeholder="Поиск: имя / номер / id"
+                value={playerQ}
+                onChange={(e) => setPlayerQ(e.target.value)}
+              />
 
-        <hr />
+              <hr />
 
-        {playersLoading ? (
-          <HockeyLoader text="Загружаем игроков..." />
-        ) : filteredPlayersDir.length === 0 ? (
-          <div className="small">Пока нет игроков.</div>
-        ) : (
-          <div style={{ display: "grid", gap: 1 }}>
-            {filteredPlayersDir.map((p) => (
-              <div
-                key={p.tg_id}
-                className="card"
-                style={{ cursor: "pointer",marginTop: 1, borderRadius: 0 }}
-                onClick={async () => {
-                  setPlayerView("detail");
-                  setSelectedPlayer(null);
-                  setPlayerDetailLoading(true);
-                  try {
-                    const r = await apiGet(`/api/players/${p.tg_id}`);
-                    setSelectedPlayer(r.player || null);
-                  } finally {
-                    setPlayerDetailLoading(false);
-                  }
-                }}
-              >
-                <div className="row" style={{ alignItems: "center", gap: 12 }}>
-                  <Avatar p={p} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 900 }}>
-                      {showName(p)}{showNum(p)}
+              {playersLoading ? (
+                <HockeyLoader text="Загружаем игроков..." />
+              ) : filteredPlayersDir.length === 0 ? (
+                <div className="small">Пока нет игроков.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 1 }}>
+                  {filteredPlayersDir.map((p) => (
+                    <div
+                      key={p.tg_id}
+                      className="card"
+                      style={{ cursor: "pointer", marginTop: 1, borderRadius: 0 }}
+                      onClick={async () => {
+                        setPlayerView("detail");
+                        setSelectedPlayer(null);
+                        setPlayerDetailLoading(true);
+                        try {
+                          const r = await apiGet(`/api/players/${p.tg_id}`);
+                          setSelectedPlayer(r.player || null);
+                        } finally {
+                          setPlayerDetailLoading(false);
+                        }
+                      }}
+                    >
+                      <div className="row" style={{ alignItems: "center", gap: 12 }}>
+                        <Avatar p={p} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 900 }}>
+                            {showName(p)}
+                            {showNum(p)}
+                          </div>
+                          <div className="small" style={{ opacity: 0.8 }}>
+                            {posHuman(p.position)}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="small" style={{ opacity: 0.8 }}>
-                      {posHuman(p.position)}
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <h2 style={{ margin: 0 }}>Профиль игрока</h2>
+                <button className="btn secondary" onClick={() => setPlayerView("list")}>
+                  ← К списку
+                </button>
+              </div>
+
+              <hr />
+
+              {playerDetailLoading ? (
+                <HockeyLoader text="Загружаем профиль..." />
+              ) : !selectedPlayer ? (
+                <div className="small">Игрок не найден.</div>
+              ) : (
+                <div className="card">
+                  <div className="row" style={{ alignItems: "center", gap: 14 }}>
+                    <Avatar p={selectedPlayer} big />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 900, fontSize: 18 }}>
+                        {showName(selectedPlayer)}
+                        {showNum(selectedPlayer)}
+                      </div>
+                      <div className="small" style={{ opacity: 0.8 }}>
+                        {posHuman(selectedPlayer.position)}
+                      </div>
                     </div>
                   </div>
+
+                  {!!selectedPlayer.notes && (
+                    <>
+                      <hr />
+                      <div className="small" style={{ opacity: 0.9 }}>
+                        Комментарий:
+                      </div>
+                      <div>{selectedPlayer.notes}</div>
+                    </>
+                  )}
+
+                  {isAdmin && (
+                    <>
+                      <hr />
+                      <div className="small" style={{ opacity: 0.8 }}>
+                        skill: {selectedPlayer.skill} · skating: {selectedPlayer.skating} · iq:{" "}
+                        {selectedPlayer.iq} · stamina: {selectedPlayer.stamina} · passing:{" "}
+                        {selectedPlayer.passing} · shooting: {selectedPlayer.shooting}
+                      </div>
+                    </>
+                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </>
-    ) : (
-      <>
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>Профиль игрока</h2>
-          <button className="btn secondary" onClick={() => setPlayerView("list")}>← К списку</button>
+              )}
+            </>
+          )}
         </div>
+      )}
 
-        <hr />
-
-        {playerDetailLoading ? (
-          <HockeyLoader text="Загружаем профиль..." />
-        ) : !selectedPlayer ? (
-          <div className="small">Игрок не найден.</div>
-        ) : (
-          <div className="card">
-            <div className="row" style={{ alignItems: "center", gap: 14 }}>
-              <Avatar p={selectedPlayer} big />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 900, fontSize: 18 }}>
-                  {showName(selectedPlayer)}{showNum(selectedPlayer)}
-                </div>
-                <div className="small" style={{ opacity: 0.8 }}>{posHuman(selectedPlayer.position)}</div>
-              </div>
-            </div>
-
-            {!!selectedPlayer.notes && (
-              <>
-                <hr />
-                <div className="small" style={{ opacity: 0.9 }}>Комментарий:</div>
-                <div>{selectedPlayer.notes}</div>
-              </>
-            )}
-
-            {isAdmin && (
-              <>
-                <hr />
-                <div className="small" style={{ opacity: 0.8 }}>
-                  skill: {selectedPlayer.skill} · skating: {selectedPlayer.skating} · iq: {selectedPlayer.iq} · stamina: {selectedPlayer.stamina} · passing: {selectedPlayer.passing} · shooting: {selectedPlayer.shooting}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </>
-    )}
-  </div>
-)}
-<BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
+      <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </div>
   );
 }
 
-/* ===== helpers (наружу) ===== */
+/* ===== helpers (outside) ===== */
 
 function label(k) {
   const m = {
@@ -1177,20 +1198,22 @@ function showNum(p) {
   if (!Number.isFinite(nn)) return "";
   return ` №${Math.trunc(nn)}`;
 }
+
 function formatWhen(starts_at) {
   return new Date(starts_at).toLocaleString("ru-RU", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    hour: "2-digit",      // чтобы было 7, а не 07 (если хочешь 07 — поставь "2-digit")
+    hour: "2-digit",
     minute: "2-digit",
   });
 }
+
 const posOrder = (p) => {
   const pos = (p?.position || "F").toUpperCase();
   if (pos === "G") return 0;
   if (pos === "D") return 1;
-  return 2; // F
+  return 2;
 };
 
 function posLabel(posRaw) {
@@ -1236,6 +1259,7 @@ function StatusBlock({ title, tone, list = [], isAdmin }) {
     </div>
   );
 }
+
 function Avatar({ p, big = false }) {
   const size = big ? 72 : 44;
   const url = (p?.photo_url || "").trim();
@@ -1271,6 +1295,7 @@ function posHuman(posRaw) {
   const pos = String(posRaw || "F").toUpperCase();
   return pos === "G" ? "🥅 Вратарь" : pos === "D" ? "🛡️ Защитник" : "⚡ Нападающий";
 }
+
 function BottomNav({ tab, setTab, isAdmin }) {
   const items = [
     { key: "game", label: "Игры", icon: "📅" },
