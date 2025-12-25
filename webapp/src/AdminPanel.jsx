@@ -120,6 +120,8 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [msgHistory, setMsgHistory] = useState([]);
   const [msgLoading, setMsgLoading] = useState(false);
   const [showDeletedMsgs, setShowDeletedMsgs] = useState(false);
+  const [showPastAdmin, setShowPastAdmin] = useState(false);
+
 
 function fmtTs(ts) {
   try {
@@ -448,6 +450,26 @@ async function setAttend(tg_id, status) {
     await load();
     onChanged?.();
   }
+  
+  function isPastGameAdmin(g) {
+  if (!g?.starts_at) return false;
+  const t = new Date(g.starts_at).getTime();
+  return t < (Date.now() - 3 * 60 * 60 * 1000); // прошло, если старт был > 3ч назад
+}
+
+const upcomingAdminGames = useMemo(() => {
+  return (games || [])
+    .filter(g => !isPastGameAdmin(g))
+    .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)); // ближайшая первая
+}, [games]);
+
+const pastAdminGames = useMemo(() => {
+  return (games || [])
+    .filter(g => isPastGameAdmin(g))
+    .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at)); // свежие прошедшие сверху
+}, [games]);
+
+const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
   useEffect(() => {
   if (section === "reminders" && isSuperAdmin) loadMsgHistory();
@@ -757,37 +779,75 @@ async function setAttend(tg_id, status) {
 
             <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
               {(games || []).map((g) => {
-                const dt = toLocal(g.starts_at); // { date: "YYYY-MM-DD", time: "HH:MM" }
-                const cancelled = g.status === "cancelled";
-            
-                // День недели + формат "Вс, 28.12.2025"
-                const d = new Date(g.starts_at);
-                const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(d); // "вс"
-                const prettyDate = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d); // "28.12.2025"
-                const head = `${weekday}, ${prettyDate}, ${dt.time}`;
-            
-                return (
-                  <div
-                    key={g.id}
-                    className={`listItem gameListItem ${cancelled ? "isCancelled" : ""}`}
-                    onClick={() => openGameSheet(g)}
-                  >
-                    <div className="rowBetween">
-                      <div className="gameTitle">{head}</div>
-                      <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{g.status}</span>
-                    </div>
-            
-                    <div className="gameArena">
-                      {g.location || "—"}
-                    </div>
-            
-                    {g.video_url ? (
-                      <div className="gameVideoTag" title="Есть видео">
-                        ▶️ Видео
-                      </div>
-                    ) : null}
-                  </div>
-                );
+                <div className="rowBetween" style={{ marginTop: 10, gap: 10 }}>
+  <button
+    className="btn secondary"
+    onClick={() => setShowPastAdmin(v => !v)}
+  >
+    {showPastAdmin ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastAdminGames.length})`}
+  </button>
+
+  <span className="small" style={{ opacity: 0.8 }}>
+    {showPastAdmin
+      ? `Показаны прошедшие: ${pastAdminGames.length}`
+      : `Показаны предстоящие: ${upcomingAdminGames.length}`}
+  </span>
+</div>
+
+<div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+  {adminListToShow.map((g, idx) => {
+    const dt = toLocal(g.starts_at);
+    const cancelled = g.status === "cancelled";
+
+    const d = new Date(g.starts_at);
+    const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(d); // "вс"
+    const prettyDate = new Intl.DateTimeFormat("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d); // "28.12.2025"
+    const head = `${weekday}, ${prettyDate}, ${dt.time}`;
+
+    const isNext = !showPastAdmin && idx === 0; // ближайшая игра
+
+    return (
+      <div
+        key={g.id}
+        className={`listItem gameListItem ${cancelled ? "isCancelled" : ""} ${isNext ? "isNext" : ""}`}
+        onClick={() => openGameSheet(g)}
+      >
+        <div className="rowBetween">
+          <div className="gameTitle">{head}</div>
+          <span className={`badgeMini ${cancelled ? "bad" : ""}`}>
+            {g.status}
+          </span>
+        </div>
+
+        <div className="gameArena">
+          {g.location || "—"}
+        </div>
+
+        {g.video_url ? (
+          <div className="gameVideoTag" title="Есть видео">
+            ▶️ Видео
+          </div>
+        ) : null}
+
+        {isNext ? (
+          <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+            ⭐ Ближайшая игра
+          </div>
+        ) : null}
+      </div>
+    );
+  })}
+
+  {adminListToShow.length === 0 && (
+    <div className="small">
+      {showPastAdmin ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
+    </div>
+  )}
+</div>
               })}
             
               {games.length === 0 && <div className="small">Пока игр нет.</div>}
