@@ -602,6 +602,8 @@ if (!me && authReason) {
                   </button>
                 </div>
                   {listToShow.map((g, idx) => {
+                    const past = isPastGame(g); // у тебя уже есть
+                    const lockRsvp = past && !isAdmin; // закрываем только для не-админа
                     const when = formatWhen(g.starts_at);
                     const status = g.my_status || "maybe"; // yes | no | maybe
                     const tone = cardToneByMyStatus(status);
@@ -641,14 +643,33 @@ if (!me && authReason) {
         📍 {g.location || "—"}
       </div>
 
-      <div className="row" style={{ marginTop: 10 }}>
-        <span className="badge">✅ {g.yes_count ?? 0}</span>
-        <span className="badge">❌ {g.no_count ?? 0}</span>
-      </div>
+        <button
+          disabled={lockRsvp}
+          className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
+          onClick={async () => {
+            if (lockRsvp) return;
+            await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
+            await refreshAll(g.id);
+          }}
+        >
+          ✅ Буду
+        </button>
+        
+        <button
+          disabled={lockRsvp}
+          className={status === "no" ? "btn tiny" : "btn secondary tiny"}
+          onClick={async () => {
+            if (lockRsvp) return;
+            await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
+            await refreshAll(g.id);
+          }}
+        >
+          ❌ Не буду
+        </button>
 
-      <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-        Нажми, чтобы открыть игру
-      </div>
+        <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+          {past ? "Игра прошла — отметки закрыты" : "Нажми, чтобы открыть игру"}
+        </div>
 
       {/* быстрые кнопки RSVP */}
       <div className="row" style={{ marginTop: 10, gap: 8 }} onClick={(e) => e.stopPropagation()}>
@@ -698,6 +719,9 @@ if (!me && authReason) {
               ) : !game ? (
                 <div className="small">Не удалось загрузить игру.</div>
               ) : (
+                (() => {
+                  const past = isPastGame(game);     
+                  const lockRsvp = past && !isAdmin;   
                 <>
                   <div className="row">
                     <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
@@ -718,17 +742,15 @@ if (!me && authReason) {
 
                   {game.status === "cancelled" ? (
                     <div className="small">Эта игра отменена.</div>
+                  ) : lockRsvp ? (
+                    <div className="small" style={{ opacity: 0.85 }}>
+                      Игра уже прошла — менять отметки нельзя.
+                    </div>
                   ) : (
                     <div className="row">
-                      <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
-                        ✅ Буду
-                      </button>
-                      <button className={btnClass("no")} onClick={() => rsvp("no")}>
-                        ❌ Не буду
-                      </button>
-                      <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
-                        🗘 Сбросить
-                      </button>
+                      <button className={btnClass("yes")} onClick={() => rsvp("yes")}>✅ Буду</button>
+                      <button className={btnClass("no")} onClick={() => rsvp("no")}>❌ Не буду</button>
+                      <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>🗘 Сбросить</button>
                     </div>
                   )}
 
