@@ -716,7 +716,7 @@ if (!me && authReason) {
 
               {detailLoading ? (
                 <HockeyLoader text="Загружаем игру..." />
-              ) : : !game ? (
+              ) : !game ? (
   <div className="small">Не удалось загрузить игру.</div>
 ) : (
   (() => {
