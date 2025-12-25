@@ -779,10 +779,12 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
             <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
               {(games || []).map((g) => {
-                <div className="rowBetween" style={{ marginTop: 10, gap: 10 }}>
+               {/* переключатель предстоящие/прошедшие */}
+<div className="rowBetween" style={{ marginTop: 10, gap: 10, alignItems: "center" }}>
   <button
     className="btn secondary"
-    onClick={() => setShowPastAdmin(v => !v)}
+    type="button"
+    onClick={() => setShowPastAdmin((v) => !v)}
   >
     {showPastAdmin ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastAdminGames.length})`}
   </button>
@@ -794,38 +796,36 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
   </span>
 </div>
 
+{/* список */}
 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
   {adminListToShow.map((g, idx) => {
     const dt = toLocal(g.starts_at);
     const cancelled = g.status === "cancelled";
 
     const d = new Date(g.starts_at);
-    const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(d); // "вс"
+    const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(d);
     const prettyDate = new Intl.DateTimeFormat("ru-RU", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-    }).format(d); // "28.12.2025"
-    const head = `${weekday}, ${prettyDate}, ${dt.time}`;
+    }).format(d);
 
-    const isNext = !showPastAdmin && idx === 0; // ближайшая игра
+    const head = `${weekday}, ${prettyDate}, ${dt.time}`;
+    const isNext = !showPastAdmin && idx === 0;
 
     return (
       <div
         key={g.id}
         className={`listItem gameListItem ${cancelled ? "isCancelled" : ""} ${isNext ? "isNext" : ""}`}
+        style={{ opacity: cancelled ? 0.75 : 1 }}
         onClick={() => openGameSheet(g)}
       >
         <div className="rowBetween">
           <div className="gameTitle">{head}</div>
-          <span className={`badgeMini ${cancelled ? "bad" : ""}`}>
-            {g.status}
-          </span>
+          <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{g.status}</span>
         </div>
 
-        <div className="gameArena">
-          {g.location || "—"}
-        </div>
+        <div className="gameArena">{g.location || "—"}</div>
 
         {g.video_url ? (
           <div className="gameVideoTag" title="Есть видео">
@@ -848,9 +848,10 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     </div>
   )}
 </div>
-              })}
+</div>
+})}
             
-              {games.length === 0 && <div className="small">Пока игр нет.</div>}
+ {games.length === 0 && <div className="small">Пока игр нет.</div>}
             </div>
           </div>
         </div>
