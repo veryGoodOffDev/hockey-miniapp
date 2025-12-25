@@ -550,24 +550,14 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
           <div className="card">
             <h2>Создать игру</h2>
 
-            <label>Дата</label>
-            <div className="iosField">
-              <input
-                className="input"
-                type="date"
-                value={gameDraft.date}
-                onChange={(e) => setGameDraft((d) => ({ ...d, date: e.target.value }))}
-              />
+            <div className="datetimeRow" style={{ paddingRight: 15 }}>
+              <label>Дата</label>
+              <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
-            
-            <label>Время</label>
-            <div className="iosField">
-              <input
-                className="input"
-                type="time"
-                value={gameDraft.time}
-                onChange={(e) => setGameDraft((d) => ({ ...d, time: e.target.value }))}
-              />
+
+            <div className="datetimeRow" style={{ marginTop: 10, paddingRight: 15 }}>
+              <label>Время</label>
+              <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
             </div>
 
             <label>Арена</label>
