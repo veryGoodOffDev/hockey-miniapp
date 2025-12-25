@@ -10,8 +10,6 @@ function toLocal(starts_at) {
 }
 
 function toIsoFromLocal(dateStr, timeStr) {
-  // ВАЖНО: это локальное время браузера -> ISO в UTC
-  // Если нужно фиксировать по TZ сервера — лучше отправлять date/time отдельно и собирать на бэке.
   const d = new Date(`${dateStr}T${timeStr}`);
   return d.toISOString();
 }
@@ -48,78 +46,38 @@ const GUEST_DEFAULT = {
   passing: 5,
   shooting: 5,
   notes: "",
-  status: "yes", // сразу “будет”
+  status: "yes",
 };
 
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
+  // ====== main sections
+  const [section, setSection] = useState("games"); // reminders | games | players
+
+  // ====== data
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
-  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  // create games
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("19:00");
-  const [location, setLocation] = useState("");
-  const [weeks, setWeeks] = useState(4);
-
-  // reminders
-  const [reminderMsg, setReminderMsg] = useState("");
-
-  // bulk selection (games)
-  const [selected, setSelected] = useState(() => new Set());
-
-  // guests UI per game
-  const [guestPanelGameId, setGuestPanelGameId] = useState(null); // в какой игре открыт блок гостей
-  const [guestFormOpen, setGuestFormOpen] = useState(false);
-  const [guestEditingId, setGuestEditingId] = useState(null); // tg_id гостя (negative)
-  const [guestDraft, setGuestDraft] = useState({ ...GUEST_DEFAULT });
-
-  // загруженные гости по игре (чтобы показывать “пилюли” прямо в карточке игры)
-  const [guestsByGame, setGuestsByGame] = useState({}); // { [gameId]: { loading:boolean, list: [] } }
-  const [videoOpen, setVideoOpen] = useState(() => new Set());
-
-function toggleVideo(id) {
-  setVideoOpen(prev => {
-    const n = new Set(prev);
-    n.has(id) ? n.delete(id) : n.add(id);
-    return n;
-  });
-}
   async function load() {
-    const g = await apiGet("/api/games?days=180");
-    setGames(g.games || []);
+    setLoading(true);
+    try {
+      const g = await apiGet("/api/games?days=180");
+      setGames(g.games || []);
 
-    // ВАЖНО: админский список игроков
-    const p = await apiGet("/api/admin/players");
-    setPlayers(p.players || []);
-    setIsSuperAdmin(!!p.is_super_admin);
+      const p = await apiGet("/api/admin/players");
+      setPlayers(p.players || []);
+      setIsSuperAdmin(!!p.is_super_admin);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(); }, []);
 
-  useEffect(() => {
-    // при перезагрузке списка — чистим выбор тех, кого больше нет
-    setSelected(prev => {
-      const ids = new Set((games || []).map(g => g.id));
-      const next = new Set();
-      for (const id of prev) if (ids.has(id)) next.add(id);
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games.length]);
-
-  const filteredPlayers = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return players;
-    return players.filter((p) =>
-      (p.display_name || "").toLowerCase().includes(s) ||
-      (p.first_name || "").toLowerCase().includes(s) ||
-      (p.username || "").toLowerCase().includes(s) ||
-      String(p.tg_id).includes(s)
-    );
-  }, [players, q]);
+  // ====== reminders
+  const [reminderMsg, setReminderMsg] = useState("");
 
   async function sendReminderNow() {
     setReminderMsg("");
@@ -127,6 +85,13 @@ function toggleVideo(id) {
     if (r?.ok) setReminderMsg("✅ Напоминание отправлено");
     else setReminderMsg(`❌ Ошибка: ${r?.reason || r?.error || "unknown"}`);
   }
+
+  // ====== games (create)
+  const [createOpen, setCreateOpen] = useState(true);
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("19:00");
+  const [location, setLocation] = useState("");
+  const [weeks, setWeeks] = useState(4);
 
   async function createOne() {
     if (!date || !time) return;
@@ -147,41 +112,116 @@ function toggleVideo(id) {
     onChanged?.();
   }
 
-  async function saveGame(g) {
-    const base = toLocal(g.starts_at);
-    const starts_at = toIsoFromLocal(g._editDate || base.date, g._editTime || base.time);
-    await apiPatch(`/api/games/${g.id}`, {
-      starts_at,
-      location: g._editLocation ?? g.location,
-      status: g._editStatus ?? g.status,
-      video_url: g._editVideoUrl ?? g.video_url ?? "",
+  // ====== games list / detail state
+  const [gameQ, setGameQ] = useState("");
+  const [selectedGameIds, setSelectedGameIds] = useState(() => new Set());
+  const [activeGameId, setActiveGameId] = useState(null);
+  const [gameDraft, setGameDraft] = useState(null); // {id, date, time, location, status, video_url}
+
+  useEffect(() => {
+    // чистим bulk-выбор при обновлении
+    setSelectedGameIds((prev) => {
+      const ids = new Set((games || []).map((g) => g.id));
+      const next = new Set();
+      for (const id of prev) if (ids.has(id)) next.add(id);
+      return next;
     });
 
-    await load();
-    onChanged?.();
+    // если активная игра исчезла
+    if (activeGameId && !(games || []).some((g) => g.id === activeGameId)) {
+      setActiveGameId(null);
+      setGameDraft(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games.length]);
+
+  const gamesSorted = useMemo(() => {
+    return [...(games || [])].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+  }, [games]);
+
+  const filteredGames = useMemo(() => {
+    const s = gameQ.trim().toLowerCase();
+    if (!s) return gamesSorted;
+    return gamesSorted.filter((g) => {
+      const dt = toLocal(g.starts_at);
+      const hay = `${g.id} ${dt.date} ${dt.time} ${g.location || ""} ${g.status || ""} ${g.video_url || ""}`.toLowerCase();
+      return hay.includes(s);
+    });
+  }, [gamesSorted, gameQ]);
+
+  function toggleGameSelect(id) {
+    setSelectedGameIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function selectAllGames() {
+    setSelectedGameIds(new Set((filteredGames || []).map((g) => g.id)));
+  }
+  function clearAllGames() {
+    setSelectedGameIds(new Set());
   }
 
-  async function setGameStatus(id, status) {
-    await apiPost(`/api/games/${id}/status`, { status });
+  function openGame(g) {
+    setActiveGameId(g.id);
+    const dt = toLocal(g.starts_at);
+    setGameDraft({
+      id: g.id,
+      date: dt.date,
+      time: dt.time,
+      location: g.location || "",
+      status: g.status || "scheduled",
+      video_url: g.video_url || "",
+    });
+
+    // гости подтягиваем под выбранную игру
+    setGuestPanelGameId(g.id);
+    loadGuestsForGame(g.id, false);
+  }
+
+  async function saveGameDraft() {
+    if (!gameDraft?.id) return;
+    const starts_at = toIsoFromLocal(gameDraft.date, gameDraft.time);
+
+    await apiPatch(`/api/games/${gameDraft.id}`, {
+      starts_at,
+      location: gameDraft.location,
+      status: gameDraft.status,
+      video_url: gameDraft.video_url || "",
+    });
+
+    // если хочешь статус менять только отдельным endpoint — оставим как есть у тебя:
+    await apiPost(`/api/games/${gameDraft.id}/status`, { status: gameDraft.status });
+
     await load();
     onChanged?.();
   }
 
   async function deleteGame(id) {
+    const ok = confirm("Удалить игру?");
+    if (!ok) return;
     await apiDelete(`/api/games/${id}`);
+    if (activeGameId === id) {
+      setActiveGameId(null);
+      setGameDraft(null);
+    }
     await load();
     onChanged?.();
   }
 
-  async function deleteSelected() {
-    if (selected.size === 0) return;
-    const ok = confirm(`Удалить выбранные игры (${selected.size} шт.)?`);
+  async function deleteSelectedGames() {
+    if (selectedGameIds.size === 0) return;
+    const ok = confirm(`Удалить выбранные игры (${selectedGameIds.size} шт.)?`);
     if (!ok) return;
 
-    for (const id of selected) {
+    for (const id of selectedGameIds) {
       await apiDelete(`/api/games/${id}`);
     }
-    setSelected(new Set());
+    setSelectedGameIds(new Set());
+    setActiveGameId(null);
+    setGameDraft(null);
+
     await load();
     onChanged?.();
   }
@@ -192,58 +232,25 @@ function toggleVideo(id) {
     const ok2 = confirm("Последнее подтверждение: удалить ВСЕ игры?");
     if (!ok2) return;
 
-    await apiDelete("/api/games"); // если у тебя есть этот endpoint
-    setSelected(new Set());
+    // если endpoint реально есть — ок. Если нет — лучше убрать эту кнопку.
+    await apiDelete("/api/games");
+    setSelectedGameIds(new Set());
+    setActiveGameId(null);
+    setGameDraft(null);
+
     await load();
     onChanged?.();
   }
 
-  function toggle(id) {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    setSelected(new Set((games || []).map(g => g.id)));
-  }
-
-  function clearAll() {
-    setSelected(new Set());
-  }
-
-  async function savePlayer(p) {
-    await apiPatch(`/api/admin/players/${p.tg_id}`, {
-      display_name: p._display_name ?? p.display_name,
-      jersey_number: p._jersey_number ?? p.jersey_number,
-      position: p._position ?? p.position,
-      skill: Number(p._skill ?? p.skill),
-      skating: Number(p._skating ?? p.skating),
-      iq: Number(p._iq ?? p.iq),
-      stamina: Number(p._stamina ?? p.stamina),
-      passing: Number(p._passing ?? p.passing),
-      shooting: Number(p._shooting ?? p.shooting),
-      notes: p._notes ?? p.notes,
-      disabled: Boolean(p._disabled ?? p.disabled),
-    });
-    await load();
-    onChanged?.();
-  }
-
-  async function toggleAdmin(p) {
-    // только super-admin (ENV ADMIN_IDS) может раздавать/забирать админку
-    await apiPost(`/api/admin/players/${p.tg_id}/admin`, { is_admin: !p.is_admin });
-    await load();
-    onChanged?.();
-  }
-
-  /** ===================== GUESTS ===================== */
+  // ====== guests (same logic, но привязано к выбранной игре)
+  const [guestPanelGameId, setGuestPanelGameId] = useState(null);
+  const [guestFormOpen, setGuestFormOpen] = useState(false);
+  const [guestEditingId, setGuestEditingId] = useState(null);
+  const [guestDraft, setGuestDraft] = useState({ ...GUEST_DEFAULT });
+  const [guestsByGame, setGuestsByGame] = useState({}); // { [gameId]: { loading, list } }
 
   async function loadGuestsForGame(gameId, force = false) {
-    setGuestsByGame(prev => {
+    setGuestsByGame((prev) => {
       const cur = prev[gameId];
       if (cur?.loading) return prev;
       if (cur?.list && !force) return prev;
@@ -252,11 +259,11 @@ function toggleVideo(id) {
 
     try {
       const g = await apiGet(`/api/game?game_id=${gameId}`);
-      const list = (g.rsvps || []).filter(x => x.is_guest === true);
-      setGuestsByGame(prev => ({ ...prev, [gameId]: { loading: false, list } }));
+      const list = (g.rsvps || []).filter((x) => x.is_guest === true);
+      setGuestsByGame((prev) => ({ ...prev, [gameId]: { loading: false, list } }));
     } catch (e) {
       console.error("loadGuestsForGame failed", e);
-      setGuestsByGame(prev => ({ ...prev, [gameId]: { loading: false, list: [] } }));
+      setGuestsByGame((prev) => ({ ...prev, [gameId]: { loading: false, list: [] } }));
     }
   }
 
@@ -264,9 +271,7 @@ function toggleVideo(id) {
     setGuestPanelGameId(gameId);
     setGuestEditingId(null);
     setGuestDraft({ ...GUEST_DEFAULT });
-    setGuestFormOpen(v => (guestPanelGameId === gameId ? !v : true));
-
-    // чтобы сразу показать список гостей в карточке игры
+    setGuestFormOpen(true);
     loadGuestsForGame(gameId, false);
   }
 
@@ -317,13 +322,9 @@ function toggleVideo(id) {
     }
 
     if (guestEditingId) {
-      // 1) правим профиль гостя
       await apiPatch(`/api/admin/players/${guestEditingId}`, payload);
-
-      // 2) отдельно выставляем RSVP на игру (чтобы “будет/может/не будет” поменялось)
       await apiPost(`/api/admin/rsvp`, { game_id: gameId, tg_id: guestEditingId, status: payload.status });
     } else {
-      // создаём гостя + сразу RSVP (backend это делает)
       await apiPost("/api/admin/guests", payload);
     }
 
@@ -337,12 +338,11 @@ function toggleVideo(id) {
   }
 
   async function deleteGuest(tgId) {
-    const gameId = guestPanelGameId;
     const ok = confirm("Удалить гостя? (Он исчезнет из списков и состава)");
     if (!ok) return;
 
     await apiDelete(`/api/admin/players/${tgId}`);
-    if (gameId) await loadGuestsForGame(gameId, true);
+    if (guestPanelGameId) await loadGuestsForGame(guestPanelGameId, true);
     await load();
     onChanged?.();
   }
@@ -372,34 +372,106 @@ function toggleVideo(id) {
     );
   }
 
-  /** ===================== UI ===================== */
+  // ====== players list / detail
+  const [playerQ, setPlayerQ] = useState("");
+  const [activePlayerId, setActivePlayerId] = useState(null);
+  const [playerDraft, setPlayerDraft] = useState(null);
 
+  const filteredPlayers = useMemo(() => {
+    const s = playerQ.trim().toLowerCase();
+    if (!s) return players;
+    return (players || []).filter((p) =>
+      (p.display_name || "").toLowerCase().includes(s) ||
+      (p.first_name || "").toLowerCase().includes(s) ||
+      (p.username || "").toLowerCase().includes(s) ||
+      String(p.tg_id).includes(s) ||
+      String(p.jersey_number ?? "").includes(s)
+    );
+  }, [players, playerQ]);
+
+  function openPlayer(p) {
+    setActivePlayerId(p.tg_id);
+    setPlayerDraft({
+      tg_id: p.tg_id,
+      display_name: p.display_name || "",
+      jersey_number: p.jersey_number ?? "",
+      position: (p.position || "F").toUpperCase(),
+      skill: p.skill ?? 5,
+      skating: p.skating ?? 5,
+      iq: p.iq ?? 5,
+      stamina: p.stamina ?? 5,
+      passing: p.passing ?? 5,
+      shooting: p.shooting ?? 5,
+      notes: p.notes || "",
+      disabled: !!p.disabled,
+      is_admin: !!p.is_admin,
+      is_guest: !!p.is_guest,
+      username: p.username || "",
+      first_name: p.first_name || "",
+      is_env_admin: !!p.is_env_admin,
+    });
+  }
+
+  async function savePlayerDraft() {
+    if (!playerDraft?.tg_id) return;
+
+    await apiPatch(`/api/admin/players/${playerDraft.tg_id}`, {
+      display_name: playerDraft.display_name,
+      jersey_number: playerDraft.jersey_number,
+      position: playerDraft.position,
+      skill: Number(playerDraft.skill || 5),
+      skating: Number(playerDraft.skating || 5),
+      iq: Number(playerDraft.iq || 5),
+      stamina: Number(playerDraft.stamina || 5),
+      passing: Number(playerDraft.passing || 5),
+      shooting: Number(playerDraft.shooting || 5),
+      notes: playerDraft.notes,
+      disabled: !!playerDraft.disabled,
+    });
+
+    await load();
+    onChanged?.();
+  }
+
+  async function toggleAdminForPlayerDraft() {
+    if (!isSuperAdmin) return;
+    if (!playerDraft?.tg_id) return;
+    if (playerDraft.is_guest) return; // гостей не делаем админами
+
+    await apiPost(`/api/admin/players/${playerDraft.tg_id}/admin`, { is_admin: !playerDraft.is_admin });
+    await load();
+    onChanged?.();
+
+    // обновим draft после reload
+    const updated = (players || []).find((x) => x.tg_id === playerDraft.tg_id);
+    if (updated) openPlayer(updated);
+  }
+
+  // ====== UI
   return (
     <div className="card">
-      <h2>Админ</h2>
-
-      {/* Мини-CSS для гостевых пилюль (чтобы не искать) */}
       <style>{`
+        .adminTopRow{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+        .adminNav{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+        .adminSplit{ display:grid; grid-template-columns: 1fr 1.3fr; gap:12px; }
+        @media (max-width: 820px){ .adminSplit{ grid-template-columns: 1fr; } }
+        .adminListItem{ cursor:pointer; }
+        .adminListItem.active{ outline:2px solid color-mix(in srgb, var(--tg-text) 25%, transparent); }
+        .muted{ opacity:.8; }
+        .dangerZone{ border:1px dashed var(--border); border-radius:14px; padding:12px; }
+
+        /* guest pills (твои, оставил) */
         .guestPill{
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          gap:10px;
-          padding:10px 12px;
-          border:1px solid var(--border);
-          border-radius:999px;
-          background: var(--card-bg);
-          margin-top:8px;
+          display:flex; align-items:center; justify-content:space-between; gap:10px;
+          padding:10px 12px; border:1px solid var(--border); border-radius:999px;
+          background: var(--card-bg); margin-top:8px;
         }
         .guestPill.yes{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #16a34a 10%, transparent); }
         .guestPill.maybe{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #f59e0b 12%, transparent); }
         .guestPill.no{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #ef4444 10%, transparent); }
         .guestPillMain{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
         .guestTag{
-          font-weight:800;
-          font-size:12px;
-          padding:4px 8px;
-          border-radius:999px;
+          font-weight:800; font-size:12px; padding:4px 8px; border-radius:999px;
           border:1px solid var(--border);
           background: color-mix(in srgb, var(--tg-text) 6%, transparent);
         }
@@ -408,429 +480,570 @@ function toggleVideo(id) {
         .guestStatus{ opacity:.9; font-size:13px; }
         .guestPillActions{ display:flex; gap:8px; }
         .iconBtn{
-          border:1px solid var(--border);
-          background: transparent;
-          border-radius:10px;
-          padding:6px 8px;
-          cursor:pointer;
-          line-height:1;
+          border:1px solid var(--border); background: transparent;
+          border-radius:10px; padding:6px 8px; cursor:pointer; line-height:1;
         }
         .iconBtn:active{ transform: translateY(1px); }
         .guestFormGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .guestFormGrid .full{ grid-column: 1 / -1; }
-        @media (max-width: 520px){
-          .guestFormGrid{ grid-template-columns:1fr; }
-        }
+        @media (max-width: 520px){ .guestFormGrid{ grid-template-columns:1fr; } }
       `}</style>
 
-      <div className="card">
-        <h2>Напоминания</h2>
-        <div className="small">
-          Сначала в нужной группе напиши боту команду <b>/setchat</b>, чтобы назначить чат для уведомлений.
+      <div className="adminTopRow">
+        <h2 style={{ margin: 0 }}>Админка</h2>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn secondary" onClick={load} disabled={loading}>Обновить</button>
         </div>
-
-        <div className="row" style={{ marginTop: 10 }}>
-          <button className="btn" onClick={sendReminderNow}>
-            Отправить напоминание сейчас
-          </button>
-        </div>
-
-        {reminderMsg && <div className="small" style={{ marginTop: 8 }}>{reminderMsg}</div>}
       </div>
 
-      <div className="card">
-        <h2>Создать игру</h2>
-        <div className="datetimeRow" style={{ paddingRight: 15 }}>
-        <label>Дата</label>
-        <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-        <div className="datetimeRow" style={{ marginTop: 10, paddingRight: 15 }}>
-        <label>Время</label>
-        <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        </div>
-        <label>Арена</label>
-        <input
-          className="input"
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          placeholder="Например: Ледовая арена"
-        />
+      <div className="adminNav">
+        <button className={section === "reminders" ? "btn" : "btn secondary"} onClick={() => setSection("reminders")}>
+          🔔 Напоминания
+        </button>
+        <button className={section === "games" ? "btn" : "btn secondary"} onClick={() => setSection("games")}>
+          📅 Игры
+        </button>
+        <button className={section === "players" ? "btn" : "btn secondary"} onClick={() => setSection("players")}>
+          👥 Игроки
+        </button>
+      </div>
 
-        <div className="row" style={{ marginTop: 10 }}>
-          <button className="btn" onClick={createOne}>Создать</button>
+      <hr />
 
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <label>Недель вперёд</label>
+      {loading ? (
+        <div className="small muted">Загрузка…</div>
+      ) : section === "reminders" ? (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Напоминания</h3>
+          <div className="small">
+            Сначала в нужной группе напиши боту команду <b>/setchat</b>, чтобы назначить чат для уведомлений.
+          </div>
+
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn" onClick={sendReminderNow}>Отправить напоминание сейчас</button>
+          </div>
+
+          {reminderMsg && <div className="small" style={{ marginTop: 8 }}>{reminderMsg}</div>}
+        </div>
+      ) : section === "games" ? (
+        <div className="adminSplit">
+          {/* ===== LEFT: games list */}
+          <div className="card">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0 }}>Игры</h3>
+              <span className="badge">{filteredGames.length}</span>
+            </div>
+
             <input
               className="input"
-              type="number"
-              min={1}
-              max={52}
-              value={weeks}
-              onChange={(e) => setWeeks(Number(e.target.value))}
+              placeholder="Поиск: id / дата / арена / статус"
+              value={gameQ}
+              onChange={(e) => setGameQ(e.target.value)}
+              style={{ marginTop: 10 }}
             />
-          </div>
 
-          <button className="btn secondary" onClick={createSeries}>Создать расписание</button>
-        </div>
-      </div>
+            <div className="row" style={{ marginTop: 10, justifyContent: "space-between", alignItems: "center" }}>
+              <div className="small">
+                Выбрано: <b>{selectedGameIds.size}</b>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn secondary" onClick={selectAllGames}>Выделить</button>
+                <button className="btn secondary" onClick={clearAllGames}>Снять</button>
+              </div>
+            </div>
 
-      <div className="card">
-        <h2>Список игр</h2>
+            <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+              <button className="btn secondary" disabled={selectedGameIds.size === 0} onClick={deleteSelectedGames}>
+                Удалить выбранные
+              </button>
+              <button className="btn secondary" onClick={() => setCreateOpen((v) => !v)}>
+                {createOpen ? "Скрыть создание" : "Создать игру"}
+              </button>
+            </div>
 
-        <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
-          <div className="small">
-            Выбрано: <b>{selected.size}</b>
-          </div>
-          <div className="row">
-            <button className="btn secondary" onClick={selectAll}>Выделить всё</button>
-            <button className="btn secondary" onClick={clearAll}>Снять выделение</button>
-          </div>
-        </div>
+            {createOpen && (
+              <div className="card" style={{ marginTop: 10 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontWeight: 800 }}>Создание</div>
+                </div>
 
-        <div className="row" style={{ marginTop: 10 }}>
-          <button className="btn secondary" disabled={selected.size === 0} onClick={deleteSelected}>
-            Удалить выбранные
-          </button>
-          <button className="btn secondary" onClick={load}>Обновить</button>
-          <button className="btn" onClick={deleteAllGames}>
-            Удалить ВСЕ игры
-          </button>
-        </div>
-
-        <hr />
-
-        {(games || []).map((g) => {
-          const dt = toLocal(g.starts_at);
-          const cancelled = g.status === "cancelled";
-          const checked = selected.has(g.id);
-
-          const guestsState = guestsByGame[g.id] || { loading: false, list: [] };
-          const isGuestPanelHere = guestPanelGameId === g.id;
-
-          return (
-            <div key={g.id} className="card" style={{ opacity: cancelled ? 0.7 : 1 }}>
-              <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
-                <div className="row" style={{ alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggle(g.id)}
-                    style={{ transform: "scale(1.2)" }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 800 }}>
-                      #{g.id} · {dt.date} {dt.time} {cancelled ? "(отменена)" : ""}
-                    </div>
-                    <div className="small">{g.location}</div>
+                <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <label>Дата</label>
+                    <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <label>Время</label>
+                    <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
                   </div>
                 </div>
-                <span className="badge">{g.status}</span>
-              </div>
 
-              <label>Дата/время</label>
-              <div className="row">
-                <input className="input" type="date" defaultValue={dt.date} onChange={(e) => (g._editDate = e.target.value)} />
-                <input className="input" type="time" defaultValue={dt.time} onChange={(e) => (g._editTime = e.target.value)} />
-              </div>
+                <label style={{ marginTop: 10 }}>Арена</label>
+                <input
+                  className="input"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Например: Ледовая арена"
+                />
 
-              <label>Арена</label>
-              <input className="input" defaultValue={g.location} onChange={(e) => (g._editLocation = e.target.value)} />
+                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn" onClick={createOne}>Создать</button>
 
-              <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn" onClick={() => saveGame(g)}>Сохранить</button>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <label>Недель вперёд</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={52}
+                      value={weeks}
+                      onChange={(e) => setWeeks(Number(e.target.value))}
+                    />
+                  </div>
 
-                {g.status === "cancelled" ? (
-                  <button className="btn secondary" onClick={() => setGameStatus(g.id, "scheduled")}>
-                    Вернуть (запланирована)
+                  <button className="btn secondary" onClick={createSeries}>Создать расписание</button>
+                </div>
+
+                <div className="dangerZone" style={{ marginTop: 12 }}>
+                  <div className="small muted">
+                    Опасная зона: кнопка ниже работает только если у тебя реально есть endpoint DELETE /api/games
+                  </div>
+                  <button className="btn" onClick={deleteAllGames} style={{ marginTop: 10 }}>
+                    Удалить ВСЕ игры
                   </button>
-                ) : (
-                  <button className="btn secondary" onClick={() => setGameStatus(g.id, "cancelled")}>
-                    Отменить
-                  </button>
-                )}
+                </div>
+              </div>
+            )}
 
-                <button className="btn secondary" onClick={() => deleteGame(g.id)}>Удалить</button>
+            <hr />
+
+            {filteredGames.length === 0 ? (
+              <div className="small muted">Игр пока нет.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {filteredGames.map((g) => {
+                  const dt = toLocal(g.starts_at);
+                  const isActive = activeGameId === g.id;
+                  const cancelled = g.status === "cancelled";
+                  const checked = selectedGameIds.has(g.id);
+
+                  return (
+                    <div
+                      key={g.id}
+                      className={`card adminListItem ${isActive ? "active" : ""}`}
+                      style={{ opacity: cancelled ? 0.7 : 1 }}
+                      onClick={() => openGame(g)}
+                    >
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => { e.stopPropagation(); toggleGameSelect(g.id); }}
+                            style={{ transform: "scale(1.15)" }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 900 }}>
+                              #{g.id} · {dt.date} {dt.time}
+                            </div>
+                            <div className="small muted">{g.location || "—"}</div>
+                          </div>
+                        </div>
+                        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                          {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+                          <span className="badge">{g.status}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="row" style={{ marginTop: 10, gap: 8 }}>
-                <button className="btn secondary" onClick={() => toggleVideo(g.id)}>
-                  {videoOpen.has(g.id)
-                    ? "Скрыть ссылку"
-                    : (g.video_url ? "Изменить видео" : "Добавить видео")}
-                </button>
-              
-                {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
-              </div>
-              
-              {videoOpen.has(g.id) && (
-                <>
-                  <label>Ссылка на видео (YouTube)</label>
+            )}
+          </div>
+
+          {/* ===== RIGHT: game detail */}
+          <div className="card">
+            {!gameDraft ? (
+              <div className="small muted">Выбери игру слева, чтобы редактировать.</div>
+            ) : (
+              <>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <h3 style={{ margin: 0 }}>Игра #{gameDraft.id}</h3>
+                  <button className="btn secondary" onClick={() => deleteGame(gameDraft.id)}>Удалить</button>
+                </div>
+
+                <hr />
+
+                <label>Дата/время</label>
+                <div className="row">
                   <input
                     className="input"
-                    defaultValue={g.video_url || ""}
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    onChange={(e) => (g._editVideoUrl = e.target.value)}
+                    type="date"
+                    value={gameDraft.date}
+                    onChange={(e) => setGameDraft((d) => ({ ...d, date: e.target.value }))}
                   />
-                  <div className="small" style={{ opacity: 0.8 }}>
-                    Оставь пустым и нажми “Сохранить” — ссылка удалится
-                  </div>
-                </>
-              )}
-              <hr />
+                  <input
+                    className="input"
+                    type="time"
+                    value={gameDraft.time}
+                    onChange={(e) => setGameDraft((d) => ({ ...d, time: e.target.value }))}
+                  />
+                </div>
 
-              {/* ГОСТИ В ЭТОЙ ИГРЕ */}
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <div className="small" style={{ fontWeight: 800 }}>Гости</div>
-                <div className="row">
+                <label>Арена</label>
+                <input
+                  className="input"
+                  value={gameDraft.location}
+                  onChange={(e) => setGameDraft((d) => ({ ...d, location: e.target.value }))}
+                />
+
+                <label>Статус</label>
+                <select
+                  value={gameDraft.status}
+                  onChange={(e) => setGameDraft((d) => ({ ...d, status: e.target.value }))}
+                >
+                  <option value="scheduled">scheduled</option>
+                  <option value="cancelled">cancelled</option>
+                </select>
+
+                <label>Ссылка на видео (YouTube)</label>
+                <input
+                  className="input"
+                  value={gameDraft.video_url}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  onChange={(e) => setGameDraft((d) => ({ ...d, video_url: e.target.value }))}
+                />
+                <div className="small muted">
+                  Оставь пустым и нажми “Сохранить” — ссылка удалится
+                </div>
+
+                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn" onClick={saveGameDraft}>Сохранить</button>
                   <button
                     className="btn secondary"
                     onClick={() => {
-                      loadGuestsForGame(g.id, true);
-                      setGuestPanelGameId(g.id);
+                      // перезагрузка draft из текущих данных
+                      const g = (games || []).find((x) => x.id === gameDraft.id);
+                      if (g) openGame(g);
                     }}
                   >
-                    Обновить гостей
-                  </button>
-                  <button className="btn" onClick={() => openAddGuest(g.id)}>
-                    + Добавить гостя
+                    Сбросить правки
                   </button>
                 </div>
-              </div>
 
-              {guestsState.loading ? (
-                <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю гостей…</div>
-              ) : (
-                <>
-                  {(guestsState.list || []).length === 0 ? (
-                    <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Гостей пока нет.</div>
-                  ) : (
+                <hr />
+
+                {/* Guests block */}
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="small" style={{ fontWeight: 900 }}>Гости</div>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <button className="btn secondary" onClick={() => loadGuestsForGame(gameDraft.id, true)}>
+                      Обновить гостей
+                    </button>
+                    <button className="btn" onClick={() => openAddGuest(gameDraft.id)}>
+                      + Добавить гостя
+                    </button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const st = guestsByGame[gameDraft.id] || { loading: false, list: [] };
+                  if (st.loading) return <div className="small muted" style={{ marginTop: 8 }}>Загружаю гостей…</div>;
+                  if ((st.list || []).length === 0) return <div className="small muted" style={{ marginTop: 8 }}>Гостей пока нет.</div>;
+                  return (
                     <div style={{ marginTop: 8 }}>
-                      {guestsState.list.map((guestRow) => (
+                      {st.list.map((guestRow) => (
                         <GuestPill
                           key={guestRow.tg_id}
                           g={guestRow}
-                          onEdit={() => openEditGuest(g.id, guestRow)}
+                          onEdit={() => openEditGuest(gameDraft.id, guestRow)}
                           onDel={() => deleteGuest(guestRow.tg_id)}
                         />
                       ))}
                     </div>
-                  )}
-                </>
-              )}
+                  );
+                })()}
 
-              {/* ФОРМА ГОСТЯ (появляется только после кнопки) */}
-              {isGuestPanelHere && guestFormOpen && (
-                <div className="card" style={{ marginTop: 10 }}>
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 800 }}>
-                      {guestEditingId ? "Редактировать гостя" : "Добавить гостя"}
-                    </div>
-                    <button className="btn secondary" onClick={() => setGuestFormOpen(false)}>
-                      Закрыть
-                    </button>
-                  </div>
-
-                  <div className="guestFormGrid" style={{ marginTop: 10 }}>
-                    <div className="full">
-                      <label>Имя гостя</label>
-                      <input
-                        className="input"
-                        value={guestDraft.display_name}
-                        onChange={(e) => setGuestDraft(d => ({ ...d, display_name: e.target.value }))}
-                        placeholder="Например: Саша (гость)"
-                      />
+                {guestFormOpen && guestPanelGameId === gameDraft.id && (
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ fontWeight: 900 }}>
+                        {guestEditingId ? "Редактировать гостя" : "Добавить гостя"}
+                      </div>
+                      <button className="btn secondary" onClick={() => setGuestFormOpen(false)}>Закрыть</button>
                     </div>
 
-                    <div>
-                      <label>Номер</label>
-                      <input
-                        className="input"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="0–99"
-                        value={guestDraft.jersey_number}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/[^\d]/g, "").slice(0, 2);
-                          setGuestDraft(d => ({ ...d, jersey_number: v }));
-                        }}
-                      />
-                    </div>
+                    <div className="guestFormGrid" style={{ marginTop: 10 }}>
+                      <div className="full">
+                        <label>Имя гостя</label>
+                        <input
+                          className="input"
+                          value={guestDraft.display_name}
+                          onChange={(e) => setGuestDraft((d) => ({ ...d, display_name: e.target.value }))}
+                          placeholder="Например: Саша (гость)"
+                        />
+                      </div>
 
-                    <div>
-                      <label>Позиция</label>
-                      <select
-                        value={guestDraft.position}
-                        onChange={(e) => setGuestDraft(d => ({ ...d, position: e.target.value }))}
-                      >
-                        <option value="F">F (нападающий)</option>
-                        <option value="D">D (защитник)</option>
-                        <option value="G">G (вратарь)</option>
-                      </select>
-                    </div>
+                      <div>
+                        <label>Номер</label>
+                        <input
+                          className="input"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="0–99"
+                          value={guestDraft.jersey_number}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/[^\d]/g, "").slice(0, 2);
+                            setGuestDraft((d) => ({ ...d, jersey_number: v }));
+                          }}
+                        />
+                      </div>
 
-                    <div className="full">
-                      <label>Статус на игру</label>
-                      <div className="row">
-                        <button
-                          className={guestDraft.status === "yes" ? "btn" : "btn secondary"}
-                          onClick={() => setGuestDraft(d => ({ ...d, status: "yes" }))}
+                      <div>
+                        <label>Позиция</label>
+                        <select
+                          value={guestDraft.position}
+                          onChange={(e) => setGuestDraft((d) => ({ ...d, position: e.target.value }))}
                         >
-                          ✅ Будет
+                          <option value="F">F (нападающий)</option>
+                          <option value="D">D (защитник)</option>
+                          <option value="G">G (вратарь)</option>
+                        </select>
+                      </div>
+
+                      <div className="full">
+                        <label>Статус на игру</label>
+                        <div className="row">
+                          <button
+                            className={guestDraft.status === "yes" ? "btn" : "btn secondary"}
+                            onClick={() => setGuestDraft((d) => ({ ...d, status: "yes" }))}
+                          >
+                            ✅ Будет
+                          </button>
+                          <button
+                            className={guestDraft.status === "maybe" ? "btn" : "btn secondary"}
+                            onClick={() => setGuestDraft((d) => ({ ...d, status: "maybe" }))}
+                          >
+                            ❓ Под вопросом
+                          </button>
+                          <button
+                            className={guestDraft.status === "no" ? "btn" : "btn secondary"}
+                            onClick={() => setGuestDraft((d) => ({ ...d, status: "no" }))}
+                          >
+                            ❌ Не будет
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="row full" style={{ gap: 10, flexWrap: "wrap" }}>
+                        {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+                          <div key={k} style={{ flex: 1, minWidth: 130 }}>
+                            <label>{k}</label>
+                            <input
+                              className="input"
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={guestDraft[k]}
+                              onChange={(e) => setGuestDraft((d) => ({ ...d, [k]: Number(e.target.value || 5) }))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="full">
+                        <label>Заметки</label>
+                        <textarea
+                          className="input"
+                          rows={2}
+                          value={guestDraft.notes}
+                          onChange={(e) => setGuestDraft((d) => ({ ...d, notes: e.target.value }))}
+                        />
+                      </div>
+
+                      <div className="row full" style={{ marginTop: 6, gap: 8, flexWrap: "wrap" }}>
+                        <button className="btn" onClick={saveGuest}>
+                          {guestEditingId ? "Сохранить изменения" : "Добавить гостя"}
                         </button>
                         <button
-                          className={guestDraft.status === "maybe" ? "btn" : "btn secondary"}
-                          onClick={() => setGuestDraft(d => ({ ...d, status: "maybe" }))}
+                          className="btn secondary"
+                          onClick={() => {
+                            setGuestEditingId(null);
+                            setGuestDraft({ ...GUEST_DEFAULT });
+                          }}
                         >
-                          ❓ Под вопросом
-                        </button>
-                        <button
-                          className={guestDraft.status === "no" ? "btn" : "btn secondary"}
-                          onClick={() => setGuestDraft(d => ({ ...d, status: "no" }))}
-                        >
-                          ❌ Не будет
+                          Очистить
                         </button>
                       </div>
                     </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        // ===== PLAYERS section
+        <div className="adminSplit">
+          {/* LEFT: players list */}
+          <div className="card">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0 }}>Игроки</h3>
+              <span className="badge">{filteredPlayers.length}</span>
+            </div>
 
-                    <div className="row full" style={{ gap: 10, flexWrap: "wrap" }}>
-                      {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
-                        <div key={k} style={{ flex: 1, minWidth: 130 }}>
-                          <label>{k}</label>
-                          <input
-                            className="input"
-                            type="number"
-                            min={1}
-                            max={10}
-                            value={guestDraft[k]}
-                            onChange={(e) => setGuestDraft(d => ({ ...d, [k]: Number(e.target.value || 5) }))}
-                          />
+            <input
+              className="input"
+              placeholder="Поиск: имя / username / id / номер"
+              value={playerQ}
+              onChange={(e) => setPlayerQ(e.target.value)}
+              style={{ marginTop: 10 }}
+            />
+
+            <hr />
+
+            {filteredPlayers.length === 0 ? (
+              <div className="small muted">Игроков нет.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {filteredPlayers.map((p) => {
+                  const isActive = activePlayerId === p.tg_id;
+                  return (
+                    <div
+                      key={p.tg_id}
+                      className={`card adminListItem ${isActive ? "active" : ""}`}
+                      onClick={() => openPlayer(p)}
+                    >
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 900 }}>
+                            {showName(p)}{showNum(p)}{" "}
+                            {p.username ? <span className="small muted">(@{p.username})</span> : null}
+                          </div>
+                          <div className="small muted">
+                            tg_id: {p.tg_id}
+                            {p.is_guest ? " · 🧷 гость" : ""}
+                            {p.is_admin ? " · ⭐ админ" : ""}
+                            {p.is_env_admin ? " · 🔒 env-админ" : ""}
+                          </div>
                         </div>
-                      ))}
+                        <span className="badge">{p.disabled ? "disabled" : "active"}</span>
+                      </div>
                     </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-                    <div className="full">
-                      <label>Заметки</label>
-                      <textarea
-                        className="input"
-                        rows={2}
-                        value={guestDraft.notes}
-                        onChange={(e) => setGuestDraft(d => ({ ...d, notes: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="row full" style={{ marginTop: 6 }}>
-                      <button className="btn" onClick={saveGuest}>
-                        {guestEditingId ? "Сохранить изменения" : "Добавить гостя"}
-                      </button>
-                      <button
-                        className="btn secondary"
-                        onClick={() => {
-                          setGuestEditingId(null);
-                          setGuestDraft({ ...GUEST_DEFAULT });
-                        }}
-                      >
-                        Очистить
-                      </button>
-                    </div>
+          {/* RIGHT: player detail */}
+          <div className="card">
+            {!playerDraft ? (
+              <div className="small muted">Выбери игрока слева, чтобы редактировать.</div>
+            ) : (
+              <>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <h3 style={{ margin: 0 }}>
+                    {showName(playerDraft)}{showNum(playerDraft)}
+                  </h3>
+                  <div className="row" style={{ gap: 8 }}>
+                    {playerDraft.disabled ? <span className="badge">disabled</span> : <span className="badge">active</span>}
                   </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
 
-        {games.length === 0 && <div className="small">Пока игр нет.</div>}
-      </div>
-
-      <div className="card">
-        <h2>Игроки</h2>
-        <input
-          className="input"
-          placeholder="Поиск по имени/username/id"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <hr />
-
-        {filteredPlayers.map((p) => (
-          <div key={p.tg_id} className="card">
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 800 }}>
-                  {showName(p)}{showNum(p)}{" "}
-                  {p.username ? <span className="small">(@{p.username})</span> : null}
+                <div className="small muted" style={{ marginTop: 6 }}>
+                  tg_id: {playerDraft.tg_id}
+                  {playerDraft.is_guest ? " · 🧷 гость" : ""}
+                  {playerDraft.is_admin ? " · ⭐ админ" : ""}
+                  {playerDraft.is_env_admin ? " · 🔒 env-админ" : ""}
                 </div>
-                <div className="small">
-                  tg_id: {p.tg_id}{" "}
-                  {p.is_guest ? " · 🧷 гость" : ""}
-                  {p.is_admin ? " · ⭐ админ" : ""}
-                  {p.is_env_admin ? " · 🔒 env-админ" : ""}
+
+                <hr />
+
+                <label>display_name</label>
+                <input
+                  className="input"
+                  value={playerDraft.display_name}
+                  onChange={(e) => setPlayerDraft((d) => ({ ...d, display_name: e.target.value }))}
+                  placeholder="Если пусто — будет Telegram first_name/username"
+                />
+
+                <label>Номер (0–99)</label>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={playerDraft.jersey_number}
+                  onChange={(e) => setPlayerDraft((d) => ({ ...d, jersey_number: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))}
+                />
+
+                <label>Позиция (F/D/G)</label>
+                <select
+                  value={playerDraft.position}
+                  onChange={(e) => setPlayerDraft((d) => ({ ...d, position: e.target.value }))}
+                >
+                  <option value="F">F</option>
+                  <option value="D">D</option>
+                  <option value="G">G</option>
+                </select>
+
+                <div className="row">
+                  {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+                    <div key={k} style={{ flex: 1, minWidth: 120 }}>
+                      <label>{k}</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={playerDraft[k]}
+                        onChange={(e) => setPlayerDraft((d) => ({ ...d, [k]: Number(e.target.value || 5) }))}
+                      />
+                    </div>
+                  ))}
                 </div>
-              </div>
 
-              <span className="badge">{p.disabled ? "disabled" : "active"}</span>
-            </div>
+                <label>Заметки</label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={playerDraft.notes}
+                  onChange={(e) => setPlayerDraft((d) => ({ ...d, notes: e.target.value }))}
+                />
 
-            <label>Отображаемое имя (display_name)</label>
-            <input
-              className="input"
-              defaultValue={p.display_name || ""}
-              onChange={(e) => (p._display_name = e.target.value)}
-              placeholder="Если пусто — будет Telegram first_name/username"
-            />
-
-            <label>Номер (0–99)</label>
-            <input
-              className="input"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              defaultValue={p.jersey_number ?? ""}
-              onChange={(e) => (p._jersey_number = e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
-            />
-
-            <label>Позиция (F/D/G)</label>
-            <select defaultValue={(p.position || "F").toUpperCase()} onChange={(e) => (p._position = e.target.value)}>
-              <option value="F">F</option>
-              <option value="D">D</option>
-              <option value="G">G</option>
-            </select>
-
-            <div className="row">
-              {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
-                <div key={k} style={{ flex: 1, minWidth: 120 }}>
-                  <label>{k}</label>
+                <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                  <label style={{ margin: 0 }}>Отключить</label>
                   <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    max={10}
-                    defaultValue={p[k] ?? 5}
-                    onChange={(e) => (p[`_${k}`] = e.target.value)}
+                    type="checkbox"
+                    checked={!!playerDraft.disabled}
+                    onChange={(e) => setPlayerDraft((d) => ({ ...d, disabled: e.target.checked }))}
                   />
                 </div>
-              ))}
-            </div>
 
-            <label>Заметки</label>
-            <textarea className="input" rows={2} defaultValue={p.notes || ""} onChange={(e) => (p._notes = e.target.value)} />
+                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn" onClick={savePlayerDraft}>Сохранить игрока</button>
 
-            <div className="row" style={{ alignItems: "center" }}>
-              <label style={{ margin: 0 }}>Отключить</label>
-              <input type="checkbox" defaultChecked={!!p.disabled} onChange={(e) => (p._disabled = e.target.checked)} />
-            </div>
+                  {isSuperAdmin && !playerDraft.is_guest && (
+                    <button className="btn secondary" onClick={toggleAdminForPlayerDraft}>
+                      {playerDraft.is_admin ? "Снять админа" : "Сделать админом"}
+                    </button>
+                  )}
 
-            <div className="row" style={{ marginTop: 10 }}>
-              <button className="btn" onClick={() => savePlayer(p)}>Сохранить игрока</button>
-
-              {isSuperAdmin && !p.is_guest && (
-                <button className="btn secondary" onClick={() => toggleAdmin(p)}>
-                  {p.is_admin ? "Снять админа" : "Сделать админом"}
-                </button>
-              )}
-            </div>
+                  <button
+                    className="btn secondary"
+                    onClick={() => {
+                      const p = (players || []).find((x) => x.tg_id === playerDraft.tg_id);
+                      if (p) openPlayer(p);
+                    }}
+                  >
+                    Сбросить правки
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
