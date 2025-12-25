@@ -23,6 +23,23 @@ input.input[type="time"]{
   display: block;
 }
 
+
+/* iOS fix: “обрубает” вылезание нативного date/time */
+.iosField{
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 14px; /* подгони под твой input */
+}
+
+/* важно: сам input тоже ограничиваем */
+.iosField > .input{
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* доп. страховка от горизонтального скролла в Sheet */
 /* иногда помогает именно на iOS (не ломает пикер) */
 input.input[type="date"]::-webkit-date-and-time-value,
 input.input[type="time"]::-webkit-date-and-time-value{
