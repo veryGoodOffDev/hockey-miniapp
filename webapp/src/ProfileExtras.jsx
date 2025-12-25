@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { apiGet } from "./api.js";
 import { apiUpload } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
+import { useMemo } from "react";
+import { CHANGELOG } from "./changelog.js";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "";
 
@@ -106,46 +108,33 @@ export function SupportForm() {
   );
 }
 
+
 export function AboutBlock() {
-  const [loading, setLoading] = useState(false);
-  const [updates, setUpdates] = useState([]);
-  const [err, setErr] = useState(null);
-
-  async function loadUpdates() {
-    setErr(null);
-    setLoading(true);
-    try {
-      const r = await apiGet("/api/updates");
-      setUpdates(r.updates || []);
-    } catch (e) {
-      setErr("Не удалось загрузить апдейты.");
-      setUpdates([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadUpdates();
+  const updates = useMemo(() => {
+    const toKey = (s) => {
+      const [dd, mm, yy] = String(s || "").split(".");
+      return Number(`${yy}${mm}${dd}`) || 0; // YYYYMMDD
+    };
+    return [...(CHANGELOG || [])].sort((a, b) => toKey(b.released_at) - toKey(a.released_at));
   }, []);
+
+  const current = updates[0] || null;                 // ✅ самая свежая запись
+  const currentVersion = current?.version || "—";     // ✅ версия из changelog
+  const currentDate = current?.released_at || "—";
 
   return (
     <div>
       <div className="small" style={{ lineHeight: 1.6 }}>
         <b>HockeyLineUp</b> — мини-приложение для отметок на игру, составов и статистики.
         <br />
-        Версия: <b>{APP_VERSION || "—"}</b>
+        Версия: <b>v{currentVersion}</b> <span style={{ opacity: 0.8 }}>({currentDate})</span>
       </div>
 
       <hr />
 
       <div style={{ fontWeight: 900 }}>📦 История обновлений</div>
 
-      {loading ? (
-        <HockeyLoader text="Загружаем апдейты..." />
-      ) : err ? (
-        <div className="small" style={{ opacity: 0.85 }}>{err}</div>
-      ) : updates.length === 0 ? (
+      {updates.length === 0 ? (
         <div className="small" style={{ opacity: 0.85 }}>Пока апдейтов нет.</div>
       ) : (
         <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
@@ -154,8 +143,18 @@ export function AboutBlock() {
               <div style={{ fontWeight: 900 }}>
                 v{u.version} · {u.released_at}
               </div>
-              {u.title ? <div className="small" style={{ opacity: 0.85, marginTop: 4 }}>{u.title}</div> : null}
-              {u.body_md ? <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{u.body_md}</div> : null}
+
+              {u.title ? (
+                <div className="small" style={{ opacity: 0.85, marginTop: 4 }}>
+                  {u.title}
+                </div>
+              ) : null}
+
+              {u.body_md ? (
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {u.body_md}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -163,6 +162,7 @@ export function AboutBlock() {
     </div>
   );
 }
+
 
 function detectPlatform() {
   const ua = navigator.userAgent.toLowerCase();
