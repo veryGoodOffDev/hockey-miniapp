@@ -15,6 +15,25 @@ export function SupportForm() {
   const [sentId, setSentId] = useState(null);
   const [err, setErr] = useState(null);
 
+function fmtDate(d) {
+  if (!d) return "—";
+  const dt = new Date(d); // поддержит "2025-12-25"
+  if (Number.isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function sortKey(d) {
+  // YYYY-MM-DD -> number YYYYMMDD
+  const s = String(d || "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return Number(s.replaceAll("-", ""));
+  // DD.MM.YYYY -> number YYYYMMDD
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
+    const [dd, mm, yy] = s.split(".");
+    return Number(`${yy}${mm}${dd}`);
+  }
+  return 0;
+}
+
   async function submit() {
     setErr(null);
     setSentId(null);
@@ -109,18 +128,28 @@ export function SupportForm() {
 }
 
 
+
+
 export function AboutBlock() {
   const updates = useMemo(() => {
-    const toKey = (s) => {
-      const [dd, mm, yy] = String(s || "").split(".");
-      return Number(`${yy}${mm}${dd}`) || 0; // YYYYMMDD
-    };
-    return [...(CHANGELOG || [])].sort((a, b) => toKey(b.released_at) - toKey(a.released_at));
+    const src = Array.isArray(CHANGELOG) ? CHANGELOG : [];
+    const normalized = src.map((u) => ({
+      version: u.version,
+      title: u.title || "",
+      // поддерживаем оба формата
+      date: u.date || u.released_at || "",
+      items: Array.isArray(u.items) ? u.items : [],
+      body_md: u.body_md || "",
+    }));
+
+    // сортируем по дате (свежие сверху)
+    normalized.sort((a, b) => sortKey(b.date) - sortKey(a.date));
+    return normalized;
   }, []);
 
-  const current = updates[0] || null;                 // ✅ самая свежая запись
-  const currentVersion = current?.version || "—";     // ✅ версия из changelog
-  const currentDate = current?.released_at || "—";
+  const current = updates[0] || null;
+  const currentVersion = current?.version || "—";
+  const currentDate = fmtDate(current?.date);
 
   return (
     <div>
@@ -139,9 +168,9 @@ export function AboutBlock() {
       ) : (
         <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
           {updates.map((u) => (
-            <div key={`${u.version}-${u.released_at}`} className="card" style={{ borderRadius: 12 }}>
+            <div key={`${u.version}-${u.date}`} className="card" style={{ borderRadius: 12 }}>
               <div style={{ fontWeight: 900 }}>
-                v{u.version} · {u.released_at}
+                v{u.version} · {fmtDate(u.date)}
               </div>
 
               {u.title ? (
@@ -150,7 +179,19 @@ export function AboutBlock() {
                 </div>
               ) : null}
 
-              {u.body_md ? (
+              {/* ✅ основной формат: items[] */}
+              {u.items?.length ? (
+                <ul style={{ marginTop: 10, paddingLeft: 18 }}>
+                  {u.items.map((it, idx) => (
+                    <li key={idx} style={{ marginTop: 6 }}>
+                      {it}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {/* ✅ fallback: body_md (если вдруг где-то используешь старый формат) */}
+              {!u.items?.length && u.body_md ? (
                 <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
                   {u.body_md}
                 </div>
@@ -162,6 +203,7 @@ export function AboutBlock() {
     </div>
   );
 }
+
 
 
 function detectPlatform() {
