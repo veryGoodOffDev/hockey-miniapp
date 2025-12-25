@@ -677,7 +677,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
             <div className="iosField">
               <input
                 className="input"
-                style={{ paddingRight:"20px" }}
+                style={{ paddingRight:20 }}
                 type="date"
                 value={gameDraft.date}
                 onChange={(e) => setGameDraft((d) => ({ ...d, date: e.target.value }))}
@@ -688,7 +688,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
             <div className="iosField">
               <input
                 className="input"
-                style={{ paddingRight:"20px" }}
+                style={{ paddingRight:20 }}
                 type="time"
                 value={gameDraft.time}
                 onChange={(e) => setGameDraft((d) => ({ ...d, time: e.target.value }))}
