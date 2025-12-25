@@ -801,3 +801,55 @@ textarea:focus{
   max-height: 82vh;
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
+.gameListItem{
+  cursor: pointer;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card-bg);
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+
+.gameListItem:active{
+  transform: translateY(1px);
+}
+
+.gameListItem:hover{
+  border-color: color-mix(in srgb, var(--tg-text) 18%, var(--border));
+  background: color-mix(in srgb, var(--tg-text) 4%, var(--card-bg));
+}
+
+.gameListItem.isCancelled{
+  opacity: .72;
+}
+
+.gameTitle{
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: .2px;
+}
+
+.gameArena{
+  margin-top: 6px;
+  font-size: 13px;
+  opacity: .9;
+}
+
+.gameVideoTag{
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--tg-text) 6%, transparent);
+  font-size: 12px;
+  font-weight: 800;
+  width: fit-content;
+}
+
+.badgeMini.bad{
+  opacity: .85;
+  filter: saturate(.7);
+}
