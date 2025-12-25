@@ -50,6 +50,9 @@ export default function App() {
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
   const [authReason, setAuthReason] = useState(null);   // invalid_init_data | no_user | ...
   const [gamesError, setGamesError] = useState(null);   // объект ошибки /api/games
+  const [profileView, setProfileView] = useState("me"); 
+        // me | support | about
+
 
   
   function normalizeTeams(t) {
@@ -746,91 +749,119 @@ if (!me && authReason) {
       {/* ====== PROFILE ====== */}
       {tab === "profile" && (
         <div className="card">
-          <h2>Мой профиль</h2>
-          <div className="small">Заполни один раз — дальше просто отмечайся.</div>
-
-          <div style={{ marginTop: 10 }}>
-            <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
-            <input
-              className="input"
-              type="text"
-              placeholder={me?.first_name || "Например: Илья"}
-              value={me?.display_name ?? ""}
-              onChange={(e) => setMe({ ...me, display_name: e.target.value })}
-            />
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label>Номер игрока (0–99)</label>
-            <input
-              className="input"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Например: 17"
-              value={me?.jersey_number == null ? "" : String(me.jersey_number)}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/[^\d]/g, "");
-                if (raw === "") return setMe({ ...me, jersey_number: null });
-                const n = Math.max(0, Math.min(99, parseInt(raw, 10)));
-                setMe({ ...me, jersey_number: n });
-              }}
-            />
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label>Позиция</label>
-            <select value={me?.position || "F"} onChange={(e) => setMe({ ...me, position: e.target.value })}>
-              <option value="F">F (нападающий)</option>
-              <option value="D">D (защитник)</option>
-              <option value="G">G (вратарь)</option>
-            </select>
-          </div>
-
-          {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
-            <div key={k} style={{ marginTop: 10 }}>
-              <label>{label(k)} (1–10)</label>
-              <input
-                className="input"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="1–10"
-                value={me?.[k] == null ? "" : String(me[k])}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^\d]/g, "");
-                  if (raw === "") return setMe({ ...me, [k]: null });
-                  const n = Math.max(1, Math.min(10, parseInt(raw, 10)));
-                  setMe({ ...me, [k]: n });
-                }}
-              />
-            </div>
-          ))}
-          <div style={{ marginTop: 10 }}>
-          <label>Фото (ссылка на картинку)</label>
-            <input
-              className="input"
-              type="text"
-              placeholder="https://...jpg/png/webp"
-              value={me?.photo_url ?? ""}
-              onChange={(e) => setMe({ ...me, photo_url: e.target.value })}
-            />
-            <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
-              Быстрый вариант: вставь ссылку (позже сделаем загрузку через бота).
-            </div>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label>Комментарий</label>
-            <textarea className="input" rows={3} value={me?.notes || ""} onChange={(e) => setMe({ ...me, notes: e.target.value })} />
-          </div>
-
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn" onClick={saveProfile} disabled={saving}>
-              {saving ? "Сохраняю..." : "Сохранить"}
+          <h2>Профиль</h2>
+      
+          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+            <button className={profileView === "me" ? "btn" : "btn secondary"} onClick={() => setProfileView("me")}>
+              👤 Мой профиль
+            </button>
+            <button className={profileView === "support" ? "btn" : "btn secondary"} onClick={() => setProfileView("support")}>
+              🛟 Техподдержка
+            </button>
+            <button className={profileView === "about" ? "btn" : "btn secondary"} onClick={() => setProfileView("about")}>
+              ℹ️ О приложении
             </button>
           </div>
-        </div>
+              {profileView === "me" && (
+                <>
+                  <div className="card">
+                    <h2>Мой профиль</h2>
+                    <div className="small">Заполни один раз — дальше просто отмечайся.</div>
+          
+                    <div style={{ marginTop: 10 }}>
+                      <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
+                      <input
+                        className="input"
+                        type="text"
+                        placeholder={me?.first_name || "Например: Илья"}
+                        value={me?.display_name ?? ""}
+                        onChange={(e) => setMe({ ...me, display_name: e.target.value })}
+                      />
+                    </div>
+          
+                    <div style={{ marginTop: 10 }}>
+                      <label>Номер игрока (0–99)</label>
+                      <input
+                        className="input"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="Например: 17"
+                        value={me?.jersey_number == null ? "" : String(me.jersey_number)}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^\d]/g, "");
+                          if (raw === "") return setMe({ ...me, jersey_number: null });
+                          const n = Math.max(0, Math.min(99, parseInt(raw, 10)));
+                          setMe({ ...me, jersey_number: n });
+                        }}
+                      />
+                    </div>
+          
+                    <div style={{ marginTop: 10 }}>
+                      <label>Позиция</label>
+                      <select value={me?.position || "F"} onChange={(e) => setMe({ ...me, position: e.target.value })}>
+                        <option value="F">F (нападающий)</option>
+                        <option value="D">D (защитник)</option>
+                        <option value="G">G (вратарь)</option>
+                      </select>
+                    </div>
+          
+                    {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+                      <div key={k} style={{ marginTop: 10 }}>
+                        <label>{label(k)} (1–10)</label>
+                        <input
+                          className="input"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="1–10"
+                          value={me?.[k] == null ? "" : String(me[k])}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^\d]/g, "");
+                            if (raw === "") return setMe({ ...me, [k]: null });
+                            const n = Math.max(1, Math.min(10, parseInt(raw, 10)));
+                            setMe({ ...me, [k]: n });
+                          }}
+                        />
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 10 }}>
+                    <label>Фото (ссылка на картинку)</label>
+                      <input
+                        className="input"
+                        type="text"
+                        placeholder="https://...jpg/png/webp"
+                        value={me?.photo_url ?? ""}
+                        onChange={(e) => setMe({ ...me, photo_url: e.target.value })}
+                      />
+                      <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
+                        Быстрый вариант: вставь ссылку (позже сделаем загрузку через бота).
+                      </div>
+                    </div>
+          
+                    <div style={{ marginTop: 10 }}>
+                      <label>Комментарий</label>
+                      <textarea className="input" rows={3} value={me?.notes || ""} onChange={(e) => setMe({ ...me, notes: e.target.value })} />
+                    </div>
+          
+                    <div className="row" style={{ marginTop: 12 }}>
+                      <button className="btn" onClick={saveProfile} disabled={saving}>
+                        {saving ? "Сохраняю..." : "Сохранить"}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+
+                {profileView === "support" && (
+                  <SupportForm />
+                )}
+            
+                {profileView === "about" && (
+                  <AboutBlock />
+                )}
+          </div>
       )}
 
       {/* ====== TEAMS ====== */}
