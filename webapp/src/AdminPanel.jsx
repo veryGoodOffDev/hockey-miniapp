@@ -595,28 +595,39 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
 
             <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
               {(games || []).map((g) => {
-                const dt = toLocal(g.starts_at);
+                const dt = toLocal(g.starts_at); // { date: "YYYY-MM-DD", time: "HH:MM" }
                 const cancelled = g.status === "cancelled";
+            
+                // День недели + формат "Вс, 28.12.2025"
+                const d = new Date(g.starts_at);
+                const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(d); // "вс"
+                const prettyDate = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d); // "28.12.2025"
+                const head = `${weekday}, ${prettyDate}, ${dt.time}`;
+            
                 return (
                   <div
                     key={g.id}
-                    className="listItem"
-                    style={{ opacity: cancelled ? 0.75 : 1 }}
+                    className={`listItem gameListItem ${cancelled ? "isCancelled" : ""}`}
                     onClick={() => openGameSheet(g)}
                   >
                     <div className="rowBetween">
-                      <div style={{ fontWeight: 900 }}>
-                        #{g.id} · {dt.date} {dt.time}
+                      <div className="gameTitle">{head}</div>
+                      <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{g.status}</span>
+                    </div>
+            
+                    <div className="gameArena">
+                      {g.location || "—"}
+                    </div>
+            
+                    {g.video_url ? (
+                      <div className="gameVideoTag" title="Есть видео">
+                        ▶️ Видео
                       </div>
-                      <span className="badgeMini">{g.status}</span>
-                    </div>
-                    <div className="listMeta">
-                      {g.location || "—"} {g.video_url ? " · ▶️ видео" : ""}
-                      {cancelled ? " · отменена" : ""}
-                    </div>
+                    ) : null}
                   </div>
                 );
               })}
+            
               {games.length === 0 && <div className="small">Пока игр нет.</div>}
             </div>
           </div>
