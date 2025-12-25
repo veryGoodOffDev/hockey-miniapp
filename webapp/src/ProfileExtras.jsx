@@ -15,24 +15,6 @@ export function SupportForm() {
   const [sentId, setSentId] = useState(null);
   const [err, setErr] = useState(null);
 
-function fmtDate(d) {
-  if (!d) return "—";
-  const dt = new Date(d); // поддержит "2025-12-25"
-  if (Number.isNaN(dt.getTime())) return String(d);
-  return dt.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function sortKey(d) {
-  // YYYY-MM-DD -> number YYYYMMDD
-  const s = String(d || "");
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return Number(s.replaceAll("-", ""));
-  // DD.MM.YYYY -> number YYYYMMDD
-  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
-    const [dd, mm, yy] = s.split(".");
-    return Number(`${yy}${mm}${dd}`);
-  }
-  return 0;
-}
 
   async function submit() {
     setErr(null);
@@ -204,7 +186,24 @@ export function AboutBlock() {
   );
 }
 
+function fmtDate(d) {
+  if (!d) return "—";
+  const dt = new Date(d); // поддержит "2025-12-25"
+  if (Number.isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
+function sortKey(d) {
+  // YYYY-MM-DD -> number YYYYMMDD
+  const s = String(d || "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return Number(s.replaceAll("-", ""));
+  // DD.MM.YYYY -> number YYYYMMDD
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
+    const [dd, mm, yy] = s.split(".");
+    return Number(`${yy}${mm}${dd}`);
+  }
+  return 0;
+}
 
 function detectPlatform() {
   const ua = navigator.userAgent.toLowerCase();
