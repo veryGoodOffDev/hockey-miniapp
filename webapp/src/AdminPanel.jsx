@@ -728,136 +728,145 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </div>
       )}
 
-      {/* ====== GAMES ====== */}
-      {section === "games" && (
-        <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-          <div className="card">
-            <h2>Создать игру</h2>
+     {/* ====== GAMES ====== */}
+{section === "games" && (
+  <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+    <div className="card">
+      <h2>Создать игру</h2>
 
-            <div className="datetimeRow" style={{ paddingRight: 15 }}>
-              <label>Дата</label>
-              <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
+      <div className="datetimeRow" style={{ paddingRight: 15 }}>
+        <label>Дата</label>
+        <input
+          className="input"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
 
-            <div className="datetimeRow" style={{ marginTop: 10, paddingRight: 15 }}>
-              <label>Время</label>
-              <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
+      <div className="datetimeRow" style={{ marginTop: 10, paddingRight: 15 }}>
+        <label>Время</label>
+        <input
+          className="input"
+          type="time"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+        />
+      </div>
 
-            <label>Арена</label>
-            <input
-              className="input"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Например: Ледовая арена"
-            />
+      <label>Арена</label>
+      <input
+        className="input"
+        value={location}
+        onChange={(e) => setLocation(e.target.value)}
+        placeholder="Например: Ледовая арена"
+      />
 
-            <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
-              <button className="btn" onClick={createOne}>Создать</button>
+      <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
+        <button className="btn" onClick={createOne}>
+          Создать
+        </button>
 
-              <div style={{ flex: 1, minWidth: 140 }}>
-                <label>Недель вперёд</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={52}
-                  value={weeks}
-                  onChange={(e) => setWeeks(Number(e.target.value))}
-                />
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <label>Недель вперёд</label>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={52}
+            value={weeks}
+            onChange={(e) => setWeeks(Number(e.target.value))}
+          />
+        </div>
+
+        <button className="btn secondary" onClick={createSeries}>
+          Создать расписание
+        </button>
+      </div>
+    </div>
+
+    <div className="card">
+      <div className="rowBetween">
+        <h2 style={{ margin: 0 }}>Список игр</h2>
+        <button className="btn secondary" onClick={load}>
+          Обновить
+        </button>
+      </div>
+
+      {/* переключатель предстоящие/прошедшие */}
+      <div className="rowBetween" style={{ marginTop: 10, gap: 10, alignItems: "center" }}>
+        <button
+          className="btn secondary"
+          type="button"
+          onClick={() => setShowPastAdmin((v) => !v)}
+        >
+          {showPastAdmin ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastAdminGames.length})`}
+        </button>
+
+        <span className="small" style={{ opacity: 0.8 }}>
+          {showPastAdmin
+            ? `Показаны прошедшие: ${pastAdminGames.length}`
+            : `Показаны предстоящие: ${upcomingAdminGames.length}`}
+        </span>
+      </div>
+
+      {/* список */}
+      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+        {adminListToShow.map((g, idx) => {
+          const dt = toLocal(g.starts_at);
+          const cancelled = g.status === "cancelled";
+
+          const d = new Date(g.starts_at);
+          const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(d);
+          const prettyDate = new Intl.DateTimeFormat("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          }).format(d);
+
+          const head = `${weekday}, ${prettyDate}, ${dt.time}`;
+          const isNext = !showPastAdmin && idx === 0;
+
+          return (
+            <div
+              key={g.id}
+              className={`listItem gameListItem ${cancelled ? "isCancelled" : ""} ${isNext ? "isNext" : ""}`}
+              style={{ opacity: cancelled ? 0.75 : 1 }}
+              onClick={() => openGameSheet(g)}
+            >
+              <div className="rowBetween">
+                <div className="gameTitle">{head}</div>
+                <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{g.status}</span>
               </div>
 
-              <button className="btn secondary" onClick={createSeries}>Создать расписание</button>
+              <div className="gameArena">{g.location || "—"}</div>
+
+              {g.video_url ? (
+                <div className="gameVideoTag" title="Есть видео">
+                  ▶️ Видео
+                </div>
+              ) : null}
+
+              {isNext ? (
+                <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+                  ⭐ Ближайшая игра
+                </div>
+              ) : null}
             </div>
+          );
+        })}
+
+        {adminListToShow.length === 0 && (
+          <div className="small">
+            {showPastAdmin ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
           </div>
-
-          <div className="card">
-            <div className="rowBetween">
-              <h2 style={{ margin: 0 }}>Список игр</h2>
-              <button className="btn secondary" onClick={load}>Обновить</button>
-            </div>
-
-            <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-              {(games || []).map((g) => {
-               {/* переключатель предстоящие/прошедшие */}
-<div className="rowBetween" style={{ marginTop: 10, gap: 10, alignItems: "center" }}>
-  <button
-    className="btn secondary"
-    type="button"
-    onClick={() => setShowPastAdmin((v) => !v)}
-  >
-    {showPastAdmin ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastAdminGames.length})`}
-  </button>
-
-  <span className="small" style={{ opacity: 0.8 }}>
-    {showPastAdmin
-      ? `Показаны прошедшие: ${pastAdminGames.length}`
-      : `Показаны предстоящие: ${upcomingAdminGames.length}`}
-  </span>
-</div>
-
-{/* список */}
-<div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-  {adminListToShow.map((g, idx) => {
-    const dt = toLocal(g.starts_at);
-    const cancelled = g.status === "cancelled";
-
-    const d = new Date(g.starts_at);
-    const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(d);
-    const prettyDate = new Intl.DateTimeFormat("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(d);
-
-    const head = `${weekday}, ${prettyDate}, ${dt.time}`;
-    const isNext = !showPastAdmin && idx === 0;
-
-    return (
-      <div
-        key={g.id}
-        className={`listItem gameListItem ${cancelled ? "isCancelled" : ""} ${isNext ? "isNext" : ""}`}
-        style={{ opacity: cancelled ? 0.75 : 1 }}
-        onClick={() => openGameSheet(g)}
-      >
-        <div className="rowBetween">
-          <div className="gameTitle">{head}</div>
-          <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{g.status}</span>
-        </div>
-
-        <div className="gameArena">{g.location || "—"}</div>
-
-        {g.video_url ? (
-          <div className="gameVideoTag" title="Есть видео">
-            ▶️ Видео
-          </div>
-        ) : null}
-
-        {isNext ? (
-          <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
-            ⭐ Ближайшая игра
-          </div>
-        ) : null}
+        )}
       </div>
-    );
-  })}
-
-  {adminListToShow.length === 0 && (
-    <div className="small">
-      {showPastAdmin ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
     </div>
-  )}
-</div>
-</div>
-})}
-            
- {games.length === 0 && <div className="small">Пока игр нет.</div>}
-            </div>
-          </div>
-        </div>
-      )}
+  </div>
+)}
 
-      {/* ====== PLAYERS ====== */}
+{/* ====== PLAYERS ====== */}
       {section === "players" && (
         <div className="card" style={{ marginTop: 12 }}>
           <div className="rowBetween">
