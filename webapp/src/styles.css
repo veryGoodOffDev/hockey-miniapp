@@ -2,11 +2,32 @@
    Telegram theme tokens + fallbacks
    ========= */
 *, *::before, *::after { box-sizing: border-box; }
-.input, input, select, textarea {
+ select, textarea {
   width: 100%;
   max-width: 100%;
 }
 
+/* твой общий инпут */
+.input{
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* iOS / Safari: дата и время любят вылезать */
+input.input[type="date"],
+input.input[type="time"]{
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+}
+
+/* иногда помогает именно на iOS (не ломает пикер) */
+input.input[type="date"]::-webkit-date-and-time-value,
+input.input[type="time"]::-webkit-date-and-time-value{
+  text-align: left;
+}
 :root{
   /* Base tg theme vars */
   --tg-bg: var(--tg-theme-bg-color, #ffffff);
