@@ -80,4 +80,57 @@ export async function ensureSchema(q) {
   // ✅ поля гостей
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS created_by BIGINT`);
+  await q(`
+  CREATE TABLE IF NOT EXISTS feedback (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    team_chat_id BIGINT,
+    tg_user_id BIGINT NOT NULL,
+    tg_username TEXT DEFAULT '',
+    tg_name TEXT DEFAULT '',
+
+    category TEXT NOT NULL DEFAULT 'bug',
+    message TEXT NOT NULL,
+
+    app_version TEXT DEFAULT '',
+    platform TEXT DEFAULT '',
+
+    status TEXT NOT NULL DEFAULT 'open'
+  );
+`);
+
+await q(`CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);`);
+
+await q(`
+  CREATE TABLE IF NOT EXISTS feedback_files (
+    id BIGSERIAL PRIMARY KEY,
+    feedback_id BIGINT NOT NULL REFERENCES feedback(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    original_name TEXT DEFAULT '',
+    mime TEXT DEFAULT '',
+    size_bytes INT DEFAULT 0,
+
+    tg_file_id TEXT DEFAULT '',
+    tg_message_id BIGINT
+  );
+`);
+
+await q(`CREATE INDEX IF NOT EXISTS idx_feedback_files_feedback_id ON feedback_files(feedback_id);`);
+
+await q(`
+  CREATE TABLE IF NOT EXISTS app_updates (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    version TEXT NOT NULL,
+    title TEXT DEFAULT '',
+    body_md TEXT NOT NULL DEFAULT '',
+    released_at DATE NOT NULL
+  );
+`);
+
+await q(`CREATE INDEX IF NOT EXISTS idx_app_updates_released_at ON app_updates(released_at DESC);`);
+
 }
