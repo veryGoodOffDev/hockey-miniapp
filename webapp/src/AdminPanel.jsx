@@ -673,21 +673,25 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
               <span className="badge">{gameDraft.status}</span>
             </div>
 
-            <label>Дата</label>
-            <input
-              className="input"
-              type="date"
-              value={gameDraft.date}
-              onChange={(e) => setGameDraft((d) => ({ ...d, date: e.target.value }))}
-            />
-
+           <label>Дата</label>
+            <div className="iosField">
+              <input
+                className="input"
+                type="date"
+                value={gameDraft.date}
+                onChange={(e) => setGameDraft((d) => ({ ...d, date: e.target.value }))}
+              />
+            </div>
+            
             <label>Время</label>
-            <input
-              className="input"
-              type="time"
-              value={gameDraft.time}
-              onChange={(e) => setGameDraft((d) => ({ ...d, time: e.target.value }))}
-            />
+            <div className="iosField">
+              <input
+                className="input"
+                type="time"
+                value={gameDraft.time}
+                onChange={(e) => setGameDraft((d) => ({ ...d, time: e.target.value }))}
+              />
+            </div>
 
             <label>Арена</label>
             <input
