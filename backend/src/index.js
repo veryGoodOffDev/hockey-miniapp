@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import multer from "multer";
 import { initDb, q } from "./db.js";
 import { createBot } from "./bot.js";
 import { verifyTelegramWebApp } from "./tgAuth.js";
@@ -10,7 +11,10 @@ import { InlineKeyboard } from "grammy";
 
 const app = express();
 app.use(express.json());
-
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { files: 5, fileSize: 10 * 1024 * 1024 }, // 5 файлов по 10MB
+});
 const allowed = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
@@ -57,6 +61,59 @@ function envAdminSet() {
       .filter(Boolean)
   );
 }
+const SUPPORT_TOKEN = process.env.SUPPORT_BOT_TOKEN;
+const SUPPORT_CHAT_ID = process.env.SUPPORT_CHAT_ID;
+
+async function supportTgCall(method, payload) {
+  if (!SUPPORT_TOKEN || !SUPPORT_CHAT_ID) {
+    throw new Error("SUPPORT_BOT_TOKEN / SUPPORT_CHAT_ID not set");
+  }
+
+  const url = `https://api.telegram.org/bot${SUPPORT_TOKEN}/${method}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: payload instanceof FormData ? undefined : { "content-type": "application/json" },
+    body: payload instanceof FormData ? payload : JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(`Support bot ${method} failed: ${data.description || "unknown"}`);
+  return data.result;
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+async function supportSendMessage(html) {
+  return supportTgCall("sendMessage", {
+    chat_id: Number(SUPPORT_CHAT_ID),
+    text: html,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+}
+
+async function supportSendFile({ caption, file }) {
+  // file = multer file: { buffer, mimetype, originalname, size }
+  const fd = new FormData();
+  fd.append("chat_id", String(SUPPORT_CHAT_ID));
+  if (caption) fd.append("caption", caption);
+
+  const blob = new Blob([file.buffer], { type: file.mimetype || "application/octet-stream" });
+
+  // если картинка — приятнее photo, иначе document
+  if ((file.mimetype || "").startsWith("image/")) {
+    fd.append("photo", blob, file.originalname || "image");
+    return supportTgCall("sendPhoto", fd);
+  }
+
+  fd.append("document", blob, file.originalname || "file");
+  return supportTgCall("sendDocument", fd);
+}
+
 
 // супер-админ: только из ENV
 function isSuperAdmin(tgId) {
@@ -278,6 +335,84 @@ await q(
 
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
   res.json({ ok: true, player: pr.rows[0] });
+});
+
+app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    await ensurePlayer(user);
+
+    const category = String(req.body?.category || "bug").slice(0, 24);
+    const message = String(req.body?.message || "").trim();
+    const appVersion = String(req.body?.app_version || "").slice(0, 64);
+    const platform = String(req.body?.platform || "").slice(0, 24);
+
+    if (!message) return res.status(400).json({ ok: false, reason: "empty_message" });
+
+    const tgName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+    const teamChatId = await getSetting("notify_chat_id", null); // если хочешь привязку к команде
+
+    // 1) Сохраняем в БД
+    const ins = await q(
+      `INSERT INTO feedback(team_chat_id, tg_user_id, tg_username, tg_name, category, message, app_version, platform)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING id, created_at`,
+      [
+        teamChatId ? Number(teamChatId) : null,
+        user.id,
+        user.username || "",
+        tgName,
+        category,
+        message,
+        appVersion,
+        platform,
+      ]
+    );
+
+    const ticketId = ins.rows[0].id;
+
+    // 2) Шлём тебе в личку (support bot)
+    const head =
+      `🧾 <b>Обращение #${ticketId}</b>\n` +
+      `👤 <b>${esc(tgName || user.id)}</b>${user.username ? ` (@${esc(user.username)})` : ""}\n` +
+      `🆔 <code>${user.id}</code>\n` +
+      (appVersion ? `📦 <code>${esc(appVersion)}</code>\n` : "") +
+      (platform ? `📱 <code>${esc(platform)}</code>\n` : "") +
+      `🏷️ <code>${esc(category)}</code>\n\n` +
+      `${esc(message)}`;
+
+    await supportSendMessage(head);
+
+    // 3) Файлы (скрины)
+    const files = req.files || [];
+    for (const f of files) {
+      const sent = await supportSendFile({
+        caption: `📎 #${ticketId} · ${f.originalname || "file"}`,
+        file: f,
+      });
+
+      // file_id и message_id полезно сохранить
+      const msgId = sent?.message_id ?? null;
+      const fileId =
+        sent?.photo?.[sent.photo.length - 1]?.file_id ||
+        sent?.document?.file_id ||
+        "";
+
+      await q(
+        `INSERT INTO feedback_files(feedback_id, original_name, mime, size_bytes, tg_file_id, tg_message_id)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [ticketId, f.originalname || "", f.mimetype || "", f.size || 0, fileId, msgId]
+      );
+    }
+
+    res.json({ ok: true, id: ticketId });
+  } catch (e) {
+    console.error("feedback failed:", e);
+    res.status(500).json({ ok: false, reason: "feedback_failed" });
+  }
 });
 
 /** ====== GAMES LIST ====== */
