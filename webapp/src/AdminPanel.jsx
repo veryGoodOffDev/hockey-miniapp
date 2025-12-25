@@ -115,6 +115,66 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [videoOpen, setVideoOpen] = useState(false);
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [attLoading, setAttLoading] = useState(false);
+  const [customMsg, setCustomMsg] = useState("");
+  //messages
+  const [msgHistory, setMsgHistory] = useState([]);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [showDeletedMsgs, setShowDeletedMsgs] = useState(false);
+
+function fmtTs(ts) {
+  try {
+    return new Date(ts).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
+}
+
+async function loadMsgHistory() {
+  if (!isSuperAdmin) return;
+  setMsgLoading(true);
+  try {
+    const r = await apiGet(`/api/admin/bot-messages?limit=50&include_deleted=${showDeletedMsgs ? 1 : 0}`);
+    setMsgHistory(r.messages || []);
+  } finally {
+    setMsgLoading(false);
+  }
+}
+
+async function sendCustomToChat() {
+  if (!customMsg.trim()) return;
+  setReminderMsg("");
+  try {
+    await apiPost("/api/admin/bot-messages/send", { text: customMsg.trim() });
+    setCustomMsg("");
+    setReminderMsg("✅ Сообщение отправлено в чат");
+    await loadMsgHistory();
+  } catch (e) {
+    setReminderMsg("❌ Не удалось отправить сообщение");
+  }
+}
+
+async function deleteHistoryMsg(id) {
+  const ok = confirm("Удалить это сообщение из чата? (Если уже удалено — просто уйдёт из истории)");
+  if (!ok) return;
+
+  setReminderMsg("");
+  try {
+    await apiPost(`/api/admin/bot-messages/${id}/delete`, {});
+    await loadMsgHistory();
+  } catch (e) {
+    setReminderMsg("❌ Не удалось удалить");
+  }
+}
+
+async function syncHistory() {
+  setReminderMsg("");
+  try {
+    const r = await apiPost("/api/admin/bot-messages/sync", { limit: 50 });
+    setReminderMsg(`🔄 Проверено: ${r.checked || 0}, удалено из истории: ${r.missing || 0}`);
+    await loadMsgHistory();
+  } catch (e) {
+    setReminderMsg("❌ Ошибка синхронизации");
+  }
+}
+
 
 async function loadAttendance() {
   if (!gameDraft?.id) return;
@@ -389,6 +449,12 @@ async function setAttend(tg_id, status) {
     onChanged?.();
   }
 
+  useEffect(() => {
+  if (section === "reminders" && isSuperAdmin) loadMsgHistory();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [section, isSuperAdmin, showDeletedMsgs]);
+
+
   function GuestPill({ g }) {
     const status = g.status || "yes";
     const tone =
@@ -558,6 +624,82 @@ async function setAttend(tg_id, status) {
             <button className="btn secondary" onClick={load}>
               Обновить
             </button>
+            {isSuperAdmin && (
+  <>
+    <hr />
+
+    <div className="small" style={{ opacity: 0.85 }}>
+      ✉️ Кастомное сообщение в командный чат (доступно только super-admin)
+    </div>
+
+    <textarea
+      className="input"
+      rows={3}
+      value={customMsg}
+      onChange={(e) => setCustomMsg(e.target.value)}
+      placeholder="Текст сообщения…"
+      style={{ marginTop: 8 }}
+    />
+
+    <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+      <button className="btn" onClick={sendCustomToChat} disabled={!customMsg.trim()}>
+        Отправить в чат
+      </button>
+
+      <button className="btn secondary" onClick={syncHistory}>
+        🔄 Синхронизировать (убрать удалённые)
+      </button>
+
+      <button className="btn secondary" onClick={loadMsgHistory} disabled={msgLoading}>
+        {msgLoading ? "…" : "Обновить историю"}
+      </button>
+
+      <button className="btn secondary" onClick={() => setShowDeletedMsgs(v => !v)}>
+        {showDeletedMsgs ? "Скрыть удалённые" : "Показать удалённые"}
+      </button>
+    </div>
+
+    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+      {msgHistory.length === 0 ? (
+        <div className="small" style={{ opacity: 0.8 }}>История пустая.</div>
+      ) : (
+        msgHistory.map((m) => (
+          <div key={m.id} className="card" style={{ opacity: m.deleted_at ? 0.65 : 1 }}>
+            <div className="rowBetween" style={{ gap: 10 }}>
+              <div style={{ fontWeight: 900 }}>
+                {m.kind === "reminder" ? "⏰ Напоминание" : "✉️ Сообщение"} · {fmtTs(m.created_at)}
+              </div>
+              <span className="badgeMini">
+                {m.deleted_at ? "удалено" : "в чате"}
+              </span>
+            </div>
+
+            <div className="small" style={{ marginTop: 6, opacity: 0.9, whiteSpace: "pre-wrap" }}>
+              {String(m.text || "").slice(0, 280)}
+              {String(m.text || "").length > 280 ? "…" : ""}
+            </div>
+
+            {m.deleted_at ? (
+              <div className="small" style={{ marginTop: 6, opacity: 0.75 }}>
+                Удалено: {fmtTs(m.deleted_at)} · {m.delete_reason || "—"}
+              </div>
+            ) : (
+              <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                <button className="btn secondary" onClick={() => deleteHistoryMsg(m.id)}>
+                  🗑 Удалить сообщение
+                </button>
+                <div className="small" style={{ opacity: 0.75 }}>
+                  chat: {m.chat_id} · msg: {m.message_id}
+                </div>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  </>
+)}
+
           </div>
 
           {reminderMsg && <div className="small" style={{ marginTop: 8 }}>{reminderMsg}</div>}
