@@ -26,13 +26,9 @@ async function request(path, { method = "GET", body } = {}) {
   }
 }
 export async function apiUpload(path, formData) {
-  const tg = window.Telegram?.WebApp;
-  const initData = tg?.initData || "";
+  const initData = getInitData();
 
-  // Дублируем initData и в body, и в header — как тебе удобнее на backend
-  if (!formData.has("initData")) formData.append("initData", initData);
-
-  const r = await fetch(path, {
+  const r = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     body: formData,
     headers: {
@@ -40,7 +36,11 @@ export async function apiUpload(path, formData) {
     },
   });
 
-  const data = await r.json().catch(() => ({}));
+  const text = await r.text();
+  let data;
+  try { data = JSON.parse(text); }
+  catch { data = { ok: false, error: "non_json_response", status: r.status, text }; }
+
   if (!r.ok) throw data;
   return data;
 }
