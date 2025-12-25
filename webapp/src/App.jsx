@@ -738,11 +738,11 @@ if (!me && authReason) {
                       <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
                         ✅ Буду
                       </button>
-                      <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
-                        ❓ Под вопросом
-                      </button>
                       <button className={btnClass("no")} onClick={() => rsvp("no")}>
                         ❌ Не буду
+                      </button>
+                      <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
+                        🗘 Сбросить
                       </button>
                     </div>
                   )}
@@ -753,8 +753,8 @@ if (!me && authReason) {
 
                   <div style={{ marginTop: 10 }}>
                     <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} />
-                    <StatusBlock title="❓ Под вопросом" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} />
                     <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} />
+                    <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} />
                   </div>
                 </>
               )}
