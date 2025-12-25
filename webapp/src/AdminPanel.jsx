@@ -60,19 +60,23 @@ function Sheet({ title, onClose, children }) {
     <div className="sheetBackdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheetHeader">
-          <button className="btn secondary" onClick={onClose}>
+          <button className="sheetBtn" onClick={onClose}>
             ← Назад
           </button>
+
           <div className="sheetTitle">{title}</div>
-          <button className="btn secondary" onClick={onClose} aria-label="Close">
+
+          <button className="sheetBtn" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
+
         <div className="sheetBody">{children}</div>
       </div>
     </div>
   );
 }
+
 
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
   const [section, setSection] = useState("games"); // games | players | reminders
