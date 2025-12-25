@@ -853,3 +853,24 @@ textarea:focus{
   opacity: .85;
   filter: saturate(.7);
 }
+.segRow{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
+
+.segBtn{
+  flex: 1 1 120px;
+  border:1px solid var(--border);
+  background: transparent;
+  border-radius: 12px;
+  padding: 10px 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.segBtn.on{
+  background: color-mix(in srgb, var(--tg-text) 10%, transparent);
+  border-color: color-mix(in srgb, var(--tg-text) 22%, var(--border));
+}
