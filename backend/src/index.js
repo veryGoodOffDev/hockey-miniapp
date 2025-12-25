@@ -526,9 +526,10 @@ if (is_admin) {
 app.post("/api/rsvp", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
 
   const gid = Number(req.body?.game_id);
-  const status = String(req.body?.status || "").trim(); // 'yes' | 'no' | 'maybe'
+  const status = String(req.body?.status || "").trim();
 
   if (!gid) return res.status(400).json({ ok: false, reason: "no_game_id" });
   if (!["yes", "no", "maybe"].includes(status)) {
@@ -536,6 +537,16 @@ app.post("/api/rsvp", async (req, res) => {
   }
 
   await ensurePlayer(user);
+
+  // ✅ Закрываем прошедшие игры для обычных игроков
+  const gr = await q(`SELECT starts_at FROM games WHERE id=$1`, [gid]);
+  const startsAt = gr.rows[0]?.starts_at ? new Date(gr.rows[0].starts_at) : null;
+  if (!startsAt) return res.status(404).json({ ok: false, reason: "game_not_found" });
+
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin && startsAt < new Date()) {
+    return res.status(403).json({ ok: false, reason: "game_closed" });
+  }
 
   // ✅ maybe = "сбросить" → удаляем строку
   if (status === "maybe") {
@@ -553,6 +564,7 @@ app.post("/api/rsvp", async (req, res) => {
 
   res.json({ ok: true });
 });
+
 
 
 /** ====== TEAMS GENERATE (admin) ====== */
