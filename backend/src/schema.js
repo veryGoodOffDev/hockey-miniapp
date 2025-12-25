@@ -132,5 +132,29 @@ await q(`
 `);
 
 await q(`CREATE INDEX IF NOT EXISTS idx_app_updates_released_at ON app_updates(released_at DESC);`);
+await q(`
+CREATE TABLE IF NOT EXISTS bot_messages (
+  id BIGSERIAL PRIMARY KEY,
+  chat_id BIGINT NOT NULL,
+  message_id BIGINT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'custom', -- custom | reminder
+  text TEXT NOT NULL,
+  parse_mode TEXT,
+  disable_web_page_preview BOOLEAN NOT NULL DEFAULT TRUE,
+  reply_markup JSONB,
+  meta JSONB,
+  sent_by_tg_id BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  checked_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+  delete_reason TEXT
+);
+
+CREATE INDEX IF NOT EXISTS bot_messages_chat_created_idx
+  ON bot_messages(chat_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS bot_messages_chat_kind_idx
+  ON bot_messages(chat_id, kind, created_at DESC);
+`);
 
 }
