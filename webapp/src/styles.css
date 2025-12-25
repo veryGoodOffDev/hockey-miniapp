@@ -698,3 +698,68 @@ textarea:focus{
   padding: 8px 10px;
   font-size: 12px;
 }
+.sheetBackdrop{
+  position:fixed;
+  inset:0;
+  background: rgba(0,0,0,.55);
+  z-index: 9999;
+  display:flex;
+  align-items:flex-end;
+  /* приятнее в телеге */
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* важное: НЕ прозрачный фон */
+.sheet{
+  width:100%;
+  max-height: 92vh;
+  background: var(--tg-theme-bg-color, var(--bg, #0f1115));
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  border:1px solid rgba(255,255,255,.10);
+  overflow:hidden;
+  box-shadow: 0 -12px 40px rgba(0,0,0,.45);
+}
+
+/* важное: НЕ через color-mix */
+.sheetHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid rgba(255,255,255,.10);
+  background: var(--tg-theme-secondary-bg-color, rgba(20,22,26,.98));
+}
+
+.sheetTitle{
+  font-weight: 1000;
+  text-align:center;
+  flex:1;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tg-theme-text-color, var(--tg-text, #fff));
+}
+
+/* сами кнопки — всегда видимые */
+.sheetBtn{
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.08);
+  color: var(--tg-theme-text-color, #fff);
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor:pointer;
+  line-height: 1;
+  font-weight: 900;
+}
+.sheetBtn:active{ transform: translateY(1px); }
+
+.sheetBody{
+  padding:12px;
+  overflow:auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: 82vh;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+}
