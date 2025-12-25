@@ -774,12 +774,11 @@ if (!me && authReason) {
                           <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} />
                           <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} />
                           <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} />
-                        </div>
-                      </>
-                    );
-                  })()
-                )}
-
+                  )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* ====== PROFILE ====== */}
       {tab === "profile" && (
