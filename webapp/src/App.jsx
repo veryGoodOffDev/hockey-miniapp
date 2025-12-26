@@ -388,7 +388,7 @@ const applyTheme = () => {
   const POS_LABEL = {
     G: "🥅 Вратари",
     D: "🛡️ Защитники",
-    F: "⚡ Нападающие",
+    F: "🏒 Нападающие",
     U: "❓ Без позиции",
   };
 
@@ -450,7 +450,7 @@ function renderTeam(teamKey, title, list) {
         <div className="row" style={{ gap: 6 }}>
           <span className="badge">🥅 {g.G.length}</span>
           <span className="badge">🛡️ {g.D.length}</span>
-          <span className="badge">⚡ {g.F.length}</span>
+          <span className="badge">🏒 {g.F.length}</span>
           {g.U.length ? <span className="badge">❓ {g.U.length}</span> : null}
         </div>
       </div>
@@ -1369,7 +1369,7 @@ function Avatar({ p, big = false }) {
 
 function posHuman(posRaw) {
   const pos = String(posRaw || "F").toUpperCase();
-  return pos === "G" ? "🥅 Вратарь" : pos === "D" ? "🛡️ Защитник" : "⚡ Нападающий";
+  return pos === "G" ? "🥅 Вратарь" : pos === "D" ? "🛡️ Защитник" : "🏒 Нападающий";
 }
 
 function BottomNav({ tab, setTab, isAdmin }) {
