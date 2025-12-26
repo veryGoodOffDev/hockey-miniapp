@@ -58,7 +58,7 @@ export default function App() {
   const [profileView, setProfileView] = useState("me"); // me | support | about
 
   const [teamsBack, setTeamsBack] = useState({ tab: "game", gameView: "list" });
-
+  const isMeId = (id) => me?.tg_id != null && String(id) === String(me.tg_id);
   function normalizeTeams(t) {
     if (!t) return null;
     if (t.ok && (t.teamA || t.teamB)) return t;
@@ -415,10 +415,11 @@ function renderPosGroup(teamKey, title, players) {
         {players.map((p) => {
           const selected = picked && picked.team === teamKey && String(picked.tg_id) === String(p.tg_id);
           const n = showNum(p);
+          const mine = isMeId(p.tg_id);
           return (
             <div
               key={p.tg_id}
-              className={"pill " + (selected ? "pillSelected" : "")}
+              className={"pill " + (selected ? "pillSelected " : "") + (mine ? " isMe" : "")}
               onClick={() => onPick(teamKey, p.tg_id)}
               style={{ cursor: editTeams ? "pointer" : "default" }}
             >
@@ -802,9 +803,9 @@ function renderTeam(teamKey, title, list) {
                       <div className="small">Отметки:</div>
 
                       <div style={{ marginTop: 10 }}>
-                        <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} />
-                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} />
-                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} />
+                        <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} me={me} />
+                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin}  me={me} />
+                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
                       </div>
                     </>
                   );
@@ -1284,7 +1285,7 @@ function posLabel(posRaw) {
   return pos === "G" ? "🥅 G" : pos === "D" ? "🛡 D" : "🏒 F";
 }
 
-function StatusBlock({ title, tone, list = [], isAdmin }) {
+function StatusBlock({ title, tone, list = [], isAdmin, me }) {
   const cls = `statusBlock ${tone}`;
 
   return (
@@ -1305,8 +1306,9 @@ function StatusBlock({ title, tone, list = [], isAdmin }) {
             .map((r) => {
               const pos = (r.position || "F").toUpperCase();
               const n = showNum(r);
+              const mine = me?.tg_id != null && String(r.tg_id) === String(me.tg_id);
               return (
-                <div key={r.tg_id} className={`pill pos-${pos}`}>
+                <div key={r.tg_id} className={`pill pos-${pos} ${mine ? "isMe" : ""}`}>
                   <span className="posTag">{posLabel(pos)}</span>
                   
                   <span className="pillName">
