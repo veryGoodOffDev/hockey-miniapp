@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
+import JerseyBadge from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
 
@@ -1107,7 +1108,12 @@ export default function App() {
                       }}
                     >
                       <div className="row" style={{ alignItems: "center", gap: 5 }}>
-                        <JerseyBadge number={showNum(p)} />
+                          <JerseyBadge
+                            number={showNum(p)}
+                            variant="modern"
+                            striped
+                            size={34}
+                          />
                         <Avatar p={p} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 900 }}>
@@ -1145,7 +1151,12 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 900, fontSize: 18 }}>
                         {showName(selectedPlayer)}
-                        {showNum(selectedPlayer)}
+                        <JerseyBadge
+                            number={showNum(selectedPlayer)}
+                            variant="modern"
+                            striped
+                            size={34}
+                          />
                       </div>
                       <div className="small" style={{ opacity: 0.8 }}>
                         {posHuman(selectedPlayer.position)}
@@ -1310,19 +1321,19 @@ function Avatar({ p, big = false }) {
     </div>
   );
 }
-function JerseyBadge({ number }) {
-  const text = number ? String(number) : "?";
+// function JerseyBadge({ number }) {
+//   const text = number ? String(number) : "?";
 
-  return (
-    <div
-      className="jerseyBadge"
-      aria-label={number ? `Номер ${text}` : "Номер не указан"}
-      title={number ? `№ ${text}` : "?"}
-    >
-      <span className="jerseyBadgeText">{text}</span>
-    </div>
-  );
-}
+//   return (
+//     <div
+//       className="jerseyBadge"
+//       aria-label={number ? `Номер ${text}` : "Номер не указан"}
+//       title={number ? `№ ${text}` : "?"}
+//     >
+//       <span className="jerseyBadgeText">{text}</span>
+//     </div>
+//   );
+// }
 
 function posHuman(posRaw) {
   const pos = String(posRaw || "F").toUpperCase();
