@@ -1217,7 +1217,7 @@ function showNum(p) {
   if (n === null || n === undefined || n === "") return "";
   const nn = Number(n);
   if (!Number.isFinite(nn)) return "";
-  return ` №${Math.trunc(nn)}`;
+  return `${Math.trunc(nn)}`;
 }
 
 function formatWhen(starts_at) {
