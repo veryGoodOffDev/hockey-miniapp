@@ -1126,7 +1126,7 @@ const applyTheme = () => {
                             number={showNum(p)}
                             variant="modern"
                             striped
-                            size={34}
+                            size={52}
                           />
                         <Avatar p={p} />
                         <div style={{ flex: 1 }}>
