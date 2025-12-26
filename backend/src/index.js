@@ -491,32 +491,98 @@ app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
 });
 
 /** ====== GAMES LIST ====== */
+/** ====== GAMES LIST (paged + filters) ====== */
 app.get("/api/games", async (req, res) => {
- const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
 
-  const days = Number(req.query.days || 35);
+  const scopeRaw = String(req.query.scope || "upcoming");
+  const scope = ["upcoming", "past", "all"].includes(scopeRaw) ? scopeRaw : "upcoming";
 
-  const r = await q(
-    `
-    SELECT g.*,
-      COALESCE(SUM(CASE WHEN r.status='yes' THEN 1 ELSE 0 END),0) AS yes_count,
-      COALESCE(SUM(CASE WHEN r.status='maybe' THEN 1 ELSE 0 END),0) AS maybe_count,
-      COALESCE(SUM(CASE WHEN r.status='no' THEN 1 ELSE 0 END),0) AS no_count,
+  const defLimit = scope === "past" ? 10 : 50;
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit || defLimit)));
+  const offset = Math.max(0, Number(req.query.offset || 0));
+
+  const from = req.query.from ? String(req.query.from) : null; // YYYY-MM-DD
+  const to = req.query.to ? String(req.query.to) : null;       // YYYY-MM-DD
+
+  const qText = String(req.query.q || "").trim();
+  const search = qText ? `%${qText}%` : null;
+
+  // Оставим совместимость: если days передан — доп.ограничение по окну
+  const daysRaw = req.query.days;
+  const days = daysRaw === undefined ? null : Number(daysRaw);
+  const daysInt = Number.isFinite(days) && days > 0 ? Math.trunc(days) : null;
+
+  const order = scope === "past" ? "DESC" : "ASC";
+
+  const sql = `
+    WITH base AS (
+      SELECT g.*
+      FROM games g
+      WHERE 1=1
+
+        -- scope: upcoming/past/all (past считается как "старше 3 часов", как у тебя на фронте)
+        AND (
+          CASE
+            WHEN $1 = 'past' THEN g.starts_at < (NOW() - INTERVAL '3 hours')
+            WHEN $1 = 'upcoming' THEN g.starts_at >= (NOW() - INTERVAL '3 hours')
+            ELSE TRUE
+          END
+        )
+
+        -- date range (инклюзивно)
+        AND ($2::date IS NULL OR g.starts_at >= $2::date)
+        AND ($3::date IS NULL OR g.starts_at < ($3::date + INTERVAL '1 day'))
+
+        -- search by location
+        AND ($4::text IS NULL OR COALESCE(g.location,'') ILIKE $4)
+
+        -- optional window by days (backward compat)
+        AND ($8::int IS NULL OR g.starts_at >= NOW() - ($8::int || ' days')::interval)
+    ),
+    total AS (
+      SELECT COUNT(*)::int AS total FROM base
+    ),
+    page AS (
+      SELECT *
+      FROM base
+      ORDER BY starts_at ${order}
+      LIMIT $5 OFFSET $6
+    ),
+    counts AS (
+      SELECT
+        game_id,
+        SUM((status='yes')::int)   AS yes_count,
+        SUM((status='maybe')::int) AS maybe_count,
+        SUM((status='no')::int)    AS no_count
+      FROM rsvps
+      GROUP BY game_id
+    )
+    SELECT
+      t.total,
+      p.*,
+      COALESCE(c.yes_count,0)   AS yes_count,
+      COALESCE(c.maybe_count,0) AS maybe_count,
+      COALESCE(c.no_count,0)    AS no_count,
       my.status AS my_status
-    FROM games g
-    LEFT JOIN rsvps r ON r.game_id = g.id
-    LEFT JOIN rsvps my ON my.game_id = g.id AND my.tg_id = $2
-    WHERE g.starts_at >= NOW() - ($1::int || ' days')::interval
-    GROUP BY g.id, my.status
-    ORDER BY g.starts_at ASC
-    `,
-    [days, user.id]
-  );
+    FROM page p
+    CROSS JOIN total t
+    LEFT JOIN counts c ON c.game_id = p.id
+    LEFT JOIN rsvps my ON my.game_id = p.id AND my.tg_id = $7
+    ORDER BY p.starts_at ${order};
+  `;
 
-  res.json({ ok: true, games: r.rows });
+  const r = await q(sql, [scope, from, to, search, limit, offset, user.id, daysInt]);
+
+  const total = r.rows[0]?.total ?? 0;
+  // total дублируется в каждой строке — уберём из объектов games
+  const games = r.rows.map(({ total, ...rest }) => rest);
+
+  res.json({ ok: true, games, total, limit, offset, scope });
 });
+
 
 /** ====== GAME DETAILS (supports game_id) ====== */
 app.get("/api/game", async (req, res) => {
