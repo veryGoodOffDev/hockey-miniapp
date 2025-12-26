@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import logo from "./commandLogo.png";
+import logo from "./logoo.jpg";
 export default function HockeyLoader({ text = "Загрузка..." }) {
   const [direction, setDirection] = useState("right"); // 'left' | 'right'
 
