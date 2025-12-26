@@ -1175,12 +1175,6 @@ textarea:focus{
   box-shadow: 0 10px 22px rgba(0,0,0,.35);
 }
 
-/* “активная” кнопка (у тебя это .btn.tiny) */
-.gameCard .btn.tiny{
-  background: rgba(255,255,255,.14);
-  border-color: rgba(255,255,255,.26);
-}
-
 /* “неактивная” (secondary) — чуть темнее, но читаемо */
 .gameCard .btn.secondary.tiny{
   background: rgba(0,0,0,.20);
