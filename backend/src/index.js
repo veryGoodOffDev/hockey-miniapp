@@ -660,8 +660,6 @@ app.get("/api/game", async (req, res) => {
 
   if (!game) return res.json({ ok: true, game: null, rsvps: [], teams: null });
 
-  const is_admin = await isAdminId(user.id);
-
 let rr;
 if (is_admin) {
   rr = await q(
