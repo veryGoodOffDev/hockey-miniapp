@@ -668,7 +668,7 @@ textarea:focus{
   margin: 0 auto;
 
   padding: 10px;
-  border-radius: 28px;
+  border-radius: 55px;
 
   background: rgba(20,20,25,0.78);
   backdrop-filter: blur(12px);
@@ -682,7 +682,7 @@ textarea:focus{
   border: 0;
   background: transparent;
   color: rgba(255,255,255,0.85);
-  border-radius: 18px;
+  border-radius: 55px;
 
   min-height: 54px;
   padding: 10px 6px;
