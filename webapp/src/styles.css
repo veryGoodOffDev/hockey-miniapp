@@ -651,9 +651,9 @@ textarea:focus{
 
 .bottomNav {
   position: fixed;
-  left: 12px;
+  /* left: 12px;
   right: 12px;
-  bottom: 12px;
+  bottom: 12px; */
 
   display: grid;
   grid-auto-flow: column;
@@ -661,7 +661,7 @@ textarea:focus{
   gap: 8px;
 
   padding: 10px;
-  border-radius: 18px;
+  border-radius: 35px;
 
   background: rgba(20, 20, 25, 0.75);
   backdrop-filter: blur(10px);
@@ -679,7 +679,7 @@ textarea:focus{
   border: 0;
   background: transparent;
   color: rgba(255,255,255,0.85);
-  border-radius: 14px;
+  border-radius: 35px;
   padding: 10px 8px;
 
   display: grid;
