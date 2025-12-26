@@ -507,8 +507,13 @@ textarea:focus{
 }
 
 .statusBlock.maybe{
-  background: color-mix(in srgb, #f59e0b 12%, var(--card-bg));
-  border-color: color-mix(in srgb, #f59e0b 35%, var(--border));
+  background: linear-gradient(
+    135deg,
+    rgba(120,120,120,0.12),
+    rgba(255,255,255,0.02)
+  );
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.16);
 }
 
 .statusBlock.no{
