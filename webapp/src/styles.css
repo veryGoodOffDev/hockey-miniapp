@@ -1058,3 +1058,51 @@ textarea:focus{
   --jersey-accent: rgba(0,0,0,0.12);
   --jersey-text: rgba(0,0,0,0.92);
 }
+/* для pill */
+.pill.isMe{
+  position: relative;
+  border: 1px solid rgba(80,160,255,0.55);
+  box-shadow:
+    0 0 0 2px rgba(80,160,255,0.18),
+    0 12px 26px rgba(0,0,0,0.18);
+}
+
+.pill.isMe::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  border-radius: 999px; /* pill обычно круглый */
+  background: radial-gradient(circle at 30% 20%, rgba(80,160,255,0.45), transparent 55%);
+  filter: blur(10px);
+  opacity: 0.9;
+  pointer-events:none;
+}
+
+/* “золото” (если добавишь класс isMeGold) */
+.pill.isMeGold{
+  border-color: rgba(255,200,70,0.65);
+  box-shadow:
+    0 0 0 2px rgba(255,200,70,0.18),
+    0 12px 26px rgba(0,0,0,0.18);
+}
+.pill.isMeGold::before{
+  background: radial-gradient(circle at 30% 20%, rgba(255,200,70,0.48), transparent 55%);
+}
+
+/* для карточек в списке игроков */
+.card.isMeCard{
+  position: relative;
+  border: 1px solid rgba(80,160,255,0.45);
+  box-shadow:
+    0 0 0 2px rgba(80,160,255,0.14),
+    0 18px 40px rgba(0,0,0,0.16);
+}
+.card.isMeCard::before{
+  content:"";
+  position:absolute;
+  inset:-3px;
+  border-radius: inherit;
+  background: radial-gradient(circle at 20% 0%, rgba(80,160,255,0.30), transparent 55%);
+  filter: blur(14px);
+  pointer-events:none;
+}
