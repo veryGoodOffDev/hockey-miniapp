@@ -419,7 +419,7 @@ function renderPosGroup(teamKey, title, players) {
           return (
             <div
               key={p.tg_id}
-              className={"pill " + (selected ? "pillSelected " : "") + (mine ? " isMe" : "")}
+              className={"pill " + (selected ? "pillSelected " : "") + (mine ? " isMeGold" : "")}
               onClick={() => onPick(teamKey, p.tg_id)}
               style={{ cursor: editTeams ? "pointer" : "default" }}
             >
@@ -1308,7 +1308,7 @@ function StatusBlock({ title, tone, list = [], isAdmin, me }) {
               const n = showNum(r);
               const mine = me?.tg_id != null && String(r.tg_id) === String(me.tg_id);
               return (
-                <div key={r.tg_id} className={`pill pos-${pos} ${mine ? "isMe" : ""}`}>
+                <div key={r.tg_id} className={`pill pos-${pos} ${mine ? "isMeGold" : ""}`}>
                   <span className="posTag">{posLabel(pos)}</span>
                   
                   <span className="pillName">
