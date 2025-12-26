@@ -45,6 +45,18 @@ export default function App() {
   // игры: прошедшие
   const [showPast, setShowPast] = useState(false);
   const [gamesError, setGamesError] = useState(null);
+
+  // === прошедшие игры (пагинация) ===
+    const PAST_LIMIT = 10;
+    
+    const [pastPage, setPastPage] = useState([]);
+    const [pastTotal, setPastTotal] = useState(0);
+    const [pastOffset, setPastOffset] = useState(0);
+    const [pastLoading, setPastLoading] = useState(false);
+    
+    const [pastFrom, setPastFrom] = useState("");
+    const [pastTo, setPastTo] = useState("");
+    const [pastQ, setPastQ] = useState("");
   // справочник игроков (вкладка players)
   const [playersDir, setPlayersDir] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(false);
@@ -184,32 +196,48 @@ export default function App() {
       setGamesError({ ok: false, error: "network_or_unknown" });
     }
   }
-  async function loadPast(reset = false) {
-    const nextOffset = reset ? 0 : pastOffset;
-  
-    const qs = new URLSearchParams({
-      scope: "past",
-      limit: String(pastLimit),
-      offset: String(nextOffset),
-    });
-  
-    if (pastFrom) qs.set("from", pastFrom);
-    if (pastTo) qs.set("to", pastTo);
-    if (pastQ.trim()) qs.set("q", pastQ.trim());
-  
-    const r = await apiGet(`/api/games?${qs.toString()}`);
-  
-    setPastTotal(r.total ?? 0);
-  
-    if (reset) {
-      setPastPage(r.games || []);
-      setPastOffset(pastLimit);
-    } else {
-      setPastPage((prev) => [...prev, ...(r.games || [])]);
-      setPastOffset(nextOffset + pastLimit);
-    }
-  }
 
+  
+      async function loadPast(reset = false) {
+        try {
+          setPastLoading(true);
+      
+          const nextOffset = reset ? 0 : pastOffset;
+      
+          const qs = new URLSearchParams({
+            scope: "past",
+            limit: String(PAST_LIMIT),
+            offset: String(nextOffset),
+          });
+      
+          if (pastFrom) qs.set("from", pastFrom);
+          if (pastTo) qs.set("to", pastTo);
+          if (pastQ.trim()) qs.set("q", pastQ.trim());
+      
+          const r = await apiGet(`/api/games?${qs.toString()}`);
+      
+          // поддержка разных форматов ответа
+          const total = Number(r?.total ?? (r?.games?.length ?? 0));
+          const rows = Array.isArray(r?.games) ? r.games : [];
+      
+          setPastTotal(total);
+      
+          if (reset) {
+            setPastPage(rows);
+            setPastOffset(rows.length); // сколько реально пришло
+          } else {
+            setPastPage((prev) => [...prev, ...rows]);
+            setPastOffset(nextOffset + rows.length);
+          }
+        } catch (e) {
+          console.error("loadPast failed", e);
+        } finally {
+          setPastLoading(false);
+        }
+      }
+
+  const listToShow = showPast ? pastPage : upcomingGames;
+  
   // init
   useEffect(() => {
     if (!inTelegramWebApp) {
@@ -594,188 +622,230 @@ function renderTeam(teamKey, title, list) {
     <div className="container appShell">
       <h1>🏒 Хоккей: отметки и составы</h1>
 
-      {/* ====== GAMES ====== */}
-         {tab === "game" && (
-        <div className="card">
-          {gameView === "list" ? (
-            <>
-              <h2>Игры</h2>
-              <div
-                className="row"
-                style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}
+{/* ====== GAMES ====== */}
+{tab === "game" && (
+  <div className="card">
+    {gameView === "list" ? (
+      <>
+        <h2>Игры</h2>
+
+        <div
+          className="row"
+          style={{ justifyContent: "space-between", alignItems: "center", marginTop: 10 }}
+        >
+          <button
+            className="btn secondary"
+            onClick={async () => {
+              const next = !showPast;
+              setShowPast(next);
+
+              if (next) {
+                setPastOffset(0);
+                await loadPast(true); // первые 10
+              }
+            }}
+          >
+            {showPast ? "⬅️ К предстоящим" : `📜 Прошедшие${pastTotal ? ` (${pastTotal})` : ""}`}
+          </button>
+
+          <span className="small" style={{ opacity: 0.8 }}>
+            {showPast
+              ? `Показано: ${pastPage.length}${pastTotal ? ` из ${pastTotal}` : ""}`
+              : `Показаны предстоящие: ${upcomingGames.length}`}
+          </span>
+        </div>
+
+        {/* Фильтры — только в режиме прошедших */}
+        {showPast && (
+          <div className="card" style={{ marginTop: 10 }}>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <input
+                className="input"
+                type="date"
+                value={pastFrom}
+                onChange={(e) => setPastFrom(e.target.value)}
+              />
+              <input
+                className="input"
+                type="date"
+                value={pastTo}
+                onChange={(e) => setPastTo(e.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Поиск по арене…"
+                value={pastQ}
+                onChange={(e) => setPastQ(e.target.value)}
+                style={{ flex: 1, minWidth: 180 }}
+              />
+
+              <button
+                className="btn secondary"
+                disabled={pastLoading}
+                onClick={async () => {
+                  setPastOffset(0);
+                  await loadPast(true);
+                }}
               >
-                <button className="btn secondary" onClick={() => setShowPast((v) => !v)}>
-                  {showPast ? "⬅️ К предстоящим" : `📜 Прошедшие (${pastGames.length})`}
+                {pastLoading ? "..." : "Применить"}
+              </button>
+
+              <button
+                className="btn secondary"
+                disabled={pastLoading}
+                onClick={async () => {
+                  setPastFrom("");
+                  setPastTo("");
+                  setPastQ("");
+                  setPastOffset(0);
+                  await loadPast(true);
+                }}
+              >
+                Сбросить
+              </button>
+            </div>
+
+            {pastPage.length < pastTotal && (
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn secondary" disabled={pastLoading} onClick={() => loadPast(false)}>
+                  {pastLoading ? "..." : "Показать ещё 10"}
                 </button>
-                <span className="small" style={{ opacity: 0.8 }}>
-                  {showPast
-                    ? `Показаны прошедшие: ${pastGames.length}`
-                    : `Показаны предстоящие: ${upcomingGames.length}`}
-                </span>
               </div>
-              {gamesError ? (
-                <div className="card" style={{ border: "1px solid rgba(255,0,0,.25)", marginTop: 10 }}>
-                  <div style={{ fontWeight: 900 }}>Не удалось загрузить игры</div>
-                  <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                    Причина: <b>{gamesError.reason || gamesError.error || gamesError.status || "unknown"}</b>
+            )}
+          </div>
+        )}
+
+        {gamesError ? (
+          <div className="card" style={{ border: "1px solid rgba(255,0,0,.25)", marginTop: 10 }}>
+            <div style={{ fontWeight: 900 }}>Не удалось загрузить игры</div>
+            <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+              Причина: <b>{gamesError.reason || gamesError.error || gamesError.status || "unknown"}</b>
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn" onClick={() => refreshAll(selectedGameId)}>
+                🔄 Обновить
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {listToShow.length === 0 ? (
+          <div className="small" style={{ marginTop: 10 }}>
+            {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+            {/* bulk RSVP — только в предстоящих */}
+            {!showPast && (
+              <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                <button
+                  className="btn secondary"
+                  onClick={async () => {
+                    if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
+                    await apiPost("/api/rsvp/bulk", { status: "yes" });
+                    await refreshAll(selectedGameId);
+                  }}
+                >
+                  ✅ Буду на все будущие
+                </button>
+
+                <button
+                  className="btn secondary"
+                  onClick={async () => {
+                    if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
+                    await apiPost("/api/rsvp/bulk", { status: "no" });
+                    await refreshAll(selectedGameId);
+                  }}
+                >
+                  ❌ Не буду на все будущие
+                </button>
+              </div>
+            )}
+
+            {listToShow.map((g, idx) => {
+              const past = isPastGame(g);
+              const lockRsvp = past && !isAdmin;
+              const when = formatWhen(g.starts_at);
+              const status = g.my_status || "maybe";
+              const tone = cardToneByMyStatus(status);
+              const isNext = !showPast && idx === 0;
+
+              return (
+                <div
+                  key={g.id}
+                  className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
+                  style={{ cursor: "pointer", opacity: past ? 0.85 : 1 }}
+                  onClick={() => {
+                    const id = g.id;
+
+                    setSelectedGameId(id);
+                    setGameView("detail");
+
+                    setGame(null);
+                    setRsvps([]);
+                    setTeams(null);
+
+                    setDetailLoading(true);
+                    refreshAll(id).finally(() => setDetailLoading(false));
+                  }}
+                >
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontWeight: 900 }}>{when}</div>
+
+                    <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                      <span className="badge">{uiStatus(g)}</span>
+                      {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+                    </div>
+                  </div>
+
+                  <div className="small" style={{ marginTop: 6 }}>
+                    📍 {g.location || "—"}
                   </div>
 
                   <div className="row" style={{ marginTop: 10 }}>
-                    <button className="btn" onClick={() => refreshAll(selectedGameId)}>
-                      🔄 Обновить
-                    </button>
+                    <span className="badge">✅ {g.yes_count ?? 0}</span>
+                    <span className="badge">❌ {g.no_count ?? 0}</span>
                   </div>
-                </div>
-              ) : null}
 
-              {listToShow.length === 0 ? (
-                <div className="small" style={{ marginTop: 10 }}>
-                  {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                  <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                  <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+                    {past ? "Игра прошла — отметки закрыты" : "Нажми, чтобы открыть игру"}
+                  </div>
 
-
-
+                  <div className="row" style={{ marginTop: 10, gap: 8 }} onClick={(e) => e.stopPropagation()}>
                     <button
-                      className="btn secondary"
-                      onClick={async () => {
-                        if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
-                        await apiPost("/api/rsvp/bulk", { status: "yes" });
-                        await refreshAll(selectedGameId);
-
-
+                      disabled={lockRsvp}
+                      className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (lockRsvp) return;
+                        await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
+                        await refreshAll(g.id);
                       }}
                     >
-                      ✅ Буду на все будущие
+                      ✅ Буду
                     </button>
 
                     <button
-                      className="btn secondary"
-                      onClick={async () => {
-                        if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
-                        await apiPost("/api/rsvp/bulk", { status: "no" });
-                        await refreshAll(selectedGameId);
-
-
+                      disabled={lockRsvp}
+                      className={status === "no" ? "btn tiny" : "btn secondary tiny"}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (lockRsvp) return;
+                        await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
+                        await refreshAll(g.id);
                       }}
                     >
-                      ❌ Не буду на все будущие
+                      ❌ Не буду
                     </button>
                   </div>
-
-                  {listToShow.map((g, idx) => {
-                    const past = isPastGame(g);
-                    const lockRsvp = past && !isAdmin;
-                    const when = formatWhen(g.starts_at);
-                    const status = g.my_status || "maybe";
-                    const tone = cardToneByMyStatus(status);
-                    const isNext = !showPast && idx === 0;
-
-                    return (
-                      <div
-                        key={g.id}
-                        className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${
-                          past ? "isPast" : ""
-                        }`}
-                        style={{ cursor: "pointer", opacity: past ? 0.85 : 1 }}
-                        onClick={() => {
-                          const id = g.id;
-
-                          setSelectedGameId(id);
-                          setGameView("detail");
-
-                          setGame(null);
-                          setRsvps([]);
-                          setTeams(null);
-
-                          setDetailLoading(true);
-                          refreshAll(id).finally(() => setDetailLoading(false));
-                        }}
-                      >
-                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ fontWeight: 900 }}>{when}</div>
-
-                          <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                            <span className="badge">{uiStatus(g)}</span>
-                            {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
-                          </div>
-                        </div>
-
-                        <div className="small" style={{ marginTop: 6 }}>
-                          📍 {g.location || "—"}
-                        </div>
-
-                        <div className="row" style={{ marginTop: 10 }}>
-                          <span className="badge">✅ {g.yes_count ?? 0}</span>
-                          <span className="badge">❌ {g.no_count ?? 0}</span>
-                        </div>
-
-                        <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-                          {past ? "Игра прошла — отметки закрыты" : "Нажми, чтобы открыть игру"}
-                        </div>
-
-                        {/* быстрые кнопки RSVP — только ОДИН раз */}
-                        <div
-                          className="row"
-                          style={{ marginTop: 10, gap: 8 }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            disabled={lockRsvp}
-                            className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (lockRsvp) return;
-                              await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
-                              await refreshAll(g.id);
-                            }}
-                          >
-                            ✅ Буду
-                          </button>
-
-                          <button
-                            disabled={lockRsvp}
-                            className={status === "no" ? "btn tiny" : "btn secondary tiny"}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (lockRsvp) return;
-                              await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
-                              await refreshAll(g.id);
-                            }}
-                          >
-                            ❌ Не буду
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <h2 style={{ margin: 0 }}>Игра</h2>
-
-                <button
-                  className={tab === "teams" ? "btn" : "btn secondary"}
-                    onClick={() => {
-                      setTeamsBack({ tab: "game", gameView }); // gameView сейчас "detail"
-                      setTab("teams");
-                    }}
-                >
-                  Составы
-                </button>
-
-                <button className="btn secondary" onClick={() => setGameView("list")}>
-                  ← К списку
-                </button>
-              </div>
-
-              <hr />
-
+              );
+            })}
+          </div>
+        )}
+      </>
+    ) : (
+      <>
               {detailLoading ? (
                 <HockeyLoader text="Загружаем игру..." />
               ) : !game ? (
@@ -837,14 +907,10 @@ function renderTeam(teamKey, title, list) {
                         <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin}  me={me} />
                         <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
                       </div>
-                    </>
-                  );
-                })()
-              )}
-            </>
-          )}
-        </div>
-      )}
+                      </>
+                    )}
+                  </div>
+                )}
 
       {/* ====== PROFILE ====== */}
       {tab === "profile" && (
