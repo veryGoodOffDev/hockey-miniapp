@@ -1193,3 +1193,52 @@ textarea:focus{
   opacity: .55;
   filter: grayscale(.25);
 }
+/* ===== Buttons inside game cards: contrast on photo background ===== */
+.gameCard .btn.tiny,
+.gameCard .btn.secondary.tiny{
+  color: rgba(255,255,255,.96);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.18);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 22px rgba(0,0,0,.35);
+}
+
+/* “активная” кнопка (у тебя это .btn.tiny) */
+.gameCard .btn.tiny{
+  background: rgba(255,255,255,.14);
+  border-color: rgba(255,255,255,.26);
+}
+
+/* “неактивная” (secondary) — чуть темнее, но читаемо */
+.gameCard .btn.secondary.tiny{
+  background: rgba(0,0,0,.20);
+}
+
+/* Подсветка активной кнопки по статусу карточки */
+.gameCard.status-yes .btn.tiny{
+  box-shadow:
+    0 0 0 1px rgba(0,255,140,.35),
+    0 0 18px rgba(0,255,140,.12),
+    0 10px 22px rgba(0,0,0,.35);
+}
+
+.gameCard.status-no .btn.tiny{
+  box-shadow:
+    0 0 0 1px rgba(255,70,70,.35),
+    0 0 18px rgba(255,70,70,.12),
+    0 10px 22px rgba(0,0,0,.35);
+}
+
+.gameCard.status-maybe .btn.tiny{
+  box-shadow:
+    0 0 0 1px rgba(120,180,255,.35),
+    0 0 18px rgba(120,180,255,.12),
+    0 10px 22px rgba(0,0,0,.35);
+}
+
+/* disabled на прошедших — чтобы видно, что “не кликается” */
+.gameCard .btn:disabled{
+  opacity: .55;
+  filter: grayscale(.25);
+}
