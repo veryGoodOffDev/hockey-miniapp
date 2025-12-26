@@ -165,7 +165,8 @@ export default function App() {
       setAccessReason(null);
 
       // игры (предстоящие)
-      const gl = await apiGet("/api/games?days=365"); // совместимо с твоим новым бэком (scope=upcoming по умолчанию)
+      const gl = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
+      setGames(gl.games || []);
 
       if (gl?.ok === false) {
         setGamesError(gl);
@@ -414,7 +415,37 @@ export default function App() {
         .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)),
     [games]
   );
+const teamsStaleInfo = useMemo(() => {
+  if (!teams?.ok) return { stale: false, current: 0, inTeams: 0, removed: 0, added: 0 };
 
+  // кто сейчас "Буду" (ровно те, кого логично держать в составах)
+  const yesIds = new Set(
+    (rsvps || [])
+      .filter((r) => (r.status || "maybe") === "yes")
+      .map((r) => String(r.tg_id))
+  );
+
+  // кто сейчас в составах
+  const teamIds = new Set(
+    [...(teams.teamA || []), ...(teams.teamB || [])].map((p) => String(p?.tg_id ?? p))
+  );
+
+  let removed = 0; // есть в составах, но уже НЕ "yes"
+  for (const id of teamIds) if (!yesIds.has(id)) removed++;
+
+  let added = 0; // "yes" есть, но в составах НЕТ
+  for (const id of yesIds) if (!teamIds.has(id)) added++;
+
+  const stale = removed > 0 || added > 0;
+
+  return {
+    stale,
+    current: yesIds.size,
+    inTeams: teamIds.size,
+    removed,
+    added,
+  };
+}, [teams, rsvps]);
   // ВНИМАНИЕ: прошедшие теперь показываем не из games, а из pastPage (загружаем постранично)
   const listToShow = showPast ? pastPage : upcomingGames;
 
@@ -1085,7 +1116,30 @@ export default function App() {
               </button>
             )}
           </div>
-
+          {teams?.ok && teamsStaleInfo.stale && (
+            <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
+              <div style={{ fontWeight: 900 }}>⚠️ Составы устарели</div>
+          
+              <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
+                После последнего формирования составов изменились отметки игроков.
+                Сейчас “✅ Буду”: <b>{teamsStaleInfo.current}</b>, в составах: <b>{teamsStaleInfo.inTeams}</b>.
+                {teamsStaleInfo.removed ? ` Ушли: ${teamsStaleInfo.removed}.` : ""}
+                {teamsStaleInfo.added ? ` Добавились: ${teamsStaleInfo.added}.` : ""}
+              </div>
+          
+              {isAdmin ? (
+                <div className="row" style={{ marginTop: 10 }}>
+                  <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
+                    🔄 Сформировать заново
+                  </button>
+                </div>
+              ) : (
+                <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
+                  Попроси админа нажать “Сформировать сейчас”.
+                </div>
+              )}
+            </div>
+          )}
           {teams?.ok ? (
             <>
               <hr />
