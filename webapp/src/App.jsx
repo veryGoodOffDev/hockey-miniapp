@@ -794,7 +794,6 @@ function renderTeam(teamKey, title, list) {
                 <HockeyLoader text="Загружаем игру..." />
               ) : !game ? (
                 <div className="small">Не удалось загрузить игру.</div>
-@@ -811,10 +902,11 @@ function renderTeam(teamKey, title, list) {
                   );
                 })()
               )}
