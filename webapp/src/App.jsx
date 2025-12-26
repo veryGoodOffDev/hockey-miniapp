@@ -409,7 +409,6 @@ function renderPosGroup(teamKey, title, players) {
     <>
       <div className="teamGroupTitle">
         <span>{title}</span>
-        <span className="badge" style={{ marginLeft: 8 }}>{players.length}</span>
       </div>
 
       <div className="pills">
@@ -424,7 +423,7 @@ function renderPosGroup(teamKey, title, players) {
               style={{ cursor: editTeams ? "pointer" : "default" }}
             >
               <span className="pillName">
-                {showName(p)}{showNum(p)}
+                {showName(p)} №{showNum(p)}
               </span>
 
               {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
