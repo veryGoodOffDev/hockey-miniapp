@@ -402,49 +402,68 @@ const applyTheme = () => {
     return g;
   }
 
-  function renderPosGroup(teamKey, title, players) {
-    if (!players?.length) return null;
+function renderPosGroup(teamKey, title, players) {
+  if (!players?.length) return null;
 
-    return (
-      <>
-        <div className="teamGroupTitle">{title}</div>
-        <div className="pills">
-          {players.map((p) => {
-            const selected =
-              picked && picked.team === teamKey && String(picked.tg_id) === String(p.tg_id);
+  return (
+    <>
+      <div className="teamGroupTitle">
+        <span>{title}</span>
+        <span className="badge" style={{ marginLeft: 8 }}>{players.length}</span>
+      </div>
 
-            return (
-              <div
-                key={p.tg_id}
-                className={"pill " + (selected ? "pillSelected" : "")}
-                onClick={() => onPick(teamKey, p.tg_id)}
-                style={{ cursor: editTeams ? "pointer" : "default" }}
-              >
-                <span className="pillName">
-                  {showName(p)}
-                  {showNum(p)}
-                </span>
-                {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
-              </div>
-            );
-          })}
+      <div className="pills">
+        {players.map((p) => {
+          const selected = picked && picked.team === teamKey && String(picked.tg_id) === String(p.tg_id);
+
+          return (
+            <div
+              key={p.tg_id}
+              className={"pill " + (selected ? "pillSelected" : "")}
+              onClick={() => onPick(teamKey, p.tg_id)}
+              style={{ cursor: editTeams ? "pointer" : "default" }}
+            >
+              <span className="pillName">
+                {showName(p)}{showNum(p)}
+              </span>
+
+              {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+
+function renderTeam(teamKey, title, list) {
+  const g = groupByPos(list || []);
+  const total = (list || []).length;
+
+  return (
+    <>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <h3 style={{ margin: 0 }}>
+          {title} <span className="badge">👥 {total}</span>
+        </h3>
+
+        <div className="row" style={{ gap: 6 }}>
+          <span className="badge">🥅 {g.G.length}</span>
+          <span className="badge">🛡️ {g.D.length}</span>
+          <span className="badge">⚡ {g.F.length}</span>
+          {g.U.length ? <span className="badge">❓ {g.U.length}</span> : null}
         </div>
-      </>
-    );
-  }
+      </div>
 
-  function renderTeam(teamKey, title, list) {
-    const g = groupByPos(list || []);
-    return (
-      <>
-        <h3>{title}</h3>
-        {renderPosGroup(teamKey, POS_LABEL.G, g.G)}
-        {renderPosGroup(teamKey, POS_LABEL.D, g.D)}
-        {renderPosGroup(teamKey, POS_LABEL.F, g.F)}
-        {renderPosGroup(teamKey, POS_LABEL.U, g.U)}
-      </>
-    );
-  }
+      {renderPosGroup(teamKey, POS_LABEL.G, g.G)}
+      {renderPosGroup(teamKey, POS_LABEL.D, g.D)}
+      {renderPosGroup(teamKey, POS_LABEL.F, g.F)}
+      {renderPosGroup(teamKey, POS_LABEL.U, g.U)}
+    </>
+  );
+}
+
 
   const filteredPlayersDir = useMemo(() => {
     const s = playerQ.trim().toLowerCase();
