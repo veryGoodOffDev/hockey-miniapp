@@ -1264,13 +1264,18 @@ function showNum(p) {
 }
 
 function formatWhen(starts_at) {
-  return new Date(starts_at).toLocaleString("ru-RU", {
+  const s = new Date(starts_at).toLocaleString("ru-RU", {
+    weekday: "short",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  // ru-RU иногда даёт "вс, 28.12.2025, 07:45" — сделаем "Вс, ..."
+  const cleaned = s.replace(/\s+/g, " ").trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 const posOrder = (p) => {
