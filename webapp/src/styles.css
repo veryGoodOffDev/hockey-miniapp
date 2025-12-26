@@ -1095,11 +1095,31 @@ textarea:focus{
   filter: blur(14px);
   pointer-events:none;
 }
-.gameCard {
-  color: #fff;
-  overflow: hidden;
+.gameCard{
   position: relative;
+  color: #fff;
 }
+
+.gameCardContent{
+  background: rgba(0,0,0,.45);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 16px;
+  padding: 12px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+}
+
+/* тень текста чуть мягче, чтобы не “грязнило” */
+.gameCardContent *{
+  text-shadow: 0 2px 8px rgba(0,0,0,.75);
+}
+
+.gameCard .badge{
+  background: rgba(0,0,0,.35);
+  border: 1px solid rgba(255,255,255,.14);
+}
+
 
 /* лёгкий блеск поверх */
 .gameCard::after {
