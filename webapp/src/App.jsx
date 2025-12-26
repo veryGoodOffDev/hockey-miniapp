@@ -4,6 +4,14 @@ import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
+import bg1 from "./bg1.webp";
+import bg2 from "./bg2.webp";
+import bg3 from "./bg3.webp";
+import bg4 from "./bg4.webp";
+import bg5 from "./bg5.webp";
+import bg6 from "./bg6.webp";
+
+const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 
@@ -788,28 +796,38 @@ const teamsStaleInfo = useMemo(() => {
                     const status = g.my_status || "maybe";
                     const tone = cardToneByMyStatus(status);
                     const isNext = !showPast && idx === 0;
+                  
+                    // ✅ строго по очереди, независимо от игры
+                    const bgUrl = GAME_BGS[idx % GAME_BGS.length];
 
                     return (
-                      <div
-                        key={g.id}
-                        className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${
-                          past ? "isPast" : ""
-                        }`}
-                        style={{ cursor: "pointer", opacity: past ? 0.85 : 1 }}
-                        onClick={() => {
-                          const id = g.id;
-
-                          setSelectedGameId(id);
-                          setGameView("detail");
-
-                          setGame(null);
-                          setRsvps([]);
-                          setTeams(null);
-
-                          setDetailLoading(true);
-                          refreshAll(id).finally(() => setDetailLoading(false));
-                        }}
-                      >
+                            <div
+                                key={g.id}
+                                className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
+                                style={{
+                                  cursor: "pointer",
+                                  opacity: past ? 0.85 : 1,
+                          
+                                  // красивый фон: затемнение + картинка
+                                  backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.65)), url(${bgUrl})`,
+                                  backgroundSize: "cover",
+                                  backgroundPosition: "center",
+                                  backgroundRepeat: "no-repeat",
+                                }}
+                                onClick={() => {
+                                  const id = g.id;
+                          
+                                  setSelectedGameId(id);
+                                  setGameView("detail");
+                          
+                                  setGame(null);
+                                  setRsvps([]);
+                                  setTeams(null);
+                          
+                                  setDetailLoading(true);
+                                  refreshAll(id).finally(() => setDetailLoading(false));
+                                }}
+                              >
                         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                           <div style={{ fontWeight: 900 }}>{when}</div>
 
