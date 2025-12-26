@@ -801,7 +801,6 @@ const teamsStaleInfo = useMemo(() => {
                     const bgUrl = GAME_BGS[idx % GAME_BGS.length];
 
                     return (
-                      <div className="gameCardContent">
                             <div
                                 key={g.id}
                                 className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
@@ -883,7 +882,6 @@ const teamsStaleInfo = useMemo(() => {
                           </button>
                         </div>
                       </div>
-                    </div>
                     );
                   })}
                 </div>
