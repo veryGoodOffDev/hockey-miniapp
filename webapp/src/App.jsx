@@ -1389,18 +1389,20 @@ function BottomNav({ tab, setTab, isAdmin }) {
   ];
 
   return (
-    <nav className="bottomNav" role="navigation" aria-label="Навигация">
-      {items.map((it) => (
-        <button
-          key={it.key}
-          className={"bottomNavItem " + (tab === it.key ? "isActive" : "")}
-          onClick={() => setTab(it.key)}
-          type="button"
-        >
-          <span className="bottomNavIcon" aria-hidden="true">{it.icon}</span>
-          <span className="bottomNavLabel">{it.label}</span>
-        </button>
-      ))}
-    </nav>
+          <nav className="bottomNav" role="navigation" aria-label="Навигация">
+            <div className="bottomNavInner">
+              {items.map((it) => (
+                <button
+                  key={it.key}
+                  className={"bottomNavItem " + (tab === it.key ? "isActive" : "")}
+                  onClick={() => setTab(it.key)}
+                  type="button"
+                >
+                  <span className="bottomNavIcon" aria-hidden="true">{it.icon}</span>
+                  <span className="bottomNavLabel">{it.label}</span>
+                </button>
+              ))}
+            </div>
+          </nav>
   );
 }
