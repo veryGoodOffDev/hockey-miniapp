@@ -1097,40 +1097,33 @@ textarea:focus{
 }
 .gameCard{
   position: relative;
-  color: #fff;
+  overflow: hidden;
 }
 
-.gameCardContent{
-  background: rgba(0,0,0,.45);
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 16px;
-  padding: 12px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+/* картинка */
+.gameCard::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background-image: var(--game-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(1.06);
+  z-index: 0;
 }
 
-/* тень текста чуть мягче, чтобы не “грязнило” */
-.gameCardContent *{
-  text-shadow: 0 2px 8px rgba(0,0,0,.75);
-}
-
-.gameCard .badge{
-  background: rgba(0,0,0,.35);
-  border: 1px solid rgba(255,255,255,.14);
-}
-
-
-/* лёгкий блеск поверх */
-.gameCard::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(800px 300px at 20% 0%, rgba(255,255,255,.10), transparent 60%);
-  pointer-events: none;
-}
-
-.gameCard > * {
-  position: relative;
+/* затемнение для читаемости текста */
+.gameCard::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background: linear-gradient(180deg, rgba(0,0,0,.72), rgba(0,0,0,.90));
   z-index: 1;
+}
+
+/* весь контент карточки поверх */
+.gameCard > *{
+  position: relative;
+  z-index: 2;
 }
