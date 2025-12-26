@@ -758,7 +758,7 @@ const teamsStaleInfo = useMemo(() => {
               ) : null}
 
               {listToShow.length === 0 ? (
-                <div className="small" style={{ marginTop: 10 }}>
+                <div className="small" style={{ marginTop: 2 }}>
                   {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
                 </div>
               ) : (
