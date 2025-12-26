@@ -1260,7 +1260,6 @@ function renderTeam(teamKey, title, list) {
 }
 
 /* ===== helpers (outside) ===== */
-const listToShow = showPast ? pastPage : games;
 function label(k) {
   const m = {
     skill: "Общий уровень",
