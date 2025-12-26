@@ -494,7 +494,13 @@ app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
 app.get("/api/games", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
-  if (!(await requireGroupMember(req, res, user))) return;
+
+  const is_admin = await isAdminId(user.id);
+
+  // не админ — проверяем членство
+  if (!is_admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
 
   const scopeRaw = String(req.query.scope || "upcoming");
   const scope = ["upcoming", "past", "all"].includes(scopeRaw) ? scopeRaw : "upcoming";
@@ -585,9 +591,15 @@ app.get("/api/games", async (req, res) => {
 
 /** ====== GAME DETAILS (supports game_id) ====== */
 app.get("/api/game", async (req, res) => {
- const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const is_admin = await isAdminId(user.id);
+
+  // не админ — проверяем членство
+  if (!is_admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
 
   const gameId = req.query.game_id ? Number(req.query.game_id) : null;
 
