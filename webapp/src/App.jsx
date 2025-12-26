@@ -45,18 +45,6 @@ export default function App() {
   // игры: прошедшие
   const [showPast, setShowPast] = useState(false);
   const [gamesError, setGamesError] = useState(null);
-  const [upcomingTotal, setUpcomingTotal] = useState(0);
-  const [pastTotal, setPastTotal] = useState(0);
-  
-  const [pastPage, setPastPage] = useState([]);
-  const [pastOffset, setPastOffset] = useState(0);
-  const pastLimit = 10;
-  
-  const [pastFrom, setPastFrom] = useState("");
-  const [pastTo, setPastTo] = useState("");
-  const [pastQ, setPastQ] = useState("");
-
-
   // справочник игроков (вкладка players)
   const [playersDir, setPlayersDir] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(false);
@@ -164,9 +152,7 @@ export default function App() {
       setAccessReason(null);
 
       // игры
-      const gl = await apiGet("/api/games?scope=upcoming&limit=50&offset=0");
-      setUpcomingTotal(gl.total ?? 0);
-      setGames(gl.games || []);
+      const gl = await apiGet("/api/games?days=365");
 
       if (gl?.ok === false) {
         setGamesError(gl);
