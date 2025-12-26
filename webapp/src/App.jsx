@@ -1121,7 +1121,7 @@ const applyTheme = () => {
                         }
                       }}
                     >
-                      <div className="row" style={{ alignItems: "center", gap: 5 }}>
+                      <div className="row" style={{ alignItems: "center", gap: 12, marginTop: 2, }}>
                           <JerseyBadge
                             number={showNum(p)}
                             variant="modern"
