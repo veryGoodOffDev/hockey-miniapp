@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
-import JerseyBadge from "./JerseyBadge.jsx";
+import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
 
