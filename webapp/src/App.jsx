@@ -414,7 +414,7 @@ function renderPosGroup(teamKey, title, players) {
       <div className="pills">
         {players.map((p) => {
           const selected = picked && picked.team === teamKey && String(picked.tg_id) === String(p.tg_id);
-
+          const n = showNum(p);
           return (
             <div
               key={p.tg_id}
@@ -422,9 +422,9 @@ function renderPosGroup(teamKey, title, players) {
               onClick={() => onPick(teamKey, p.tg_id)}
               style={{ cursor: editTeams ? "pointer" : "default" }}
             >
-              <span className="pillName">
-                {showName(p)} №{showNum(p)}
-              </span>
+            <span className="pillName">
+              {showName(p)}{n && ` № ${n}`}
+            </span>
 
               {isAdmin && <span className="pillMeta">{Number(p.rating ?? 0).toFixed(1)}</span>}
             </div>
