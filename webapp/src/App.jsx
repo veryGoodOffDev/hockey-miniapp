@@ -609,7 +609,7 @@ function renderTeam(teamKey, title, list) {
       <h1>🏒 Хоккей: отметки и составы</h1>
 
       {/* ====== GAMES ====== */}
-      {tab === "game" && (
+         {tab === "game" && (
         <div className="card">
           {gameView === "list" ? (
             <>
@@ -794,6 +794,64 @@ function renderTeam(teamKey, title, list) {
                 <HockeyLoader text="Загружаем игру..." />
               ) : !game ? (
                 <div className="small">Не удалось загрузить игру.</div>
+              ) : (
+                (() => {
+                  const past = isPastGame(game);
+                  const lockRsvp = past && !isAdmin;
+
+                  return (
+                    <>
+                      <div className="row">
+                        <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
+                        <span className="badge">📍 {game.location || "—"}</span>
+                        <span className="badge">{uiStatus(game)}</span>
+
+                        {game.video_url ? (
+                          <button
+                            className="btn secondary"
+                            onClick={() =>
+                              tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank")
+                            }
+                          >
+                            ▶️ Видео
+                          </button>
+                        ) : null}
+
+                        {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
+                      </div>
+
+                      <hr />
+
+                      {game.status === "cancelled" ? (
+                        <div className="small">Эта игра отменена.</div>
+                      ) : lockRsvp ? (
+                        <div className="small" style={{ opacity: 0.85 }}>
+                          Игра уже прошла — менять отметки нельзя.
+                        </div>
+                      ) : (
+                        <div className="row">
+                          <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
+                            ✅ Буду
+                          </button>
+                          <button className={btnClass("no")} onClick={() => rsvp("no")}>
+                            ❌ Не буду
+                          </button>
+                          <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
+                            🗘 Сбросить
+                          </button>
+                        </div>
+                      )}
+
+                      <hr />
+
+                      <div className="small">Отметки:</div>
+
+                      <div style={{ marginTop: 10 }}>
+                        <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} me={me} />
+                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin}  me={me} />
+                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
+                      </div>
+                    </>
                   );
                 })()
               )}
