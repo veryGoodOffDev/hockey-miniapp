@@ -147,24 +147,37 @@ function requireWebAppAuth(req, res) {
   return v.user;
 }
 async function requireGroupMember(req, res, user) {
-  const chatIdRaw = await getSetting("notify_chat_id", null); // используем тот же чат
+  const chatIdRaw = await getSetting("notify_chat_id", null);
   if (!chatIdRaw) {
     res.status(403).json({ ok: false, reason: "access_chat_not_set" });
     return false;
   }
 
+  // chat_id в TG может быть большим и отрицательным (-100...), Number ок, но проверим валидность
   const chatId = Number(chatIdRaw);
+  if (!Number.isFinite(chatId)) {
+    res.status(403).json({ ok: false, reason: "access_chat_invalid" });
+    return false;
+  }
+
+  // ✅ если хочешь — разрешай админам проходить даже если TG API умер
+  // (лучше вынести в роуты, но можно и тут)
+  try {
+    const is_admin = await isAdminId(user.id);
+    if (is_admin) return true;
+  } catch (e) {
+    // если проверка админа упала — не мешаем дальше
+    console.error("isAdminId failed:", e);
+  }
 
   try {
     const m = await bot.api.getChatMember(chatId, user.id);
 
-    // статусы: creator | administrator | member | restricted | left | kicked
     if (m.status === "left" || m.status === "kicked") {
       res.status(403).json({ ok: false, reason: "not_member" });
       return false;
     }
 
-    // В редких случаях restricted может быть is_member=false
     if (m.status === "restricted" && m.is_member === false) {
       res.status(403).json({ ok: false, reason: "not_member" });
       return false;
@@ -173,11 +186,38 @@ async function requireGroupMember(req, res, user) {
     return true;
   } catch (e) {
     console.error("getChatMember failed:", e);
-    // Частая причина: бот не в группе / нет прав / chat_id неверный
+
+    const desc = String(e?.description || e?.message || "");
+    const code = e?.error_code;
+    const errCode = e?.error?.code;       // node-fetch
+    const errNo = e?.error?.errno;
+
+    // 🔌 СЕТЕВЫЕ ОШИБКИ (как у тебя ETIMEDOUT)
+    if (errCode === "ETIMEDOUT" || errNo === "ETIMEDOUT" || desc.includes("Network request")) {
+      // можно 503 — это реально "временно недоступно"
+      res.status(503).json({ ok: false, reason: "telegram_unavailable" });
+      return false;
+    }
+
+    // 🧩 НЕТ ДОСТУПА / НЕВЕРНЫЙ chat_id / БОТ НЕ В ЧАТЕ
+    // grammY часто даёт 400/403 с описанием
+    if (code === 400) {
+      // chat not found / user not found / bad request
+      res.status(403).json({ ok: false, reason: "access_chat_invalid" });
+      return false;
+    }
+    if (code === 403) {
+      // bot was kicked / forbidden etc
+      res.status(403).json({ ok: false, reason: "bot_forbidden" });
+      return false;
+    }
+
+    // дефолт
     res.status(403).json({ ok: false, reason: "member_check_failed" });
     return false;
   }
 }
+
 
 function int(v, def) {
   const n = Number(v);
