@@ -1107,12 +1107,11 @@ export default function App() {
                       }}
                     >
                       <div className="row" style={{ alignItems: "center", gap: 5 }}>
-                        <span>{index+1}</span>
+                        <JerseyBadge number={showNum(p)} />
                         <Avatar p={p} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 900 }}>
                             {showName(p)}
-                            {showNum(p)}
                           </div>
                           <div className="small" style={{ opacity: 0.8 }}>
                             {posHuman(p.position)}
@@ -1308,6 +1307,19 @@ function Avatar({ p, big = false }) {
       }}
     >
       {letter}
+    </div>
+  );
+}
+function JerseyBadge({ number }) {
+  const text = number ? String(number) : "?";
+
+  return (
+    <div
+      className="jerseyBadge"
+      aria-label={number ? `Номер ${text}` : "Номер не указан"}
+      title={number ? `№ ${text}` : "?"}
+    >
+      <span className="jerseyBadgeText">{text}</span>
     </div>
   );
 }
