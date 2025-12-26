@@ -1136,7 +1136,7 @@ textarea:focus{
     radial-gradient(120% 90% at 15% 10%, var(--toneGlow) 0%, rgba(0,0,0,0) 60%),
 
     /* основное затемнение для читаемости */
-    linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.88));
+    linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.55));
 }
 /* Текст на карточках игр всегда светлый (фоновая картинка затемнена) */
 .gameCard{
