@@ -1088,8 +1088,8 @@ export default function App() {
                 <div className="small">Пока нет игроков.</div>
               ) : (
                 <div style={{ display: "grid", gap: 1 }}>
-                  <h3>{filteredPlayersDir.length}</h3>
-                  {filteredPlayersDir.map((p) => (
+                  <h3>Игроков: {filteredPlayersDir.length}</h3>
+                  {filteredPlayersDir.map((p, index) => (
                     <div
                       key={p.tg_id}
                       className="card"
@@ -1106,7 +1106,8 @@ export default function App() {
                         }
                       }}
                     >
-                      <div className="row" style={{ alignItems: "center", gap: 12 }}>
+                      <div className="row" style={{ alignItems: "center", gap: 5 }}>
+                        <span>{index+1}</span>
                         <Avatar p={p} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 900 }}>
