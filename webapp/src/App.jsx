@@ -7,6 +7,7 @@ import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
 
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 
+
 export default function App() {
   const tg = window.Telegram?.WebApp;
   const initData = tg?.initData || "";
@@ -191,10 +192,23 @@ export default function App() {
       return;
     }
 
-    const applyTheme = () => {
-      if (!tg) return;
-      document.documentElement.dataset.tg = tg.colorScheme;
-    };
+const applyTheme = () => {
+  if (!tg) return;
+
+  const scheme = tg.colorScheme || "light";
+
+  // оставим твой data-tg, но добавим универсальный data-theme
+  document.documentElement.dataset.tg = scheme;
+  document.documentElement.dataset.theme = scheme;
+
+  // прокидываем themeParams в CSS vars (на будущее)
+  const p = tg.themeParams || {};
+  for (const [k, v] of Object.entries(p)) {
+    if (typeof v === "string" && v) {
+      document.documentElement.style.setProperty(`--tg-${k}`, v);
+    }
+  }
+};
 
     (async () => {
       try {
