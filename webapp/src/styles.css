@@ -1095,10 +1095,17 @@ textarea:focus{
   filter: blur(14px);
   pointer-events:none;
 }
-.gameCard{
-  position: relative;
-  overflow: hidden;
+/* Цвет подсветки статуса (поверх картинки) */
+.gameCard { 
+  --toneGlow: rgba(255,255,255,0); 
+  --toneEdge: rgba(255,255,255,0);
 }
+
+.gameCard.tone-yes   { --toneGlow: rgba(0, 255, 140, .28); --toneEdge: rgba(0, 255, 140, .75); }
+.gameCard.tone-maybe { --toneGlow: rgba(255, 200, 0, .26); --toneEdge: rgba(255, 200, 0, .75); }
+.gameCard.tone-no    { --toneGlow: rgba(255, 70, 70, .28); --toneEdge: rgba(255, 70, 70, .75); }
+.gameCard.tone-none  { --toneGlow: rgba(120, 160, 255, .14); --toneEdge: rgba(120, 160, 255, .35); }
+
 
 /* картинка */
 .gameCard::before{
@@ -1114,13 +1121,24 @@ textarea:focus{
 }
 
 /* затемнение для читаемости текста */
+/* затемнение + цвет статуса (чтобы было видно tone) */
 .gameCard::after{
   content:"";
   position:absolute;
   inset:0;
-  background: linear-gradient(180deg, rgba(0,0,0,.72), rgba(0,0,0,.90));
   z-index: 1;
+
+  background:
+    /* тонкая цветная полоска слева */
+    linear-gradient(90deg, var(--toneEdge) 0 4px, rgba(0,0,0,0) 4px 100%),
+
+    /* цветное свечение сверху-слева */
+    radial-gradient(120% 90% at 15% 10%, var(--toneGlow) 0%, rgba(0,0,0,0) 60%),
+
+    /* основное затемнение для читаемости */
+    linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.88));
 }
+
 
 /* весь контент карточки поверх */
 .gameCard > *{
