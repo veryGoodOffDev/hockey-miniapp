@@ -1088,6 +1088,7 @@ export default function App() {
                 <div className="small">Пока нет игроков.</div>
               ) : (
                 <div style={{ display: "grid", gap: 1 }}>
+                  <h3>{filteredPlayersDir.length}</h3>
                   {filteredPlayersDir.map((p) => (
                     <div
                       key={p.tg_id}
