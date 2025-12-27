@@ -196,4 +196,28 @@ export async function ensureSchema(q) {
     CREATE INDEX IF NOT EXISTS bot_messages_chat_kind_idx
       ON bot_messages(chat_id, kind, created_at DESC);
   `);
+
+    /** ===================== RSVP TOKENS (public links) ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS rsvp_tokens (
+      id BIGSERIAL PRIMARY KEY,
+
+      token TEXT UNIQUE NOT NULL,
+
+      game_id INT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_by BIGINT,
+
+      expires_at TIMESTAMPTZ,
+      max_uses INT NOT NULL DEFAULT 0, -- 0 = unlimited
+      used_count INT NOT NULL DEFAULT 0,
+      last_used_at TIMESTAMPTZ
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_rsvp_tokens_game_id ON rsvp_tokens(game_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_rsvp_tokens_tg_id ON rsvp_tokens(tg_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_rsvp_tokens_expires_at ON rsvp_tokens(expires_at);`);
 }
