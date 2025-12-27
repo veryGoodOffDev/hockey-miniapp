@@ -1166,133 +1166,148 @@ const teamsStaleInfo = useMemo(() => {
         </div>
       )}
 
-      {/* ====== TEAMS ====== */}
-      {tab === "teams" && (
-        <div className="card">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ margin: 0 }}>Составы</h2>
+{/* ====== TEAMS ====== */}
+{tab === "teams" && (
+  <div className="card">
+    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+      <h2 style={{ margin: 0 }}>Составы</h2>
 
-            <button
-              className="btn secondary"
-              onClick={() => {
-                setTab(teamsBack.tab || "game");
-                if ((teamsBack.tab || "game") === "game") {
-                  setGameView(teamsBack.gameView || "detail");
-                }
-              }}
-            >
-              ← Назад
-            </button>
-          </div>
+      <button
+        className="btn secondary"
+        onClick={() => {
+          setTab(teamsBack.tab || "game");
+          if ((teamsBack.tab || "game") === "game") {
+            setGameView(teamsBack.gameView || "detail");
+          }
+        }}
+      >
+        ← Назад
+      </button>
+    </div>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>
-              Обновить
-            </button>
-              {isAdmin && (
-                <>
-                  <button className="btn" onClick={generateTeams} disabled={!selectedGameId || game?.status === "cancelled"}>
-                    Сформировать сейчас (админ)
-                  </button>
-            
-                  <button
-                    className="btn secondary"
-                    onClick={sendTeamsToChat}
-                    disabled={!selectedGameId || !teams?.ok || teamsBusy || teamsSendBusy || game?.status === "cancelled"}
-                    title={!teams?.ok ? "Сначала сформируй составы" : "Отправить составы в чат"}
-                  >
-                    {teamsSendBusy ? "…" : "📣 Отправить составы в чат"}
-                  </button>
-                </>
-              )}
-            </div>     
-            {teamsSendMsg ? (
-              <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>
-                {teamsSendMsg}
-              </div>
-            ) : null}
-          </div>
-          {teams?.ok && teamsStaleInfo.stale && (
-            <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
-              <div style={{ fontWeight: 900 }}>⚠️ Составы устарели</div>
-          
-              <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
-                После последнего формирования составов изменились отметки игроков.
-                Сейчас “✅ Буду”: <b>{teamsStaleInfo.current}</b>, в составах: <b>{teamsStaleInfo.inTeams}</b>.
-                {teamsStaleInfo.removed ? ` Ушли: ${teamsStaleInfo.removed}.` : ""}
-                {teamsStaleInfo.added ? ` Добавились: ${teamsStaleInfo.added}.` : ""}
-              </div>
-          
-              {isAdmin ? (
-                <div className="row" style={{ marginTop: 10 }}>
-                  <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
-                    🔄 Сформировать заново
-                  </button>
-                </div>
-              ) : (
-                <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
-                  Попроси админа нажать “Сформировать сейчас”.
-                </div>
-              )}
-            </div>
-          )}
-          {teams?.ok ? (
-            <>
-              <hr />
-              <div className="row">
-                <span className="badge">ΣA {Number(teams.meta?.sumA ?? 0).toFixed(1)}</span>
-                <span className="badge">ΣB {Number(teams.meta?.sumB ?? 0).toFixed(1)}</span>
-                <span className="badge">
-                  diff {Number(teams.meta?.diff ?? 0).toFixed(1)}
-                  {Number(teams.meta?.diff ?? 0) >= 3 ? " ⚠️" : ""}
-                </span>
-              </div>
+    <div className="row" style={{ marginTop: 10 }}>
+      <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>
+        Обновить
+      </button>
 
-              {isAdmin && (
-                <div className="row" style={{ marginTop: 10 }}>
-                  <button
-                    className={editTeams ? "btn" : "btn secondary"}
-                    onClick={() => {
-                      setEditTeams((v) => !v);
-                      setPicked(null);
-                    }}
-                    disabled={teamsBusy}
-                  >
-                    {editTeams ? "✅ Режим правки" : "✏️ Править составы"}
-                  </button>
+      {isAdmin && (
+        <>
+          <button
+            className="btn"
+            onClick={generateTeams}
+            disabled={!selectedGameId || game?.status === "cancelled"}
+          >
+            Сформировать сейчас (админ)
+          </button>
 
-                  {editTeams && (
-                    <button
-                      className="btn secondary"
-                      onClick={movePicked}
-                      disabled={!picked || teamsBusy}
-                      title="Перенести выбранного в другую команду"
-                    >
-                      ⇄ Перенести
-                    </button>
-                  )}
-
-                  {editTeams && picked && (
-                    <span className="small" style={{ opacity: 0.8 }}>
-                      Выбран: {picked.team} · {picked.tg_id}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <hr />
-              {renderTeam("A", "⬜ Белые", teams.teamA || [])}
-
-              <hr />
-              {renderTeam("B", "🟦 Синие", teams.teamB || [])}
-            </>
-          ) : (
-            <div className="small" style={{ marginTop: 10 }}>
-              Составов пока нет. Нажми “Сформировать сейчас”.
-            </div>
-          )}
-        </div>
+          <button
+            className="btn secondary"
+            onClick={sendTeamsToChat}
+            disabled={
+              !selectedGameId ||
+              !teams?.ok ||
+              teamsBusy ||
+              teamsSendBusy ||
+              game?.status === "cancelled"
+            }
+            title={!teams?.ok ? "Сначала сформируй составы" : "Отправить составы в чат"}
+          >
+            {teamsSendBusy ? "…" : "📣 Отправить составы в чат"}
+          </button>
+        </>
       )}
+    </div>
+
+    {teamsSendMsg ? (
+      <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>
+        {teamsSendMsg}
+      </div>
+    ) : null}
+
+    {teams?.ok && teamsStaleInfo?.stale && (
+      <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
+        <div style={{ fontWeight: 900 }}>⚠️ Составы устарели</div>
+
+        <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
+          После последнего формирования составов изменились отметки игроков. Сейчас “✅ Буду”:{" "}
+          <b>{teamsStaleInfo.current}</b>, в составах: <b>{teamsStaleInfo.inTeams}</b>.
+          {teamsStaleInfo.removed ? ` Ушли: ${teamsStaleInfo.removed}.` : ""}
+          {teamsStaleInfo.added ? ` Добавились: ${teamsStaleInfo.added}.` : ""}
+        </div>
+
+        {isAdmin ? (
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
+              🔄 Сформировать заново
+            </button>
+          </div>
+        ) : (
+          <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
+            Попроси админа нажать “Сформировать сейчас”.
+          </div>
+        )}
+      </div>
+    )}
+
+    {teams?.ok ? (
+      <>
+        <hr />
+
+        {/* если эти метрики тебе больше не нужны — просто удали этот блок */}
+        <div className="row">
+          <span className="badge">ΣA {Number(teams.meta?.sumA ?? 0).toFixed(1)}</span>
+          <span className="badge">ΣB {Number(teams.meta?.sumB ?? 0).toFixed(1)}</span>
+          <span className="badge">
+            diff {Number(teams.meta?.diff ?? 0).toFixed(1)}
+            {Number(teams.meta?.diff ?? 0) >= 3 ? " ⚠️" : ""}
+          </span>
+        </div>
+
+        {isAdmin && (
+          <div className="row" style={{ marginTop: 10 }}>
+            <button
+              className={editTeams ? "btn" : "btn secondary"}
+              onClick={() => {
+                setEditTeams((v) => !v);
+                setPicked(null);
+              }}
+              disabled={teamsBusy}
+            >
+              {editTeams ? "✅ Режим правки" : "✏️ Править составы"}
+            </button>
+
+            {editTeams && (
+              <button
+                className="btn secondary"
+                onClick={movePicked}
+                disabled={!picked || teamsBusy}
+                title="Перенести выбранного в другую команду"
+              >
+                ⇄ Перенести
+              </button>
+            )}
+
+            {editTeams && picked && (
+              <span className="small" style={{ opacity: 0.8 }}>
+                Выбран: {picked.team} · {picked.tg_id}
+              </span>
+            )}
+          </div>
+        )}
+
+        <hr />
+        {renderTeam("A", "⬜ Белые", teams.teamA || [])}
+
+        <hr />
+        {renderTeam("B", "🟦 Синие", teams.teamB || [])}
+      </>
+    ) : (
+      <div className="small" style={{ marginTop: 10 }}>
+        Составов пока нет. Нажми “Сформировать сейчас”.
+      </div>
+    )}
+  </div>
+)}
 
       {/* ====== STATS ====== */}
       {tab === "stats" && (
