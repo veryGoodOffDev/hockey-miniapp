@@ -121,7 +121,8 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [msgLoading, setMsgLoading] = useState(false);
   const [showDeletedMsgs, setShowDeletedMsgs] = useState(false);
   const [showPastAdmin, setShowPastAdmin] = useState(false);
-
+  const [tokenMsg, setTokenMsg] = useState("");
+  const [tokenBusy, setTokenBusy] = useState(false);
 
 function fmtTs(ts) {
   try {
@@ -195,6 +196,49 @@ async function setAttend(tg_id, status) {
   setAttendanceRows(prev => prev.map(x => String(x.tg_id) === String(tg_id) ? { ...x, status } : x));
   // если у тебя статистика/счётчики — можешь refreshAll дернуть
 }
+
+    async function createRsvpLink(tg_id) {
+    if (!gameDraft?.id || !tg_id) return;
+
+    setTokenMsg("");
+    setTokenBusy(true);
+    try {
+      const r = await apiPost("/api/admin/rsvp-tokens", {
+        game_id: gameDraft.id,
+        tg_id,
+        expires_hours: 72,
+        max_uses: 0,
+      });
+
+      const token = r?.token?.token || r?.token || r?.token_str;
+      const url =
+        r?.url ||
+        (token ? `${window.location.origin}/rsvp?t=${encodeURIComponent(token)}` : "");
+
+      if (!url) {
+        setTokenMsg("✅ Токен создан, но нет URL (проверь ответ сервера)");
+        return;
+      }
+
+      // копирование (если не получится — покажем prompt)
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+          setTokenMsg("✅ Ссылка скопирована");
+        } else {
+          window.prompt("Скопируй ссылку:", url);
+          setTokenMsg("✅ Ссылка готова");
+        }
+      } catch {
+        window.prompt("Скопируй ссылку:", url);
+        setTokenMsg("✅ Ссылка готова");
+      }
+    } catch (e) {
+      setTokenMsg("❌ Не удалось создать ссылку");
+    } finally {
+      setTokenBusy(false);
+    }
+  }
 
   async function load() {
     const g = await apiGet("/api/games?days=180");
@@ -495,6 +539,14 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           </span>
         </div>
         <div className="guestPillActions">
+          <button
+            className="iconBtn"
+            title="Ссылка на отметку"
+            disabled={tokenBusy}
+            onClick={() => createRsvpLink(g.tg_id)}
+          >
+            🔗
+          </button>
           <button className="iconBtn" title="Изменить" onClick={() => openEditGuest(g)}>✏️</button>
           <button className="iconBtn" title="Удалить" onClick={() => deleteGuest(g.tg_id)}>🗑️</button>
         </div>
@@ -1001,6 +1053,12 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
               <h2 style={{ margin: 0 }}>Посещаемость</h2>
               <button className="btn secondary" onClick={loadAttendance}>Обновить</button>
             </div>
+              {tokenMsg && (
+                <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>
+                  {tokenMsg}
+                </div>
+              )}
+
           
             {attLoading ? (
               <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю игроков…</div>
@@ -1014,8 +1072,21 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                         <div style={{ fontWeight: 900 }}>
                           {showName(p)}{showNum(p)}
                         </div>
-                        <span className="badgeMini">{st}</span>
+                      
+                        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                          <span className="badgeMini">{st}</span>
+                          <button
+                            className="iconBtn"
+                            type="button"
+                            title="Ссылка на отметку"
+                            disabled={tokenBusy}
+                            onClick={() => createRsvpLink(p.tg_id)}
+                          >
+                            🔗
+                          </button>
+                        </div>
                       </div>
+
           
                       <div className="segRow" role="radiogroup" aria-label="Посещаемость">
                         <button
