@@ -2009,17 +2009,13 @@ app.post("/api/admin/teams/send", async (req, res) => {
         renderTeamHtml("⬜ Белые", teamAPlayers) +
         `\n\n` +
         renderTeamHtml("🟦 Синие", teamBPlayers);
-      
+
+    
+    // 6) отправляем
       const sent = await bot.api.sendMessage(chatId, body, {
         parse_mode: "HTML",
         disable_web_page_preview: true,
       });
-
-    // 6) отправляем
-    const sent = await bot.api.sendMessage(chatId, body, {
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    });
 
     // 7) пишем в историю (у тебя уже есть bot_messages)
     await q(
