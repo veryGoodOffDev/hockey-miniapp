@@ -474,18 +474,20 @@ function renderLines(list) {
           : ` №${escapeHtml(p.jersey_number)}`;
       return `• ${name}${num}`;
     })
-    .join("<br/>");
+    .join("\n"); // ✅ вместо <br/>
 }
 
 function renderTeamHtml(title, players) {
   const g = groupPlayersForMessage(players);
+
   return (
-    `<b>${escapeHtml(title)}</b><br/>` +
-    `🥅 <b>Вратари</b><br/>${renderLines(g.G)}<br/><br/>` +
-    `🛡 <b>Защитники</b><br/>${renderLines(g.D)}<br/><br/>` +
-    `🏒 <b>Нападающие</b><br/>${renderLines(g.F)}`
+    `<b>${escapeHtml(title)}</b>\n` +
+    `🥅 <b>Вратари</b>\n${renderLines(g.G)}\n\n` +
+    `🛡 <b>Защитники</b>\n${renderLines(g.D)}\n\n` +
+    `🏒 <b>Нападающие</b>\n${renderLines(g.F)}`
   );
 }
+
 
 async function getSettingValue(q, key) {
   const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
@@ -1996,17 +1998,22 @@ app.post("/api/admin/teams/send", async (req, res) => {
       ? dt.toLocaleString("ru-RU", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
       : "—";
 
-    const header =
-      `<b>🏒 Составы на игру</b><br/>` +
-      `⏱ <code>${escapeHtml(when)}</code><br/>` +
-      `📍 <b>${escapeHtml(row.location || "—")}</b>` +
-      (stale ? `<br/><br/><b>⚠️ ВНИМАНИЕ:</b> отметки менялись после формирования составов.` : "");
-
-    const body =
-      `${header}<br/><br/>` +
-      renderTeamHtml("⬜ Белые", teamAPlayers) +
-      `<br/><br/>` +
-      renderTeamHtml("🟦 Синие", teamBPlayers);
+      const header =
+        `<b>🏒 Составы на игру</b>\n` +
+        `⏱ <code>${escapeHtml(when)}</code>\n` +
+        `📍 <b>${escapeHtml(row.location || "—")}</b>` +
+        (stale ? `\n\n<b>⚠️ ВНИМАНИЕ:</b> отметки менялись после формирования составов.` : "");
+      
+      const body =
+        `${header}\n\n` +
+        renderTeamHtml("⬜ Белые", teamAPlayers) +
+        `\n\n` +
+        renderTeamHtml("🟦 Синие", teamBPlayers);
+      
+      const sent = await bot.api.sendMessage(chatId, body, {
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      });
 
     // 6) отправляем
     const sent = await bot.api.sendMessage(chatId, body, {
