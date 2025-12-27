@@ -124,6 +124,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [tokenMsg, setTokenMsg] = useState("");
   const [tokenBusy, setTokenBusy] = useState(false);
   const [tokenUrl, setTokenUrl] = useState("");
+  const [tokenValue, setTokenValue] = useState(""); // сам токен, чтобы можно было отозвать
 
 function fmtTs(ts) {
   try {
@@ -209,6 +210,7 @@ async function createRsvpLink(tg_id) {
   setTokenMsg("");
   setTokenUrl("");
   setTokenBusy(true);
+  setTokenValue("");
 
   try {
     const r = await apiPost("/api/admin/rsvp-tokens", {
@@ -225,6 +227,7 @@ async function createRsvpLink(tg_id) {
     }
 
     const token = r?.token?.token || r?.token;
+    setTokenValue(token || "");
     const url =
       r?.url ||
       (token ? `${window.location.origin}/rsvp?t=${encodeURIComponent(token)}` : "");
@@ -245,6 +248,26 @@ async function createRsvpLink(tg_id) {
     }
   } catch (e) {
     setTokenMsg("❌ Не удалось создать ссылку (ошибка запроса)");
+  } finally {
+    setTokenBusy(false);
+  }
+}
+
+  async function revokeToken() {
+  if (!tokenValue) return;
+
+  const ok = confirm("Отозвать ссылку? Она перестанет открываться.");
+  if (!ok) return;
+
+  setTokenBusy(true);
+  try {
+    const r = await apiPost("/api/admin/rsvp-tokens/revoke", { token: tokenValue });
+    if (!r?.ok) {
+      setTokenMsg(`❌ Не удалось отозвать: ${r?.reason || r?.error || "unknown"}`);
+      return;
+    }
+    setTokenMsg("🚫 Ссылка отозвана");
+    // можно оставить URL в поле, но лучше подсветить, что она уже невалидна
   } finally {
     setTokenBusy(false);
   }
@@ -506,6 +529,28 @@ async function createRsvpLink(tg_id) {
     await load();
     onChanged?.();
   }
+
+  async function promoteGuestToManual(tg_id) {
+  const ok = confirm("Сделать этого гостя постоянным игроком команды (без Telegram)?");
+  if (!ok) return;
+
+  const r = await apiPost(`/api/admin/players/${tg_id}/promote`, {});
+  if (!r?.ok) {
+    setTokenMsg(`❌ Не удалось: ${r?.reason || r?.error || "unknown"}`);
+    return;
+  }
+
+  setTokenMsg("⭐ Гость переведён в игроки команды (manual)");
+
+  // обновим всё, чтобы он исчез из “Гости” и появился в “Игроки”
+  if (gameDraft?.id) {
+    await loadGuestsForGame(gameDraft.id);
+    await loadAttendanceForGame(gameDraft.id);
+  }
+  await load();
+  onChanged?.();
+}
+
   
   function isPastGameAdmin(g) {
   if (!g?.starts_at) return false;
@@ -559,6 +604,14 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           >
             🔗
           </button>
+          <button
+            className="iconBtn"
+            title="Сделать игроком команды (manual)"
+            onClick={() => promoteGuestToManual(g.tg_id)}
+          >
+            ⭐
+          </button>
+
           <button className="iconBtn" title="Изменить" onClick={() => openEditGuest(g)}>✏️</button>
           <button className="iconBtn" title="Удалить" onClick={() => deleteGuest(g.tg_id)}>🗑️</button>
         </div>
@@ -1106,6 +1159,14 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                                 >
                                   🔎 Открыть
                                 </button>
+                                <button
+                                  className="btn secondary"
+                                  type="button"
+                                  disabled={tokenBusy || !tokenValue}
+                                  onClick={revokeToken}
+                                >
+                                  🚫 Отозвать
+                                </button>
                               </div>
                             </div>
                           )}
@@ -1311,7 +1372,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             <div className="small" style={{ opacity: 0.9 }}>
               tg_id: <b>{playerDraft.tg_id}</b>
               {playerDraft.username ? ` · @${playerDraft.username}` : ""}
-              {playerDraft.is_guest ? " · 🧷 гость" : ""}
+              {p.player_kind === "manual" ? " · 👤 manual" : ""}
               {playerDraft.is_env_admin ? " · 🔒 env-админ" : ""}
             </div>
 
