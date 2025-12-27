@@ -123,6 +123,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [showPastAdmin, setShowPastAdmin] = useState(false);
   const [tokenMsg, setTokenMsg] = useState("");
   const [tokenBusy, setTokenBusy] = useState(false);
+  const [tokenUrl, setTokenUrl] = useState("");
 
 function fmtTs(ts) {
   try {
@@ -202,48 +203,53 @@ async function setAttend(tg_id, status) {
   // если у тебя статистика/счётчики — можешь refreshAll дернуть
 }
 
-    async function createRsvpLink(tg_id) {
-    if (!gameDraft?.id || !tg_id) return;
+async function createRsvpLink(tg_id) {
+  if (!gameDraft?.id || !tg_id) return;
 
-    setTokenMsg("");
-    setTokenBusy(true);
-    try {
-      const r = await apiPost("/api/admin/rsvp-tokens", {
-        game_id: gameDraft.id,
-        tg_id,
-        expires_hours: 72,
-        max_uses: 0,
-      });
+  setTokenMsg("");
+  setTokenUrl("");
+  setTokenBusy(true);
 
-      const token = r?.token?.token || r?.token || r?.token_str;
-      const url =
-        r?.url ||
-        (token ? `${window.location.origin}/rsvp?t=${encodeURIComponent(token)}` : "");
+  try {
+    const r = await apiPost("/api/admin/rsvp-tokens", {
+      game_id: gameDraft.id,
+      tg_id,
+      expires_hours: 72,
+      max_uses: 0,
+    });
 
-      if (!url) {
-        setTokenMsg("✅ Токен создан, но нет URL (проверь ответ сервера)");
-        return;
-      }
-
-      // копирование (если не получится — покажем prompt)
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(url);
-          setTokenMsg("✅ Ссылка скопирована");
-        } else {
-          window.prompt("Скопируй ссылку:", url);
-          setTokenMsg("✅ Ссылка готова");
-        }
-      } catch {
-        window.prompt("Скопируй ссылку:", url);
-        setTokenMsg("✅ Ссылка готова");
-      }
-    } catch (e) {
-      setTokenMsg("❌ Не удалось создать ссылку");
-    } finally {
-      setTokenBusy(false);
+    // apiPost у тебя НЕ кидает исключения на 401/403/500, поэтому проверяем ok вручную
+    if (!r?.ok) {
+      setTokenMsg(`❌ Не удалось создать ссылку: ${r?.reason || r?.error || "unknown"}`);
+      return;
     }
+
+    const token = r?.token?.token || r?.token;
+    const url =
+      r?.url ||
+      (token ? `${window.location.origin}/rsvp?t=${encodeURIComponent(token)}` : "");
+
+    if (!url) {
+      setTokenMsg("❌ Токен создан, но URL пустой (проверь PUBLIC_WEB_URL/WEB_APP_URL на бэке)");
+      return;
+    }
+
+    setTokenUrl(url);
+
+    // пробуем копировать (может не сработать в TG WebView — но ссылка уже показана в UI)
+    try {
+      await navigator.clipboard?.writeText?.(url);
+      setTokenMsg("✅ Ссылка готова и (возможно) скопирована");
+    } catch {
+      setTokenMsg("✅ Ссылка готова (скопируй вручную ниже)");
+    }
+  } catch (e) {
+    setTokenMsg("❌ Не удалось создать ссылку (ошибка запроса)");
+  } finally {
+    setTokenBusy(false);
   }
+}
+
 
   async function load() {
     const g = await apiGet("/api/games?scope=all&days=180&limit=100");
@@ -1064,6 +1070,45 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                   {tokenMsg}
                 </div>
               )}
+              
+              {tokenUrl && (
+                            <div className="card" style={{ marginTop: 10 }}>
+                              <div className="small" style={{ opacity: 0.85, marginBottom: 6 }}>
+                                Ссылка для гостя:
+                              </div>
+                          
+                              <input className="input" value={tokenUrl} readOnly />
+                          
+                              <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                                <button
+                                  className="btn"
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard?.writeText?.(tokenUrl);
+                                      setTokenMsg("✅ Ссылка скопирована");
+                                    } catch {
+                                      setTokenMsg("✅ Скопируй вручную (долгий тап по полю)");
+                                    }
+                                  }}
+                                >
+                                  📋 Копировать
+                                </button>
+                          
+                                <button
+                                  className="btn secondary"
+                                  type="button"
+                                  onClick={() => {
+                                    const tg = window.Telegram?.WebApp;
+                                    if (tg?.openLink) tg.openLink(tokenUrl);
+                                    else window.open(tokenUrl, "_blank", "noopener,noreferrer");
+                                  }}
+                                >
+                                  🔎 Открыть
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
           
             {attLoading ? (
