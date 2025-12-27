@@ -1579,7 +1579,7 @@ app.get("/api/public/rsvp/info", async (req, res) => {
     if (!row) return res.status(404).json({ ok: false, reason: "token_not_found" });
 
     const now = Date.now();
-    if (row.expires_at && new Date(row.expires_at).getTime() < now) {
+    if (row.expires_at && new Date(row.expires_at).getTime() <= now) {
       return res.status(410).json({ ok: false, reason: "token_expired" });
     }
     if (row.max_uses > 0 && row.used_count >= row.max_uses) {
@@ -1643,7 +1643,7 @@ app.post("/api/public/rsvp", async (req, res) => {
     }
 
     const now = Date.now();
-    if (row.expires_at && new Date(row.expires_at).getTime() < now) {
+    if (row.expires_at && new Date(row.expires_at).getTime() <= now) {
       await q("ROLLBACK");
       return res.status(410).json({ ok: false, reason: "token_expired" });
     }
@@ -1728,7 +1728,13 @@ app.post("/api/admin/rsvp-tokens", async (req, res) => {
 
   const token = makeToken();
   const expires_at = new Date(Date.now() + expires_hours * 3600 * 1000).toISOString();
-
+  await q(
+    `UPDATE rsvp_tokens
+     SET expires_at = NOW() - INTERVAL '1 minute'
+     WHERE game_id=$1 AND tg_id=$2
+       AND (expires_at IS NULL OR expires_at > NOW())`,
+    [game_id, tg_id]
+  );
   const ins = await q(
     `INSERT INTO rsvp_tokens(token, game_id, tg_id, created_by, expires_at, max_uses)
      VALUES($1,$2,$3,$4,$5,$6)
@@ -1798,13 +1804,34 @@ app.post("/api/admin/rsvp-tokens/revoke", async (req, res) => {
 
   await q(
     `UPDATE rsvp_tokens
-     SET expires_at=NOW()
+     SET expires_at = NOW() - INTERVAL '1 minute'
      WHERE token=$1`,
     [token]
+  );
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/players/:tg_id/promote", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const tg_id = Number(req.params.tg_id);
+  if (!tg_id) return res.status(400).json({ ok: false, reason: "bad_tg_id" });
+
+  await q(
+    `UPDATE players
+     SET player_kind='manual',
+         is_guest=FALSE,
+         updated_at=NOW()
+     WHERE tg_id=$1`,
+    [tg_id]
   );
 
   res.json({ ok: true });
 });
+
 
 
 const port = process.env.PORT || 10000;
