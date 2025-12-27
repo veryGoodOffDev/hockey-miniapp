@@ -15,16 +15,12 @@ const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 
-export default function App() {
+export default function TelegramApp() {
   const tg = window.Telegram?.WebApp;
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
 
-    // ===== public RSVP (outside Telegram) =====
-  const sp = new URLSearchParams(window.location.search);
-  const publicToken = sp.get("t") || sp.get("token");
-  const isPublicRsvp = window.location.pathname.startsWith("/rsvp") && !!publicToken;
 
   const [tab, setTab] = useState("game"); // game | players | teams | stats | profile | admin
   const [loading, setLoading] = useState(true);
@@ -564,9 +560,6 @@ const teamsStaleInfo = useMemo(() => {
 
   // === RENDER ===
   if (loading) return <HockeyLoader text="Загружаем..." />;
-  if (isPublicRsvp) {
-    return <PublicRsvp token={publicToken} />;
-  }
   if (!inTelegramWebApp) {
     return (
       <div className="container">
@@ -1411,126 +1404,6 @@ const teamsStaleInfo = useMemo(() => {
       )}
 
       <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
-    </div>
-  );
-}
-
-function PublicRsvp({ token }) {
-  const [info, setInfo] = useState(null);
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function load() {
-    setErr("");
-    setInfo(null);
-    try {
-      const r = await fetch(`/api/public/rsvp/info?token=${encodeURIComponent(token)}`);
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) {
-        setErr(j.reason || "Не удалось загрузить ссылку");
-        return;
-      }
-      setInfo(j);
-    } catch (e) {
-      setErr("network_error");
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
-  async function send(status) {
-    setBusy(true);
-    setErr("");
-    try {
-      const r = await fetch(`/api/public/rsvp`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, status }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) {
-        setErr(j.reason || "Не удалось отправить");
-        return;
-      }
-      await load();
-    } catch (e) {
-      setErr("network_error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (err) {
-    const human =
-      err === "token_expired" ? "Ссылка просрочена" :
-      err === "token_used_up" ? "Ссылка уже использована" :
-      err === "game_closed" ? "Игра уже началась — отметки закрыты" :
-      err === "game_cancelled" ? "Игра отменена" :
-      err === "token_not_found" ? "Ссылка не найдена" :
-      err === "player_disabled" ? "Профиль отключён" :
-      err === "network_error" ? "Проблема с интернетом" :
-      `Ошибка: ${err}`;
-
-    return (
-      <div className="container">
-        <h1>🏒 Отметка на игру</h1>
-        <div className="card">
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Не получилось</div>
-          <div className="small" style={{ opacity: 0.85 }}>{human}</div>
-
-          <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-            <button className="btn secondary" onClick={load}>🔄 Повторить</button>
-            <a className="btn" href={BOT_DEEPLINK}>Открыть в Telegram</a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!info) {
-    return (
-      <div className="container">
-        <h1>🏒 Отметка на игру</h1>
-        <HockeyLoader text="Загружаем..." />
-      </div>
-    );
-  }
-
-  const dt = new Date(info.game.starts_at);
-  const when = dt.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
-
-  const cur = info.current_status || "maybe";
-  const curText = cur === "yes" ? "✅ Буду" : cur === "no" ? "❌ Не буду" : "❓ Не знаю";
-
-  return (
-    <div className="container">
-      <h1>🏒 Отметка на игру</h1>
-
-      <div className="card">
-        <div style={{ fontWeight: 900 }}>{info.player.name}</div>
-        <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-          ⏱ {when}<br />
-          📍 {info.game.location || "—"}
-        </div>
-
-        <hr />
-
-        <div className="small" style={{ opacity: 0.85 }}>Текущий статус:</div>
-        <div style={{ fontWeight: 900, marginTop: 4 }}>{curText}</div>
-
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-          <button className="btn" disabled={busy} onClick={() => send("yes")}>✅ Буду</button>
-          <button className="btn secondary" disabled={busy} onClick={() => send("no")}>❌ Не буду</button>
-          <button className="btn secondary" disabled={busy} onClick={() => send("maybe")}>🗘 Сбросить</button>
-        </div>
-
-        <div className="small" style={{ opacity: 0.7, marginTop: 12 }}>
-          Ссылка персональная. Если не работает — попроси админа создать новую.
-        </div>
-      </div>
     </div>
   );
 }
