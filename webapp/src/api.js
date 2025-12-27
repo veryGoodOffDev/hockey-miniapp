@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE;
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+
 
 function getInitData() {
   const tg = window.Telegram?.WebApp;
@@ -6,9 +7,10 @@ function getInitData() {
 }
 
 async function request(path, { method = "GET", body } = {}) {
-  const headers = {
-    "x-telegram-init-data": getInitData(),
-  };
+  const initData = getInitData();
+
+  const headers = {};
+  if (initData) headers["x-telegram-init-data"] = initData;
 
   if (body !== undefined) headers["content-type"] = "application/json";
 
@@ -25,6 +27,7 @@ async function request(path, { method = "GET", body } = {}) {
     return { ok: false, error: "non_json_response", status: res.status, text };
   }
 }
+
 export async function apiUpload(path, formData) {
   const initData = getInitData();
 
