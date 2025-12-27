@@ -400,6 +400,7 @@ async function createRsvpLink(tg_id) {
     setPlayerDraft({
       tg_id: p.tg_id,
       display_name: p.display_name || "",
+      player_kind: p.player_kind || "tg",
       jersey_number: p.jersey_number ?? "",
       position: (p.position || "F").toUpperCase(),
       skill: Number(p.skill ?? 5),
@@ -1400,12 +1401,12 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       {openPlayerId && playerDraft && (
         <Sheet title={`Игрок: ${showName(playerDraft)}${showNum(playerDraft)}`} onClose={closePlayerSheet}>
           <div className="card">
-            <div className="small" style={{ opacity: 0.9 }}>
-              tg_id: <b>{playerDraft.tg_id}</b>
-              {playerDraft.username ? ` · @${playerDraft.username}` : ""}
-              {p.player_kind === "manual" ? " · 👤 manual" : ""}
-              {playerDraft.is_env_admin ? " · 🔒 env-админ" : ""}
-            </div>
+          <div className="small" style={{ opacity: 0.9 }}>
+            tg_id: <b>{playerDraft.tg_id}</b>
+            {playerDraft.username ? ` · @${playerDraft.username}` : ""}
+            {playerDraft.player_kind === "manual" ? " · 👤 manual" : ""}
+            {playerDraft.is_env_admin ? " · 🔒 env-админ" : ""}
+          </div>
 
             <label>Отображаемое имя</label>
             <input
