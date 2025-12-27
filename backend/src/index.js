@@ -248,6 +248,51 @@ async function getSetting(key, def = null) {
   return r.rows[0]?.value ?? def;
 }
 
+function makeToken() {
+  // 32 байта => длинный безопасный токен
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function publicBaseUrl() {
+  // куда ведёт ссылка (для внешнего браузера)
+  // выстави PUBLIC_WEB_URL = https://your-frontend-domain
+  // fallback: WEB_APP_URL (если он уже указывает на https фронта)
+  const a = String(process.env.PUBLIC_WEB_URL || "").trim();
+  if (a) return a.replace(/\/+$/, "");
+  const b = String(process.env.WEB_APP_URL || "").trim();
+  if (b) return b.replace(/\/+$/, "");
+  return ""; // если пусто — просто вернём токен, а ссылку соберёшь руками
+}
+
+async function getTokenRowForUpdate(token) {
+  // token row + game + player, под транзакцией (FOR UPDATE на token)
+  const r = await q(
+    `
+    SELECT
+      t.*,
+      g.starts_at, g.location, g.status AS game_status,
+      p.display_name, p.first_name, p.username, p.disabled, p.player_kind
+    FROM rsvp_tokens t
+    JOIN games g ON g.id = t.game_id
+    JOIN players p ON p.tg_id = t.tg_id
+    WHERE t.token = $1
+    FOR UPDATE
+    `,
+    [token]
+  );
+  return r.rows[0] || null;
+}
+
+function displayPlayerName(p) {
+  const dn = String(p?.display_name || "").trim();
+  if (dn) return dn;
+  const fn = String(p?.first_name || "").trim();
+  if (fn) return fn;
+  const un = String(p?.username || "").trim();
+  if (un) return "@" + un;
+  return String(p?.tg_id || "");
+}
+
 function replyMarkupToJson(markup) {
   if (!markup) return null;
   try {
@@ -1500,6 +1545,259 @@ app.post("/api/rsvp/bulk", async (req, res) => {
 
   res.json({ ok: true });
 });
+
+app.get("/api/public/rsvp/info", async (req, res) => {
+  const token = String(req.query.token || req.query.t || "").trim();
+  if (!token) return res.status(400).json({ ok: false, reason: "no_token" });
+
+  try {
+    const r = await q(
+      `
+      SELECT
+        t.id, t.token, t.game_id, t.tg_id,
+        t.expires_at, t.max_uses, t.used_count, t.created_at,
+
+        g.starts_at, g.location, g.status AS game_status, g.video_url,
+
+        p.display_name, p.first_name, p.username, p.position, p.jersey_number,
+        p.disabled, p.player_kind,
+
+        rsvp.status AS current_status
+      FROM rsvp_tokens t
+      JOIN games g ON g.id = t.game_id
+      JOIN players p ON p.tg_id = t.tg_id
+      LEFT JOIN rsvps rsvp ON rsvp.game_id = t.game_id AND rsvp.tg_id = t.tg_id
+      WHERE t.token=$1
+      `,
+      [token]
+    );
+
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ ok: false, reason: "token_not_found" });
+
+    const now = Date.now();
+    if (row.expires_at && new Date(row.expires_at).getTime() < now) {
+      return res.status(410).json({ ok: false, reason: "token_expired" });
+    }
+    if (row.max_uses > 0 && row.used_count >= row.max_uses) {
+      return res.status(429).json({ ok: false, reason: "token_used_up" });
+    }
+    if (row.disabled) {
+      return res.status(410).json({ ok: false, reason: "player_disabled" });
+    }
+    if (row.game_status === "cancelled") {
+      return res.status(403).json({ ok: false, reason: "game_cancelled" });
+    }
+
+    res.json({
+      ok: true,
+      token: row.token,
+      game: {
+        id: row.game_id,
+        starts_at: row.starts_at,
+        location: row.location,
+        status: row.game_status,
+        video_url: row.video_url || null,
+      },
+      player: {
+        tg_id: row.tg_id,
+        name: displayPlayerName(row),
+        position: row.position,
+        jersey_number: row.jersey_number,
+        player_kind: row.player_kind,
+      },
+      current_status: row.current_status || "maybe",
+      limits: {
+        expires_at: row.expires_at,
+        max_uses: row.max_uses,
+        used_count: row.used_count,
+      },
+    });
+  } catch (e) {
+    console.error("public rsvp info failed:", e);
+    res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+
+app.post("/api/public/rsvp", async (req, res) => {
+  const b = req.body || {};
+  const token = String(b.token || b.t || "").trim();
+  const status = String(b.status || "").trim(); // yes|no|maybe
+
+  if (!token) return res.status(400).json({ ok: false, reason: "no_token" });
+  if (!["yes", "no", "maybe"].includes(status)) {
+    return res.status(400).json({ ok: false, reason: "bad_status" });
+  }
+
+  try {
+    await q("BEGIN");
+
+    const row = await getTokenRowForUpdate(token);
+    if (!row) {
+      await q("ROLLBACK");
+      return res.status(404).json({ ok: false, reason: "token_not_found" });
+    }
+
+    const now = Date.now();
+    if (row.expires_at && new Date(row.expires_at).getTime() < now) {
+      await q("ROLLBACK");
+      return res.status(410).json({ ok: false, reason: "token_expired" });
+    }
+    if (row.max_uses > 0 && row.used_count >= row.max_uses) {
+      await q("ROLLBACK");
+      return res.status(429).json({ ok: false, reason: "token_used_up" });
+    }
+    if (row.disabled) {
+      await q("ROLLBACK");
+      return res.status(410).json({ ok: false, reason: "player_disabled" });
+    }
+    if (row.game_status === "cancelled") {
+      await q("ROLLBACK");
+      return res.status(403).json({ ok: false, reason: "game_cancelled" });
+    }
+
+    // закрываем после начала игры (как у обычных игроков)
+    const startsAt = row.starts_at ? new Date(row.starts_at) : null;
+    if (!startsAt) {
+      await q("ROLLBACK");
+      return res.status(404).json({ ok: false, reason: "game_not_found" });
+    }
+    if (startsAt < new Date()) {
+      await q("ROLLBACK");
+      return res.status(403).json({ ok: false, reason: "game_closed" });
+    }
+
+    // maybe = сбросить
+    if (status === "maybe") {
+      await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [row.game_id, row.tg_id]);
+    } else {
+      await q(
+        `INSERT INTO rsvps(game_id, tg_id, status)
+         VALUES($1,$2,$3)
+         ON CONFLICT(game_id, tg_id)
+         DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+        [row.game_id, row.tg_id, status]
+      );
+    }
+
+    // учитываем использование токена
+    await q(
+      `UPDATE rsvp_tokens
+       SET used_count = used_count + 1,
+           last_used_at = NOW()
+       WHERE token=$1`,
+      [token]
+    );
+
+    await q("COMMIT");
+    res.json({ ok: true });
+  } catch (e) {
+    try {
+      await q("ROLLBACK");
+    } catch {}
+    console.error("public rsvp failed:", e);
+    res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.post("/api/admin/rsvp-tokens", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const b = req.body || {};
+  const game_id = Number(b.game_id);
+  const tg_id = Number(b.tg_id);
+
+  const max_uses = Number.isFinite(Number(b.max_uses)) ? Math.max(0, Math.trunc(Number(b.max_uses))) : 0; // 0=unlimited
+  const expires_hours = Number.isFinite(Number(b.expires_hours)) ? Math.max(1, Math.trunc(Number(b.expires_hours))) : 168; // 7 дней
+
+  if (!game_id || !tg_id) return res.status(400).json({ ok: false, reason: "bad_params" });
+
+  const gr = await q(`SELECT id FROM games WHERE id=$1`, [game_id]);
+  if (!gr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [tg_id]);
+  if (!pr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_player_id" });
+
+  const token = makeToken();
+  const expires_at = new Date(Date.now() + expires_hours * 3600 * 1000).toISOString();
+
+  const ins = await q(
+    `INSERT INTO rsvp_tokens(token, game_id, tg_id, created_by, expires_at, max_uses)
+     VALUES($1,$2,$3,$4,$5,$6)
+     RETURNING id, token, expires_at, max_uses, used_count`,
+    [token, game_id, tg_id, user.id, expires_at, max_uses]
+  );
+
+  const base = publicBaseUrl();
+  const url = base ? `${base}/rsvp?t=${encodeURIComponent(token)}` : null;
+
+  res.json({ ok: true, token: ins.rows[0], url });
+});
+
+app.get("/api/admin/rsvp-tokens", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const game_id = req.query.game_id ? Number(req.query.game_id) : null;
+
+  const params = [];
+  const where = [];
+  if (game_id) {
+    params.push(game_id);
+    where.push(`t.game_id=$${params.length}`);
+  }
+
+  const r = await q(
+    `
+    SELECT
+      t.id, t.token, t.game_id, t.tg_id, t.created_at, t.expires_at, t.max_uses, t.used_count, t.last_used_at,
+      g.starts_at, g.location,
+      p.display_name, p.first_name, p.username, p.player_kind
+    FROM rsvp_tokens t
+    JOIN games g ON g.id=t.game_id
+    JOIN players p ON p.tg_id=t.tg_id
+    ${where.length ? "WHERE " + where.join(" AND ") : ""}
+    ORDER BY t.created_at DESC
+    LIMIT 200
+    `,
+    params
+  );
+
+  const base = publicBaseUrl();
+  const tokens = r.rows.map((x) => ({
+    ...x,
+    url: base ? `${base}/rsvp?t=${encodeURIComponent(x.token)}` : null,
+    player_name: displayPlayerName(x),
+  }));
+
+  res.json({ ok: true, tokens });
+});
+
+app.post("/api/admin/rsvp-tokens/revoke", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const token = String(req.body?.token || "").trim();
+  if (!token) return res.status(400).json({ ok: false, reason: "no_token" });
+
+  await q(
+    `UPDATE rsvp_tokens
+     SET expires_at=NOW()
+     WHERE token=$1`,
+    [token]
+  );
+
+  res.json({ ok: true });
+});
+
 
 const port = process.env.PORT || 10000;
 app.listen(port, () => console.log("Backend listening on", port));
