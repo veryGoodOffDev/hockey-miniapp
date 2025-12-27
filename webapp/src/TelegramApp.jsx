@@ -286,6 +286,23 @@ export default function TelegramApp() {
     return () => tg?.offEvent?.("themeChanged", applyTheme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  
+    useEffect(() => {
+    const sp = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "").trim();
+    const m = sp.match(/^teams_(\d+)$/);
+    if (!m) return;
+  
+    const gid = Number(m[1]);
+    if (!Number.isFinite(gid) || gid <= 0) return;
+  
+    setSelectedGameId(gid);
+    setTab("teams");
+  
+    // если у тебя есть teamsBack и ты хочешь норм "назад"
+    setTeamsBack?.({ tab: "game", gameView: "detail" });
+  
+    refreshAll(gid);
+  }, []);
 
   useEffect(() => {
     if (tab === "stats") loadAttendance(statsDays);
