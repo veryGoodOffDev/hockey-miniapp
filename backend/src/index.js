@@ -79,6 +79,72 @@ function clip(s, max) {
   if (x.length <= max) return x;
   return x.slice(0, Math.max(0, max - 1)) + "…";
 }
+// --- визуальная ширина (приближенно под Telegram) ---
+function isCombining(cp) {
+  // combining marks (0 width)
+  return (
+    (cp >= 0x0300 && cp <= 0x036f) ||
+    (cp >= 0x1ab0 && cp <= 0x1aff) ||
+    (cp >= 0x1dc0 && cp <= 0x1dff) ||
+    (cp >= 0x20d0 && cp <= 0x20ff) ||
+    (cp >= 0xfe20 && cp <= 0xfe2f)
+  );
+}
+
+function isWide(cp) {
+  // emoji + wide east asian (2 cells)
+  if (
+    (cp >= 0x1f300 && cp <= 0x1faff) || // emoji blocks
+    (cp >= 0x2600 && cp <= 0x27bf) ||   // misc symbols
+    (cp >= 0x1100 && cp <= 0x115f) ||   // hangul jamo
+    (cp >= 0x2e80 && cp <= 0xa4cf) ||   // cjk
+    (cp >= 0xac00 && cp <= 0xd7a3) ||   // hangul syllables
+    (cp >= 0xf900 && cp <= 0xfaff) ||   // cjk compat
+    (cp >= 0xfe10 && cp <= 0xfe19) ||
+    (cp >= 0xfe30 && cp <= 0xfe6f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6)
+  ) return true;
+  return false;
+}
+
+function strWidth(s) {
+  const x = String(s ?? "");
+  let w = 0;
+  for (const ch of x) {
+    const cp = ch.codePointAt(0);
+    if (!cp) continue;
+    if (isCombining(cp)) continue;
+    w += isWide(cp) ? 2 : 1;
+  }
+  return w;
+}
+
+function clipW(s, maxCells) {
+  const x = String(s ?? "");
+  if (strWidth(x) <= maxCells) return x;
+
+  const ell = "…";
+  const target = Math.max(0, maxCells - 1); // "…" считаем за 1 ячейку
+  let w = 0;
+  let out = "";
+
+  for (const ch of x) {
+    const cp = ch.codePointAt(0);
+    if (!cp) continue;
+    const cw = isCombining(cp) ? 0 : (isWide(cp) ? 2 : 1);
+    if (w + cw > target) break;
+    out += ch;
+    w += cw;
+  }
+  return out + ell;
+}
+
+function padRightW(s, targetCells) {
+  const x = String(s ?? "");
+  const w = strWidth(x);
+  return x + " ".repeat(Math.max(0, targetCells - w));
+}
 
 function playerLineNoBullets(p) {
   const name = displayPlayerNameRow(p);
@@ -124,20 +190,29 @@ function renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers) {
   while (left.length < rows) left.push("");
   while (right.length < rows) right.push("");
 
-  // ширина левой колонки: ограничим, чтобы не ломало мобилки
-  const maxLeft = Math.max(18, ...left.map((x) => String(x).length));
-  const colW = Math.min(36, maxLeft + 3);
+  // Чем меньше MAX_TOTAL — тем меньше шанс переноса на мобилках с крупным шрифтом
+  const MAX_TOTAL = 42; // попробуй 42..46 по вкусу
+  const GAP = 2;        // пробелы между колонками
+  const MIN_LEFT = 14;
+  const MAX_LEFT = 20;  // ограничиваем левую колонку
+
+  const leftWanted = Math.max(MIN_LEFT, ...left.map((x) => strWidth(x)));
+  const leftW = Math.min(MAX_LEFT, leftWanted);
+
+  const rightW = Math.max(10, MAX_TOTAL - leftW - GAP);
 
   const out = [];
   for (let i = 0; i < rows; i++) {
-    const l = clip(left[i], colW - 1);
-    const r = right[i] || "";
-    out.push(escapeHtml(padRight(l, colW) + r));
+    const l = clipW(left[i] || "", leftW);
+    const r = clipW(right[i] || "", rightW);
+
+    const line = padRightW(l, leftW) + " ".repeat(GAP) + r;
+    out.push(escapeHtml(line).trimEnd());
   }
 
-  // ВАЖНО: в Telegram HTML нельзя <br/>, поэтому только \n внутри <pre>
   return `<pre>${out.join("\n")}</pre>`;
 }
+
 
 function envAdminSet() {
   return new Set(
