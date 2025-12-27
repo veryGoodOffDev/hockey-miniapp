@@ -8,6 +8,7 @@ import { verifyTelegramWebApp } from "./tgAuth.js";
 import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
 import { InlineKeyboard } from "grammy";
+import crypto from "crypto";
 
 const app = express();
 app.use(express.json());
@@ -1704,6 +1705,7 @@ app.post("/api/public/rsvp", async (req, res) => {
 });
 
 app.post("/api/admin/rsvp-tokens", async (req, res) => {
+  try {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
   if (!(await requireGroupMember(req, res, user))) return;
@@ -1738,6 +1740,10 @@ app.post("/api/admin/rsvp-tokens", async (req, res) => {
   const url = base ? `${base}/rsvp?t=${encodeURIComponent(token)}` : null;
 
   res.json({ ok: true, token: ins.rows[0], url });
+    } catch (e) {
+    console.error("rsvp-tokens failed:", e);
+    res.status(500).json({ ok: false, reason: "server_error" });
+  }
 });
 
 app.get("/api/admin/rsvp-tokens", async (req, res) => {
