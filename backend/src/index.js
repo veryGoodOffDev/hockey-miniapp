@@ -23,17 +23,19 @@ const allowed = (process.env.ALLOWED_ORIGINS || "")
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // Telegram WebView часто null
+      if (!origin || origin === "null") return cb(null, true); // <-- добавил "null"
       if (allowed.length === 0) return cb(null, true);
       if (allowed.includes("*")) return cb(null, true);
       if (allowed.includes(origin)) return cb(null, true);
-      return cb(new Error(`CORS blocked for origin: ${origin}`));
+      return cb(null, false); // <-- лучше так, чем Error(…) => иногда превращается в 500
     },
     allowedHeaders: ["Content-Type", "x-telegram-init-data"],
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    optionsSuccessStatus: 204,
   })
 );
 
+app.options("*", cors());
 // init + schema
 await initDb();
 await ensureSchema(q);
