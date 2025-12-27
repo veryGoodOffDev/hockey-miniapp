@@ -179,11 +179,11 @@ async function syncHistory() {
 }
 
 
-async function loadAttendance() {
-  if (!gameDraft?.id) return;
+  async function loadAttendanceForGame(gameId) {
+  if (!gameId) return;
   setAttLoading(true);
   try {
-    const r = await apiGet(`/api/game?game_id=${gameDraft.id}`);
+    const r = await apiGet(`/api/game?game_id=${gameId}`);
     setAttendanceRows(r.rsvps || []);
   } finally {
     setAttLoading(false);
@@ -241,7 +241,7 @@ async function setAttend(tg_id, status) {
   }
 
   async function load() {
-    const g = await apiGet("/api/games?days=180");
+    const g = await apiGet("/api/games?scope=all&days=180&limit=100");
     setGames(g.games || []);
 
     const p = await apiGet("/api/admin/players");
@@ -311,6 +311,7 @@ async function setAttend(tg_id, status) {
     });
 
     loadGuestsForGame(g.id);
+    loadAttendanceForGame(g.id);
   }
 
   function closeGameSheet() {
@@ -414,7 +415,7 @@ async function setAttend(tg_id, status) {
     setGuestsState({ loading: true, list: [] });
     try {
       const g = await apiGet(`/api/game?game_id=${gameId}`);
-      const list = (g.rsvps || []).filter((x) => x.is_guest === true);
+      const list = (g.rsvps || []).filter((x) => x.player_kind === "guest");
       setGuestsState({ loading: false, list });
     } catch (e) {
       console.error("loadGuestsForGame failed", e);
