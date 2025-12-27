@@ -55,6 +55,89 @@ app.post("/bot", async (req, res) => {
 });
 
 /** ===================== HELPERS ===================== */
+function formatGameWhen(startsAtIso) {
+  const tz = process.env.TZ_NAME || "Europe/Moscow";
+  const dt = startsAtIso ? new Date(startsAtIso) : null;
+  if (!dt) return "—";
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: tz,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(dt);
+}
+function padRight(s, n) {
+  const x = String(s ?? "");
+  return x + " ".repeat(Math.max(0, n - x.length));
+}
+
+function clip(s, max) {
+  const x = String(s ?? "");
+  if (x.length <= max) return x;
+  return x.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+function playerLineNoBullets(p) {
+  const name = displayPlayerNameRow(p);
+  const num =
+    p?.jersey_number === null || p?.jersey_number === undefined || p?.jersey_number === ""
+      ? ""
+      : ` №${p.jersey_number}`;
+  return `${name}${num}`;
+}
+
+function teamColumnLines(teamTitle, players) {
+  const g = groupPlayersForMessage(players); // {G:[], D:[], F:[]} уже сортированные
+
+  const lines = [];
+  lines.push(teamTitle);
+  lines.push("");
+
+  const pushGroup = (title, arr) => {
+    // без разделителей, просто заголовок и список
+    lines.push(title);
+    if (!arr.length) {
+      lines.push("—");
+      lines.push("");
+      return;
+    }
+    for (const p of arr) lines.push(playerLineNoBullets(p));
+    lines.push("");
+  };
+
+  pushGroup("🥅 Вратари", g.G);
+  pushGroup("🛡 Защитники", g.D);
+  pushGroup("🏒 Нападающие", g.F);
+
+  while (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+function renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers) {
+  const left = teamColumnLines("⬜ Белые", teamAPlayers || []);
+  const right = teamColumnLines("🟦 Синие", teamBPlayers || []);
+
+  const rows = Math.max(left.length, right.length);
+  while (left.length < rows) left.push("");
+  while (right.length < rows) right.push("");
+
+  // ширина левой колонки: ограничим, чтобы не ломало мобилки
+  const maxLeft = Math.max(18, ...left.map((x) => String(x).length));
+  const colW = Math.min(36, maxLeft + 3);
+
+  const out = [];
+  for (let i = 0; i < rows; i++) {
+    const l = clip(left[i], colW - 1);
+    const r = right[i] || "";
+    out.push(escapeHtml(padRight(l, colW) + r));
+  }
+
+  // ВАЖНО: в Telegram HTML нельзя <br/>, поэтому только \n внутри <pre>
+  return `<pre>${out.join("\n")}</pre>`;
+}
 
 function envAdminSet() {
   return new Set(
@@ -1994,29 +2077,33 @@ app.post("/api/admin/teams/send", async (req, res) => {
 
     // 5) формируем HTML
     const dt = row.starts_at ? new Date(row.starts_at) : null;
-    const when = dt
-      ? dt.toLocaleString("ru-RU", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
-      : "—";
+   const when = formatGameWhen(row.starts_at); // ✅ твой хелпер с timeZone
 
-      const header =
-        `<b>🏒 Составы на игру</b>\n` +
-        `⏱ <code>${escapeHtml(when)}</code>\n` +
-        `📍 <b>${escapeHtml(row.location || "—")}</b>` +
-        (stale ? `\n\n<b>⚠️ ВНИМАНИЕ:</b> отметки менялись после формирования составов.` : "");
-      
-      const body =
-        `${header}\n\n` +
-        renderTeamHtml("⬜ Белые", teamAPlayers) +
-        `\n\n` +
-        renderTeamHtml("🟦 Синие", teamBPlayers);
+    const header =
+      `<b>🏒 Составы на игру</b>\n` +
+      `⏱ <code>${escapeHtml(when)}</code>\n` +
+      `📍 <b>${escapeHtml(row.location || "—")}</b>` +
+      (stale ? `\n\n<b>⚠️</b> Отметки менялись после формирования.` : "");
+    
+    const table = renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers);
+    
+    const body = `${header}\n\n${table}`;
+    const botUsername = String(process.env.BOT_USERNAME || "").trim();
 
+    // start_param будет teams_<gameId>
+    const deepLinkTeams = botUsername
+      ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(`teams_${game_id}`)}`
+      : null;
+    
+    const kb = new InlineKeyboard();
+    if (deepLinkTeams) kb.url("📋 Открыть составы", deepLinkTeams);
     
     // 6) отправляем
-      const sent = await bot.api.sendMessage(chatId, body, {
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      });
-
+    const sent = await bot.api.sendMessage(chatId, body, {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      reply_markup: kb,
+    });
     // 7) пишем в историю (у тебя уже есть bot_messages)
     await q(
       `INSERT INTO bot_messages(chat_id, message_id, kind, text, parse_mode, disable_web_page_preview, meta, sent_by_tg_id)
