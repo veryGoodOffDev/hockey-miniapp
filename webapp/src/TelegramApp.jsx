@@ -80,6 +80,9 @@ export default function TelegramApp() {
 
   const isMeId = (id) => me?.tg_id != null && String(id) === String(me.tg_id);
 
+  const [teamsSendBusy, setTeamsSendBusy] = useState(false);
+  const [teamsSendMsg, setTeamsSendMsg] = useState("");
+
   function normalizeTeams(t) {
     if (!t) return null;
     if (t.ok && (t.teamA || t.teamB)) return t;
@@ -207,7 +210,7 @@ export default function TelegramApp() {
       setGamesError({ ok: false, error: "network_or_unknown" });
     }
   }
-
+  
   async function loadPast(reset = false) {
     try {
       setPastLoading(true);
@@ -313,6 +316,64 @@ export default function TelegramApp() {
       setLoading(false);
     }
   }
+
+  async function sendTeamsToChat() {
+  if (!selectedGameId) return;
+
+  setTeamsSendMsg("");
+
+  const ok1 = confirm("Отправить составы в командный чат?");
+  if (!ok1) return;
+
+  // если составы устарели — подтверждаем отдельно и шлём с force
+  let force = false;
+
+  if (teamsStaleInfo?.stale) {
+    const ok2 = confirm(
+      `⚠️ Составы устарели.\n` +
+      `Ушли из "✅ Буду": ${teamsStaleInfo.removed || 0}\n` +
+      `Добавились в "✅ Буду": ${teamsStaleInfo.added || 0}\n\n` +
+      `Отправить всё равно?`
+    );
+    if (!ok2) return;
+    force = true;
+  } else {
+    const ok2 = confirm("Это окончательные составы?");
+    if (!ok2) return;
+  }
+
+  setTeamsSendBusy(true);
+  try {
+    const r = await apiPost("/api/admin/teams/send", { game_id: selectedGameId, force });
+
+    if (!r?.ok) {
+      // если бэк вернул 409 teams_stale, а фронт не знал — можно переспросить и повторить
+      if (r?.reason === "teams_stale") {
+        const ok3 = confirm(
+          `⚠️ Составы устарели (сервер подтвердил).\n` +
+          `Ушли: ${r.removed || 0}\nДобавились: ${r.added || 0}\n\nОтправить всё равно?`
+        );
+        if (!ok3) return;
+
+        const r2 = await apiPost("/api/admin/teams/send", { game_id: selectedGameId, force: true });
+        if (!r2?.ok) {
+          setTeamsSendMsg(`❌ Не удалось отправить: ${r2?.reason || r2?.error || "unknown"}`);
+          return;
+        }
+        setTeamsSendMsg("✅ Составы отправлены в чат");
+        return;
+      }
+
+      setTeamsSendMsg(`❌ Не удалось отправить: ${r?.reason || r?.error || "unknown"}`);
+      return;
+    }
+
+    setTeamsSendMsg("✅ Составы отправлены в чат");
+  } finally {
+    setTeamsSendBusy(false);
+  }
+}
+
 
   async function saveProfile() {
     setSaving(true);
@@ -1128,11 +1189,28 @@ const teamsStaleInfo = useMemo(() => {
             <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>
               Обновить
             </button>
-            {isAdmin && (
-              <button className="btn" onClick={generateTeams} disabled={!selectedGameId || game?.status === "cancelled"}>
-                Сформировать сейчас (админ)
-              </button>
-            )}
+              {isAdmin && (
+                <>
+                  <button className="btn" onClick={generateTeams} disabled={!selectedGameId || game?.status === "cancelled"}>
+                    Сформировать сейчас (админ)
+                  </button>
+            
+                  <button
+                    className="btn secondary"
+                    onClick={sendTeamsToChat}
+                    disabled={!selectedGameId || !teams?.ok || teamsBusy || teamsSendBusy || game?.status === "cancelled"}
+                    title={!teams?.ok ? "Сначала сформируй составы" : "Отправить составы в чат"}
+                  >
+                    {teamsSendBusy ? "…" : "📣 Отправить составы в чат"}
+                  </button>
+                </>
+              )}
+            </div>     
+            {teamsSendMsg ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>
+                {teamsSendMsg}
+              </div>
+            ) : null}
           </div>
           {teams?.ok && teamsStaleInfo.stale && (
             <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
