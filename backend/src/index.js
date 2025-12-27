@@ -114,7 +114,6 @@ async function supportSendFile({ caption, file }) {
   return supportTgCall("sendDocument", fd);
 }
 
-
 // супер-админ: только из ENV
 function isSuperAdmin(tgId) {
   return envAdminSet().has(String(tgId));
@@ -146,6 +145,7 @@ function requireWebAppAuth(req, res) {
   }
   return v.user;
 }
+
 async function requireGroupMember(req, res, user) {
   const chatIdRaw = await getSetting("notify_chat_id", null);
   if (!chatIdRaw) {
@@ -153,7 +153,6 @@ async function requireGroupMember(req, res, user) {
     return false;
   }
 
-  // chat_id в TG может быть большим и отрицательным (-100...), Number ок, но проверим валидность
   const chatId = Number(chatIdRaw);
   if (!Number.isFinite(chatId)) {
     res.status(403).json({ ok: false, reason: "access_chat_invalid" });
@@ -161,12 +160,10 @@ async function requireGroupMember(req, res, user) {
   }
 
   // ✅ если хочешь — разрешай админам проходить даже если TG API умер
-  // (лучше вынести в роуты, но можно и тут)
   try {
     const is_admin = await isAdminId(user.id);
     if (is_admin) return true;
   } catch (e) {
-    // если проверка админа упала — не мешаем дальше
     console.error("isAdminId failed:", e);
   }
 
@@ -189,35 +186,27 @@ async function requireGroupMember(req, res, user) {
 
     const desc = String(e?.description || e?.message || "");
     const code = e?.error_code;
-    const errCode = e?.error?.code;       // node-fetch
+    const errCode = e?.error?.code; // node-fetch
     const errNo = e?.error?.errno;
 
-    // 🔌 СЕТЕВЫЕ ОШИБКИ (как у тебя ETIMEDOUT)
     if (errCode === "ETIMEDOUT" || errNo === "ETIMEDOUT" || desc.includes("Network request")) {
-      // можно 503 — это реально "временно недоступно"
       res.status(503).json({ ok: false, reason: "telegram_unavailable" });
       return false;
     }
 
-    // 🧩 НЕТ ДОСТУПА / НЕВЕРНЫЙ chat_id / БОТ НЕ В ЧАТЕ
-    // grammY часто даёт 400/403 с описанием
     if (code === 400) {
-      // chat not found / user not found / bad request
       res.status(403).json({ ok: false, reason: "access_chat_invalid" });
       return false;
     }
     if (code === 403) {
-      // bot was kicked / forbidden etc
       res.status(403).json({ ok: false, reason: "bot_forbidden" });
       return false;
     }
 
-    // дефолт
     res.status(403).json({ ok: false, reason: "member_check_failed" });
     return false;
   }
 }
-
 
 function int(v, def) {
   const n = Number(v);
@@ -233,6 +222,7 @@ function jersey(v) {
   if (x < 0 || x > 99) return null;
   return x;
 }
+
 function cleanUrl(v) {
   const s = String(v ?? "").trim();
   if (!s) return null;
@@ -316,10 +306,7 @@ function tgMessageMissing(e) {
 
 function tgMessageExistsButNotEditable(e) {
   const s = tgErrText(e).toLowerCase();
-  return (
-    s.includes("message is not modified") ||
-    s.includes("message can't be edited")
-  );
+  return s.includes("message is not modified") || s.includes("message can't be edited");
 }
 
 async function getNextScheduledGame() {
@@ -349,8 +336,7 @@ async function sendRsvpReminder(chatId) {
     timeStyle: "short",
   }).format(new Date(game.starts_at));
 
-  const text =
-`🏒 Напоминание: отметься на игру!
+  const text = `🏒 Напоминание: отметься на игру!
 
 📅 ${when}
 📍 ${game.location || "—"}
@@ -361,21 +347,21 @@ async function sendRsvpReminder(chatId) {
   const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(game.id))}`;
   const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
 
-const sent = await bot.api.sendMessage(chatId, text, {
-  reply_markup: kb,
-  disable_web_page_preview: true,
-});
+  const sent = await bot.api.sendMessage(chatId, text, {
+    reply_markup: kb,
+    disable_web_page_preview: true,
+  });
 
-await logBotMessage({
-  chat_id: chatId,
-  message_id: sent.message_id,
-  kind: "reminder",
-  text,
-  parse_mode: null,
-  disable_web_page_preview: true,
-  reply_markup: replyMarkupToJson(kb),
-  meta: { game_id: game.id, type: "auto_reminder" },
-});
+  await logBotMessage({
+    chat_id: chatId,
+    message_id: sent.message_id,
+    kind: "reminder",
+    text,
+    parse_mode: null,
+    disable_web_page_preview: true,
+    reply_markup: replyMarkupToJson(kb),
+    meta: { game_id: game.id, type: "auto_reminder" },
+  });
 
   return { ok: true, game_id: game.id };
 }
@@ -383,14 +369,19 @@ await logBotMessage({
 async function ensurePlayer(user) {
   const rootAdmin = envAdminSet().has(String(user.id));
 
+  // ✅ player_kind для tg-игрока фиксируем как tg (но не ломаем старые записи)
   await q(
-    `INSERT INTO players(tg_id, first_name, last_name, username, is_admin)
-     VALUES($1,$2,$3,$4,$5)
+    `INSERT INTO players(tg_id, first_name, last_name, username, is_admin, player_kind, is_guest)
+     VALUES($1,$2,$3,$4,$5,'tg', FALSE)
      ON CONFLICT(tg_id) DO UPDATE SET
        first_name=EXCLUDED.first_name,
        last_name=EXCLUDED.last_name,
        username=EXCLUDED.username,
        is_admin = players.is_admin OR EXCLUDED.is_admin,
+       player_kind = CASE
+         WHEN players.player_kind IS NULL OR BTRIM(players.player_kind) = '' THEN 'tg'
+         ELSE players.player_kind
+       END,
        updated_at=NOW()`,
     [user.id, user.first_name || "", user.last_name || "", user.username || "", rootAdmin]
   );
@@ -402,9 +393,9 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== ME ====== */
 app.get("/api/me", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
 
   await ensurePlayer(user);
 
@@ -417,36 +408,35 @@ if (!(await requireGroupMember(req, res, user))) return;
 
 app.post("/api/me", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
 
   await ensurePlayer(user);
   const b = req.body || {};
 
-await q(
-  `UPDATE players SET
-    display_name=$2,
-    jersey_number=$3,
-    position=$4, skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10, notes=$11,
-    photo_url=$12,
-    updated_at=NOW()
-   WHERE tg_id=$1`,
-  [
-    user.id,
-    (b.display_name || "").trim().slice(0, 40) || null,
-    jersey(b.jersey_number),
-    b.position || "F",
-    int(b.skill, 5),
-    int(b.skating, 5),
-    int(b.iq, 5),
-    int(b.stamina, 5),
-    int(b.passing, 5),
-    int(b.shooting, 5),
-    (b.notes || "").slice(0, 500),
-    (b.photo_url || "").trim().slice(0, 500) || "",
-  ]
-);
-
+  await q(
+    `UPDATE players SET
+      display_name=$2,
+      jersey_number=$3,
+      position=$4, skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10, notes=$11,
+      photo_url=$12,
+      updated_at=NOW()
+     WHERE tg_id=$1`,
+    [
+      user.id,
+      (b.display_name || "").trim().slice(0, 40) || null,
+      jersey(b.jersey_number),
+      b.position || "F",
+      int(b.skill, 5),
+      int(b.skating, 5),
+      int(b.iq, 5),
+      int(b.stamina, 5),
+      int(b.passing, 5),
+      int(b.shooting, 5),
+      (b.notes || "").slice(0, 500),
+      (b.photo_url || "").trim().slice(0, 500) || "",
+    ]
+  );
 
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
   res.json({ ok: true, player: pr.rows[0] });
@@ -468,9 +458,8 @@ app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
     if (!message) return res.status(400).json({ ok: false, reason: "empty_message" });
 
     const tgName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
-    const teamChatId = await getSetting("notify_chat_id", null); // если хочешь привязку к команде
+    const teamChatId = await getSetting("notify_chat_id", null);
 
-    // 1) Сохраняем в БД
     const ins = await q(
       `INSERT INTO feedback(team_chat_id, tg_user_id, tg_username, tg_name, category, message, app_version, platform)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8)
@@ -489,7 +478,6 @@ app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
 
     const ticketId = ins.rows[0].id;
 
-    // 2) Шлём тебе в личку (support bot)
     const head =
       `🧾 <b>Обращение #${ticketId}</b>\n` +
       `👤 <b>${esc(tgName || user.id)}</b>${user.username ? ` (@${esc(user.username)})` : ""}\n` +
@@ -501,7 +489,6 @@ app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
 
     await supportSendMessage(head);
 
-    // 3) Файлы (скрины)
     const files = req.files || [];
     for (const f of files) {
       const sent = await supportSendFile({
@@ -509,7 +496,6 @@ app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
         file: f,
       });
 
-      // file_id и message_id полезно сохранить
       const msgId = sent?.message_id ?? null;
       const fileId =
         sent?.photo?.[sent.photo.length - 1]?.file_id ||
@@ -537,7 +523,6 @@ app.get("/api/games", async (req, res) => {
 
   const is_admin = await isAdminId(user.id);
 
-  // не админ — проверяем членство
   if (!is_admin) {
     if (!(await requireGroupMember(req, res, user))) return;
   }
@@ -549,13 +534,12 @@ app.get("/api/games", async (req, res) => {
   const limit = Math.max(1, Math.min(100, Number(req.query.limit || defLimit)));
   const offset = Math.max(0, Number(req.query.offset || 0));
 
-  const from = req.query.from ? String(req.query.from) : null; // YYYY-MM-DD
-  const to = req.query.to ? String(req.query.to) : null;       // YYYY-MM-DD
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
 
   const qText = String(req.query.q || "").trim();
   const search = qText ? `%${qText}%` : null;
 
-  // Оставим совместимость: если days передан — доп.ограничение по окну
   const daysRaw = req.query.days;
   const days = daysRaw === undefined ? null : Number(daysRaw);
   const daysInt = Number.isFinite(days) && days > 0 ? Math.trunc(days) : null;
@@ -567,8 +551,6 @@ app.get("/api/games", async (req, res) => {
       SELECT g.*
       FROM games g
       WHERE 1=1
-
-        -- scope: upcoming/past/all (past считается как "старше 3 часов", как у тебя на фронте)
         AND (
           CASE
             WHEN $1 = 'past' THEN g.starts_at < (NOW() - INTERVAL '3 hours')
@@ -576,15 +558,9 @@ app.get("/api/games", async (req, res) => {
             ELSE TRUE
           END
         )
-
-        -- date range (инклюзивно)
         AND ($2::date IS NULL OR g.starts_at >= $2::date)
         AND ($3::date IS NULL OR g.starts_at < ($3::date + INTERVAL '1 day'))
-
-        -- search by location
         AND ($4::text IS NULL OR COALESCE(g.location,'') ILIKE $4)
-
-        -- optional window by days (backward compat)
         AND ($8::int IS NULL OR g.starts_at >= NOW() - ($8::int || ' days')::interval)
     ),
     total AS (
@@ -622,12 +598,10 @@ app.get("/api/games", async (req, res) => {
   const r = await q(sql, [scope, from, to, search, limit, offset, user.id, daysInt]);
 
   const total = r.rows[0]?.total ?? 0;
-  // total дублируется в каждой строке — уберём из объектов games
   const games = r.rows.map(({ total, ...rest }) => rest);
 
   res.json({ ok: true, games, total, limit, offset, scope });
 });
-
 
 /** ====== GAME DETAILS (supports game_id) ====== */
 app.get("/api/game", async (req, res) => {
@@ -636,7 +610,6 @@ app.get("/api/game", async (req, res) => {
 
   const is_admin = await isAdminId(user.id);
 
-  // не админ — проверяем членство
   if (!is_admin) {
     if (!(await requireGroupMember(req, res, user))) return;
   }
@@ -660,48 +633,59 @@ app.get("/api/game", async (req, res) => {
 
   if (!game) return res.json({ ok: true, game: null, rsvps: [], teams: null });
 
-let rr;
-if (is_admin) {
-  rr = await q(
-    `SELECT
-        COALESCE(r.status, 'maybe') AS status,
-        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
-        p.position, p.skill
-     FROM players p
-     LEFT JOIN rsvps r
-       ON r.game_id=$1 AND r.tg_id=p.tg_id
-     WHERE p.disabled=FALSE
-     ORDER BY
-       CASE COALESCE(r.status,'maybe')
-         WHEN 'yes' THEN 1
-         WHEN 'maybe' THEN 2
-         WHEN 'no' THEN 3
-         ELSE 9
-       END,
-       p.skill DESC,
-       COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
-    [game.id]
-  );
-} else {
-  rr = await q(
-    `SELECT
-        COALESCE(r.status, 'maybe') AS status,
-        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number, p.position
-     FROM players p
-     LEFT JOIN rsvps r
-       ON r.game_id=$1 AND r.tg_id=p.tg_id
-     WHERE p.disabled=FALSE
-     ORDER BY
-       CASE COALESCE(r.status,'maybe')
-         WHEN 'yes' THEN 1
-         WHEN 'maybe' THEN 2
-         WHEN 'no' THEN 3
-         ELSE 9
-       END,
-       COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
-    [game.id]
-  );
-}
+  // ✅ ВАЖНО: показываем roster (tg+manual) + гостей, которые реально отмечены на ЭТУ игру
+  let rr;
+  if (is_admin) {
+    rr = await q(
+      `SELECT
+          COALESCE(r.status, 'maybe') AS status,
+          p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
+          p.position, p.skill,
+          p.player_kind
+       FROM players p
+       LEFT JOIN rsvps r
+         ON r.game_id=$1 AND r.tg_id=p.tg_id
+       WHERE p.disabled=FALSE
+         AND (
+           p.player_kind IN ('tg','manual')
+           OR r.game_id IS NOT NULL
+         )
+       ORDER BY
+         CASE COALESCE(r.status,'maybe')
+           WHEN 'yes' THEN 1
+           WHEN 'maybe' THEN 2
+           WHEN 'no' THEN 3
+           ELSE 9
+         END,
+         p.skill DESC,
+         COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
+      [game.id]
+    );
+  } else {
+    rr = await q(
+      `SELECT
+          COALESCE(r.status, 'maybe') AS status,
+          p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number, p.position,
+          p.player_kind
+       FROM players p
+       LEFT JOIN rsvps r
+         ON r.game_id=$1 AND r.tg_id=p.tg_id
+       WHERE p.disabled=FALSE
+         AND (
+           p.player_kind IN ('tg','manual')
+           OR r.game_id IS NOT NULL
+         )
+       ORDER BY
+         CASE COALESCE(r.status,'maybe')
+           WHEN 'yes' THEN 1
+           WHEN 'maybe' THEN 2
+           WHEN 'no' THEN 3
+           ELSE 9
+         END,
+         COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
+      [game.id]
+    );
+  }
 
   const tr = await q(
     `SELECT team_a, team_b, meta, generated_at FROM teams WHERE game_id=$1`,
@@ -728,7 +712,6 @@ app.post("/api/rsvp", async (req, res) => {
 
   await ensurePlayer(user);
 
-  // ✅ Закрываем прошедшие игры для обычных игроков
   const gr = await q(`SELECT starts_at FROM games WHERE id=$1`, [gid]);
   const startsAt = gr.rows[0]?.starts_at ? new Date(gr.rows[0].starts_at) : null;
   if (!startsAt) return res.status(404).json({ ok: false, reason: "game_not_found" });
@@ -738,7 +721,6 @@ app.post("/api/rsvp", async (req, res) => {
     return res.status(403).json({ ok: false, reason: "game_closed" });
   }
 
-  // ✅ maybe = "сбросить" → удаляем строку
   if (status === "maybe") {
     await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, user.id]);
     return res.json({ ok: true });
@@ -755,13 +737,11 @@ app.post("/api/rsvp", async (req, res) => {
   res.json({ ok: true });
 });
 
-
-
 /** ====== TEAMS GENERATE (admin) ====== */
 app.post("/api/teams/generate", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const gid = Number(req.body?.game_id);
@@ -791,11 +771,12 @@ if (!(await requireGroupMember(req, res, user))) return;
 
   res.json({ ok: true, teamA, teamB, meta });
 });
-// ====== TEAMS MANUAL EDIT (admin) ======
+
+/** ====== TEAMS MANUAL EDIT (admin) ====== */
 app.post("/api/teams/manual", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const { game_id, op, from, tg_id, a_id, b_id } = req.body || {};
@@ -818,7 +799,6 @@ if (!(await requireGroupMember(req, res, user))) return;
     const stamina = Number(p?.stamina ?? 5);
     const passing = Number(p?.passing ?? 5);
     const shooting = Number(p?.shooting ?? 5);
-    // простая, стабильная формула (можешь подстроить)
     const r =
       skill * 0.45 +
       skating * 0.15 +
@@ -834,11 +814,10 @@ if (!(await requireGroupMember(req, res, user))) return;
     return Number.isFinite(r) ? { ...p, rating: r } : { ...p, rating: calcRating(p) };
   };
 
-  const sum = (arr) =>
-    arr.reduce((acc, p) => acc + Number(ensureRating(p).rating || 0), 0);
+  const sum = (arr) => arr.reduce((acc, p) => acc + Number(ensureRating(p).rating || 0), 0);
 
   function removeOne(arr, id) {
-    const idx = arr.findIndex(x => idEq(x, id));
+    const idx = arr.findIndex((x) => idEq(x, id));
     if (idx < 0) return { item: null, idx: -1 };
     const item = arr[idx];
     arr.splice(idx, 1);
@@ -856,8 +835,8 @@ if (!(await requireGroupMember(req, res, user))) return;
     dst.push(ensureRating(item));
   } else if (op === "swap") {
     if (!a_id || !b_id) return res.status(400).json({ ok: false, reason: "bad_args" });
-    const ia = A.findIndex(x => idEq(x, a_id));
-    const ib = B.findIndex(x => idEq(x, b_id));
+    const ia = A.findIndex((x) => idEq(x, a_id));
+    const ib = B.findIndex((x) => idEq(x, b_id));
     if (ia < 0 || ib < 0) return res.status(404).json({ ok: false, reason: "player_not_found" });
 
     const tmp = ensureRating(A[ia]);
@@ -884,31 +863,31 @@ if (!(await requireGroupMember(req, res, user))) return;
 /** ====== ADMIN: games CRUD ====== */
 app.post("/api/games", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
-const { starts_at, location, video_url } = req.body || {};
-const d = new Date(starts_at);
-if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
+  const { starts_at, location, video_url } = req.body || {};
+  const d = new Date(starts_at);
+  if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
 
-const vu = cleanUrl(video_url);
-if (video_url && !vu) return res.status(400).json({ ok: false, reason: "bad_video_url" });
+  const vu = cleanUrl(video_url);
+  if (video_url && !vu) return res.status(400).json({ ok: false, reason: "bad_video_url" });
 
-const ir = await q(
-  `INSERT INTO games(starts_at, location, status, video_url)
-   VALUES($1,$2,'scheduled',$3)
-   RETURNING *`,
-  [d.toISOString(), String(location || "").trim(), vu]
-);
+  const ir = await q(
+    `INSERT INTO games(starts_at, location, status, video_url)
+     VALUES($1,$2,'scheduled',$3)
+     RETURNING *`,
+    [d.toISOString(), String(location || "").trim(), vu]
+  );
 
-res.json({ ok: true, game: ir.rows[0] });
+  res.json({ ok: true, game: ir.rows[0] });
 });
 
 app.patch("/api/games/:id", async (req, res) => {
   const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const id = Number(req.params.id);
@@ -920,37 +899,36 @@ if (!(await requireGroupMember(req, res, user))) return;
 
   if (b.starts_at) {
     const d = new Date(b.starts_at);
-    if (Number.isNaN(d.getTime()))
-      return res.status(400).json({ ok: false, reason: "bad_starts_at" });
-    sets.push(`starts_at=$${i++}`); vals.push(d.toISOString());
+    if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
+    sets.push(`starts_at=$${i++}`);
+    vals.push(d.toISOString());
   }
   if (b.location !== undefined) {
-    sets.push(`location=$${i++}`); vals.push(String(b.location || "").trim());
+    sets.push(`location=$${i++}`);
+    vals.push(String(b.location || "").trim());
   }
   if (b.status) {
-    sets.push(`status=$${i++}`); vals.push(String(b.status));
+    sets.push(`status=$${i++}`);
+    vals.push(String(b.status));
   }
   if (b.video_url !== undefined) {
-  const vu = cleanUrl(b.video_url);
-  if (b.video_url && !vu) return res.status(400).json({ ok:false, reason:"bad_video_url" });
-  sets.push(`video_url=$${i++}`); 
-  vals.push(vu);
-}
+    const vu = cleanUrl(b.video_url);
+    if (b.video_url && !vu) return res.status(400).json({ ok: false, reason: "bad_video_url" });
+    sets.push(`video_url=$${i++}`);
+    vals.push(vu);
+  }
   sets.push(`updated_at=NOW()`);
 
   vals.push(id);
 
-  const ur = await q(
-    `UPDATE games SET ${sets.join(", ")} WHERE id=$${i} RETURNING *`,
-    vals
-  );
+  const ur = await q(`UPDATE games SET ${sets.join(", ")} WHERE id=$${i} RETURNING *`, vals);
   res.json({ ok: true, game: ur.rows[0] });
 });
 
 app.post("/api/games/:id/status", async (req, res) => {
- const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const id = Number(req.params.id);
@@ -960,17 +938,14 @@ if (!(await requireGroupMember(req, res, user))) return;
     return res.status(400).json({ ok: false, reason: "bad_status" });
   }
 
-  const ur = await q(
-    `UPDATE games SET status=$2, updated_at=NOW() WHERE id=$1 RETURNING *`,
-    [id, status]
-  );
+  const ur = await q(`UPDATE games SET status=$2, updated_at=NOW() WHERE id=$1 RETURNING *`, [id, status]);
   res.json({ ok: true, game: ur.rows[0] });
 });
 
 app.delete("/api/games/:id", async (req, res) => {
- const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const id = Number(req.params.id);
@@ -978,40 +953,46 @@ if (!(await requireGroupMember(req, res, user))) return;
   res.json({ ok: true });
 });
 
-/** ====== ADMIN: guests ====== */
-// create guest (+ optional RSVP on game)
+/** ====== ADMIN: guests/manual players ====== */
+// create guest OR manual (+ optional RSVP on game)
 app.post("/api/admin/guests", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const b = req.body || {};
   const gameId = b.game_id ? Number(b.game_id) : null;
   const status = String(b.status || "yes");
 
+  // ✅ НОВОЕ: kind = guest | manual
+  const kindRaw = String(b.kind || "guest").toLowerCase();
+  const playerKind = kindRaw === "manual" ? "manual" : "guest";
+
   if (gameId) {
     const gr = await q(`SELECT id FROM games WHERE id=$1`, [gameId]);
     if (!gr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_game_id" });
   }
 
-  // tg_id for guest = negative sequence
   const idr = await q(`SELECT -nextval('guest_seq')::bigint AS tg_id`);
   const guestId = idr.rows[0].tg_id;
 
-  const displayName = (b.display_name || "Гость").trim().slice(0, 60) || "Гость";
+  const displayName = (b.display_name || (playerKind === "manual" ? "Игрок" : "Гость"))
+    .trim()
+    .slice(0, 60) || (playerKind === "manual" ? "Игрок" : "Гость");
 
   await q(
     `INSERT INTO players(
       tg_id, display_name, jersey_number,
-      is_guest, created_by,
+      is_guest, player_kind, created_by,
       position, skill, skating, iq, stamina, passing, shooting,
       notes, disabled, is_admin
-    ) VALUES($1,$2,$3, TRUE, $4, $5,$6,$7,$8,$9,$10,$11, $12, FALSE, FALSE)`,
+    ) VALUES($1,$2,$3, TRUE, $4, $5, $6,$7,$8,$9,$10,$11,$12, $13, FALSE, FALSE)`,
     [
       guestId,
       displayName,
       jersey(b.jersey_number),
+      playerKind,
       user.id,
       (b.position || "F").toUpperCase(),
       int(b.skill, 5),
@@ -1024,7 +1005,7 @@ if (!(await requireGroupMember(req, res, user))) return;
     ]
   );
 
-  if (gameId && ["yes","no","maybe"].includes(status)) {
+  if (gameId && ["yes", "no", "maybe"].includes(status)) {
     await q(
       `INSERT INTO rsvps(game_id, tg_id, status)
        VALUES($1,$2,$3)
@@ -1039,9 +1020,9 @@ if (!(await requireGroupMember(req, res, user))) return;
 
 // admin set RSVP for any player/guest
 app.post("/api/admin/rsvp", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const b = req.body || {};
@@ -1049,14 +1030,14 @@ if (!(await requireGroupMember(req, res, user))) return;
   const tgId = Number(b.tg_id);
   const status = String(b.status || "").trim();
 
-  if (!gid || !tgId) return res.status(400).json({ ok:false, reason:"bad_params" });
-  if (!["yes","no","maybe"].includes(status)) return res.status(400).json({ ok:false, reason:"bad_status" });
+  if (!gid || !tgId) return res.status(400).json({ ok: false, reason: "bad_params" });
+  if (!["yes", "no", "maybe"].includes(status)) return res.status(400).json({ ok: false, reason: "bad_status" });
 
   const gr = await q(`SELECT id FROM games WHERE id=$1`, [gid]);
-  if (!gr.rows[0]) return res.status(400).json({ ok:false, reason:"bad_game_id" });
+  if (!gr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_game_id" });
 
   const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [tgId]);
-  if (!pr.rows[0]) return res.status(400).json({ ok:false, reason:"bad_player_id" });
+  if (!pr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_player_id" });
 
   await q(
     `INSERT INTO rsvps(game_id, tg_id, status)
@@ -1065,21 +1046,21 @@ if (!(await requireGroupMember(req, res, user))) return;
     [gid, tgId, status]
   );
 
-  res.json({ ok:true });
+  res.json({ ok: true });
 });
 
 /** ====== ADMIN: players list + patch ====== */
 app.get("/api/admin/players", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const r = await q(
     `SELECT
       tg_id, first_name, last_name, username,
       display_name, jersey_number,
-      is_guest, created_by,
+      is_guest, player_kind, created_by,
       position, skill, skating, iq, stamina, passing, shooting,
       notes, disabled,
       is_admin, updated_at
@@ -1087,27 +1068,29 @@ if (!(await requireGroupMember(req, res, user))) return;
      ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
   );
 
-  // чтобы env-админы точно отображались админами (если уже есть в БД)
   const env = envAdminSet();
-  const players = r.rows.map(p => ({
+  const players = r.rows.map((p) => ({
     ...p,
     is_admin: p.is_admin || env.has(String(p.tg_id)),
-    is_env_admin: env.has(String(p.tg_id))
+    is_env_admin: env.has(String(p.tg_id)),
   }));
 
   res.json({ ok: true, players, is_super_admin: isSuperAdmin(user.id) });
 });
 
 app.patch("/api/admin/players/:tg_id", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const tgId = Number(req.params.tg_id);
   const b = req.body || {};
 
-  // не даём через этот endpoint менять is_admin — для этого отдельный endpoint ниже
+  // ✅ разрешаем менять player_kind (guest -> manual), но не даём трогать is_admin тут
+  const kindRaw = b.player_kind ? String(b.player_kind).toLowerCase().trim() : null;
+  const kind = ["tg", "manual", "guest"].includes(kindRaw) ? kindRaw : null;
+
   await q(
     `UPDATE players SET
       display_name=$2,
@@ -1116,6 +1099,7 @@ if (!(await requireGroupMember(req, res, user))) return;
       skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10,
       notes=$11,
       disabled=$12,
+      player_kind=COALESCE($13, player_kind),
       updated_at=NOW()
      WHERE tg_id=$1`,
     [
@@ -1131,13 +1115,14 @@ if (!(await requireGroupMember(req, res, user))) return;
       int(b.shooting, 5),
       (b.notes || "").slice(0, 500),
       Boolean(b.disabled),
+      kind,
     ]
   );
 
   const pr = await q(
     `SELECT
       tg_id, first_name, username, display_name, jersey_number,
-      is_guest, created_by,
+      is_guest, player_kind, created_by,
       position, skill, skating, iq, stamina, passing, shooting,
       notes, disabled, is_admin
      FROM players WHERE tg_id=$1`,
@@ -1148,9 +1133,9 @@ if (!(await requireGroupMember(req, res, user))) return;
 });
 
 app.post("/api/admin/players/:tg_id/admin", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
 
   if (!isSuperAdmin(user.id)) {
     return res.status(403).json({ ok: false, reason: "not_super_admin" });
@@ -1162,25 +1147,27 @@ if (!(await requireGroupMember(req, res, user))) return;
   await q(`UPDATE players SET is_admin=$2, updated_at=NOW() WHERE tg_id=$1`, [tgId, makeAdmin]);
   res.json({ ok: true });
 });
+
 app.delete("/api/admin/players/:tg_id", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const tgId = Number(req.params.tg_id);
-  const pr = await q(`SELECT tg_id, is_guest FROM players WHERE tg_id=$1`, [tgId]);
+  const pr = await q(`SELECT tg_id, player_kind FROM players WHERE tg_id=$1`, [tgId]);
   if (!pr.rows[0]) return res.status(404).json({ ok: false, reason: "not_found" });
 
-  // Удалять разрешаем только гостей (чтобы случайно не снести живого игрока)
-  if (pr.rows[0].is_guest !== true) {
+  // ✅ удаляем только "разовых" гостей
+  if (pr.rows[0].player_kind !== "guest") {
     return res.status(400).json({ ok: false, reason: "not_guest" });
   }
 
-  await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]); // rsvps удалятся каскадом
+  await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]);
   res.json({ ok: true });
 });
 
+/** ====== PLAYERS (roster) ====== */
 app.get("/api/players", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
@@ -1190,17 +1177,21 @@ app.get("/api/players", async (req, res) => {
 
   const is_admin = await isAdminId(user.id);
 
-  // для обычных — минимум, для админа — можно больше
+  // ✅ показываем только постоянных: tg + manual
   const sql = is_admin
     ? `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
-              photo_url, notes, skill, skating, iq, stamina, passing, shooting, is_admin, disabled
+              photo_url, notes, skill, skating, iq, stamina, passing, shooting, is_admin, disabled,
+              player_kind
        FROM players
        WHERE disabled=FALSE
+         AND player_kind IN ('tg','manual')
        ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
     : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
-              photo_url, notes
+              photo_url, notes,
+              player_kind
        FROM players
        WHERE disabled=FALSE
+         AND player_kind IN ('tg','manual')
        ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`;
 
   const r = await q(sql);
@@ -1217,19 +1208,18 @@ app.get("/api/players/:tg_id", async (req, res) => {
 
   const sql = is_admin
     ? `SELECT * FROM players WHERE tg_id=$1`
-    : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position, photo_url, notes
+    : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position, photo_url, notes, player_kind
        FROM players WHERE tg_id=$1`;
 
   const r = await q(sql, [tgId]);
   res.json({ ok: true, player: r.rows[0] || null });
 });
 
-
 /** ====== ADMIN: reminder ====== */
 app.post("/api/admin/reminder/sendNow", async (req, res) => {
-const user = requireWebAppAuth(req, res);
-if (!user) return;
-if (!(await requireGroupMember(req, res, user))) return;
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const chatId = await getSetting("notify_chat_id", null);
@@ -1259,12 +1249,15 @@ app.get("/api/admin/bot-messages", async (req, res) => {
   const chat_id = Number(chatIdRaw);
   const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
   const includeDeleted = String(req.query.include_deleted || "0") === "1";
-  const kind = String(req.query.kind || "").trim(); // "" | "custom" | "reminder"
+  const kind = String(req.query.kind || "").trim();
 
   const params = [chat_id];
   const where = [`chat_id=$1`];
 
-  if (kind) { params.push(kind); where.push(`kind=$${params.length}`); }
+  if (kind) {
+    params.push(kind);
+    where.push(`kind=$${params.length}`);
+  }
   if (!includeDeleted) where.push(`deleted_at IS NULL`);
 
   params.push(limit);
@@ -1280,6 +1273,7 @@ app.get("/api/admin/bot-messages", async (req, res) => {
 
   res.json({ ok: true, messages: r.rows });
 });
+
 app.post("/api/admin/bot-messages/send", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
@@ -1348,7 +1342,6 @@ app.post("/api/admin/bot-messages/:id/delete", async (req, res) => {
     await q(`UPDATE bot_messages SET deleted_at=NOW(), delete_reason=$2 WHERE id=$1`, [id, "deleted_by_webapp"]);
     res.json({ ok: true });
   } catch (e) {
-    // если уже удалили руками — пометим как удалённое и уберём из списка
     if (tgMessageMissing(e)) {
       await q(`UPDATE bot_messages SET deleted_at=NOW(), delete_reason=$2 WHERE id=$1`, [id, "missing_in_chat"]);
       return res.json({ ok: true, already_missing: true });
@@ -1358,6 +1351,7 @@ app.post("/api/admin/bot-messages/:id/delete", async (req, res) => {
     res.status(500).json({ ok: false, reason: "delete_failed", error: tgErrText(e) });
   }
 });
+
 app.post("/api/admin/bot-messages/sync", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
@@ -1382,7 +1376,8 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
     [chat_id, limit]
   );
 
-  let checked = 0, missing = 0;
+  let checked = 0,
+    missing = 0;
 
   for (const row of r.rows) {
     checked++;
@@ -1394,7 +1389,6 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
       if (row.parse_mode) opts.parse_mode = row.parse_mode;
       if (row.reply_markup) opts.reply_markup = row.reply_markup;
 
-      // “пинг” существования
       await bot.api.editMessageText(Number(row.chat_id), Number(row.message_id), row.text, opts);
 
       await q(`UPDATE bot_messages SET checked_at=NOW() WHERE id=$1`, [row.id]);
@@ -1415,7 +1409,6 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
         continue;
       }
 
-      // другие ошибки (например, нет прав) — просто отметим checked_at
       console.error("sync probe failed:", e);
       await q(`UPDATE bot_messages SET checked_at=NOW() WHERE id=$1`, [row.id]);
     }
@@ -1424,14 +1417,11 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
   res.json({ ok: true, checked, missing });
 });
 
-
 app.get("/api/stats/attendance", async (req, res) => {
   try {
-    // сколько дней назад смотреть (по умолчанию 365)
     let days = parseInt(String(req.query.days ?? "365"), 10);
     if (!Number.isFinite(days) || days < 0) days = 365;
 
-    // days=0 или days очень большое -> считаем "за всё время"
     const useDays = days > 0 && days < 100000;
 
     const sql = `
@@ -1446,6 +1436,7 @@ app.get("/api/stats/attendance", async (req, res) => {
         p.position,
         p.jersey_number,
         p.is_guest,
+        p.player_kind,
 
         SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END)   AS yes,
         SUM(CASE WHEN r.status = 'maybe' THEN 1 ELSE 0 END) AS maybe,
@@ -1461,7 +1452,7 @@ app.get("/api/stats/attendance", async (req, res) => {
         ${useDays ? `AND g.starts_at >= NOW() - make_interval(days => $1::int)` : ""}
         AND p.disabled IS DISTINCT FROM TRUE
 
-      GROUP BY p.tg_id, name, p.position, p.jersey_number, p.is_guest
+      GROUP BY p.tg_id, name, p.position, p.jersey_number, p.is_guest, p.player_kind
       ORDER BY yes DESC, maybe DESC, total DESC, name ASC;
     `;
 
@@ -1479,14 +1470,13 @@ app.post("/api/rsvp/bulk", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
 
-  const status = String(req.body?.status || "").trim(); // yes | no | maybe
+  const status = String(req.body?.status || "").trim();
   if (!["yes", "no", "maybe"].includes(status)) {
     return res.status(400).json({ ok: false, reason: "bad_status" });
   }
 
   await ensurePlayer(user);
 
-  // какие игры считаем будущими: scheduled и starts_at >= сейчас
   if (status === "maybe") {
     await q(
       `DELETE FROM rsvps
