@@ -1982,9 +1982,13 @@ app.post("/api/admin/teams/send", async (req, res) => {
     const teamAPlayers = teamAIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
     const teamBPlayers = teamBIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
 
-    // 4) получаем командный чат
-    const chatId = await getTeamChatId(q);
-    if (!chatId) return res.status(400).json({ ok: false, reason: "chat_not_set" });
+      // 4) получаем командный чат (используем тот же ключ, что /setchat)
+      const chatIdRaw = await getSetting("notify_chat_id", null);
+      const chatId = chatIdRaw ? Number(String(chatIdRaw).trim()) : null;
+      
+      if (!Number.isFinite(chatId)) {
+        return res.status(400).json({ ok: false, reason: "chat_not_set" });
+      }
 
     // 5) формируем HTML
     const dt = row.starts_at ? new Date(row.starts_at) : null;
