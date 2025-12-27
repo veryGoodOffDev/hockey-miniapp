@@ -413,6 +413,91 @@ async function sendRsvpReminder(chatId) {
 
   return { ok: true, game_id: game.id };
 }
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function displayPlayerNameRow(row) {
+  const dn = (row?.display_name || "").trim();
+  if (dn) return dn;
+  const fn = (row?.first_name || "").trim();
+  if (fn) return fn;
+  if (row?.username) return `@${row.username}`;
+  return String(row?.tg_id ?? "—");
+}
+
+function normalizePos(pos) {
+  const p = String(pos || "F").toUpperCase();
+  if (p === "G" || p === "D") return p;
+  return "F"; // всё остальное считаем нападающим
+}
+
+function parseTeamIds(teamJson) {
+  const arr = Array.isArray(teamJson) ? teamJson : [];
+  const ids = [];
+  for (const it of arr) {
+    if (typeof it === "number" || typeof it === "string") {
+      const n = Number(it);
+      if (Number.isFinite(n)) ids.push(n);
+    } else if (it && typeof it === "object") {
+      const n = Number(it.tg_id);
+      if (Number.isFinite(n)) ids.push(n);
+    }
+  }
+  // unique
+  return Array.from(new Set(ids));
+}
+
+function groupPlayersForMessage(list) {
+  const g = { G: [], D: [], F: [] };
+  for (const p of list) g[normalizePos(p.position)].push(p);
+
+  const byName = (a, b) => displayPlayerNameRow(a).localeCompare(displayPlayerNameRow(b), "ru");
+  g.G.sort(byName);
+  g.D.sort(byName);
+  g.F.sort(byName);
+
+  return g;
+}
+
+function renderLines(list) {
+  if (!list.length) return "<i>—</i>";
+  return list
+    .map((p) => {
+      const name = escapeHtml(displayPlayerNameRow(p));
+      const num =
+        p?.jersey_number === null || p?.jersey_number === undefined || p?.jersey_number === ""
+          ? ""
+          : ` №${escapeHtml(p.jersey_number)}`;
+      return `• ${name}${num}`;
+    })
+    .join("<br/>");
+}
+
+function renderTeamHtml(title, players) {
+  const g = groupPlayersForMessage(players);
+  return (
+    `<b>${escapeHtml(title)}</b><br/>` +
+    `🥅 <b>Вратари</b><br/>${renderLines(g.G)}<br/><br/>` +
+    `🛡 <b>Защитники</b><br/>${renderLines(g.D)}<br/><br/>` +
+    `🏒 <b>Нападающие</b><br/>${renderLines(g.F)}`
+  );
+}
+
+async function getSettingValue(q, key) {
+  const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
+  return r.rows?.[0]?.value ?? null;
+}
+
+async function getTeamChatId(q) {
+  const v = await getSettingValue(q, "team_chat_id"); // должно совпасть с /setchat
+  const id = v ? Number(v) : null;
+  return Number.isFinite(id) ? id : null;
+}
+
 
 async function ensurePlayer(user) {
   const rootAdmin = envAdminSet().has(String(user.id));
@@ -1832,7 +1917,112 @@ app.post("/api/admin/players/:tg_id/promote", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/admin/teams/send", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+    if (!(await requireAdminAsync(req, res, user))) return;
 
+    const game_id = Number(req.body?.game_id);
+    const force = !!req.body?.force;
+    if (!game_id) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+    // 1) игра + составы
+    const r = await q(
+      `
+      SELECT
+        g.id, g.starts_at, g.location, g.status,
+        t.team_a, t.team_b, t.meta, t.generated_at
+      FROM games g
+      LEFT JOIN teams t ON t.game_id = g.id
+      WHERE g.id=$1
+      `,
+      [game_id]
+    );
+
+    const row = r.rows?.[0];
+    if (!row) return res.status(404).json({ ok: false, reason: "game_not_found" });
+    if (row.status === "cancelled") return res.status(403).json({ ok: false, reason: "game_cancelled" });
+
+    const teamAIds = parseTeamIds(row.team_a);
+    const teamBIds = parseTeamIds(row.team_b);
+
+    if (!teamAIds.length && !teamBIds.length) {
+      return res.status(400).json({ ok: false, reason: "no_teams" });
+    }
+
+    // 2) защита “составы устарели” (✅ yes vs ids в составах)
+    const yesR = await q(`SELECT tg_id FROM rsvps WHERE game_id=$1 AND status='yes'`, [game_id]);
+    const yesIds = new Set((yesR.rows || []).map((x) => String(x.tg_id)));
+
+    const teamIds = new Set([...teamAIds, ...teamBIds].map((x) => String(x)));
+
+    let removed = 0; // есть в составах, но уже не ✅ yes
+    for (const id of teamIds) if (!yesIds.has(id)) removed++;
+
+    let added = 0; // ✅ yes, но нет в составах
+    for (const id of yesIds) if (!teamIds.has(id)) added++;
+
+    const stale = removed > 0 || added > 0;
+    if (stale && !force) {
+      return res.status(409).json({ ok: false, reason: "teams_stale", removed, added });
+    }
+
+    // 3) подтягиваем игроков из БД (имя/номер/позиция)
+    const allIds = Array.from(new Set([...teamAIds, ...teamBIds]));
+    const pr = await q(
+      `SELECT tg_id, display_name, first_name, username, jersey_number, position
+       FROM players
+       WHERE tg_id = ANY($1::bigint[])`,
+      [allIds]
+    );
+    const map = new Map(pr.rows.map((p) => [String(p.tg_id), p]));
+
+    const teamAPlayers = teamAIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
+    const teamBPlayers = teamBIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
+
+    // 4) получаем командный чат
+    const chatId = await getTeamChatId(q);
+    if (!chatId) return res.status(400).json({ ok: false, reason: "chat_not_set" });
+
+    // 5) формируем HTML
+    const dt = row.starts_at ? new Date(row.starts_at) : null;
+    const when = dt
+      ? dt.toLocaleString("ru-RU", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "—";
+
+    const header =
+      `<b>🏒 Составы на игру</b><br/>` +
+      `⏱ <code>${escapeHtml(when)}</code><br/>` +
+      `📍 <b>${escapeHtml(row.location || "—")}</b>` +
+      (stale ? `<br/><br/><b>⚠️ ВНИМАНИЕ:</b> отметки менялись после формирования составов.` : "");
+
+    const body =
+      `${header}<br/><br/>` +
+      renderTeamHtml("⬜ Белые", teamAPlayers) +
+      `<br/><br/>` +
+      renderTeamHtml("🟦 Синие", teamBPlayers);
+
+    // 6) отправляем
+    const sent = await bot.api.sendMessage(chatId, body, {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+
+    // 7) пишем в историю (у тебя уже есть bot_messages)
+    await q(
+      `INSERT INTO bot_messages(chat_id, message_id, kind, text, parse_mode, disable_web_page_preview, meta, sent_by_tg_id)
+       VALUES($1,$2,'teams',$3,'HTML',TRUE,$4,$5)`,
+      [chatId, sent.message_id, body, JSON.stringify({ game_id, stale, removed, added }), user.id]
+    );
+
+    return res.json({ ok: true, message_id: sent.message_id, stale, removed, added });
+  } catch (e) {
+    console.error("teams/send failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
 
 const port = process.env.PORT || 10000;
 app.listen(port, () => console.log("Backend listening on", port));
