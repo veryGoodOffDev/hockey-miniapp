@@ -125,6 +125,8 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [tokenBusy, setTokenBusy] = useState(false);
   const [tokenUrl, setTokenUrl] = useState("");
   const [tokenValue, setTokenValue] = useState(""); // сам токен, чтобы можно было отозвать
+  const [tokenForId, setTokenForId] = useState(null); // tg_id игрока, для которого показана ссылка
+
 
 function fmtTs(ts) {
   try {
@@ -209,8 +211,9 @@ async function createRsvpLink(tg_id) {
 
   setTokenMsg("");
   setTokenUrl("");
-  setTokenBusy(true);
   setTokenValue("");
+  setTokenBusy(true);
+  setTokenForId(tg_id);
 
   try {
     const r = await apiPost("/api/admin/rsvp-tokens", {
@@ -220,26 +223,27 @@ async function createRsvpLink(tg_id) {
       max_uses: 0,
     });
 
-    // apiPost у тебя НЕ кидает исключения на 401/403/500, поэтому проверяем ok вручную
     if (!r?.ok) {
       setTokenMsg(`❌ Не удалось создать ссылку: ${r?.reason || r?.error || "unknown"}`);
+      setTokenForId(null);
       return;
     }
 
-    const token = r?.token?.token || r?.token;
-    setTokenValue(token || "");
+    const token = r?.token?.token || r?.token || "";
+    setTokenValue(token);
+
     const url =
       r?.url ||
       (token ? `${window.location.origin}/rsvp?t=${encodeURIComponent(token)}` : "");
 
     if (!url) {
       setTokenMsg("❌ Токен создан, но URL пустой (проверь PUBLIC_WEB_URL/WEB_APP_URL на бэке)");
+      setTokenForId(null);
       return;
     }
 
     setTokenUrl(url);
 
-    // пробуем копировать (может не сработать в TG WebView — но ссылка уже показана в UI)
     try {
       await navigator.clipboard?.writeText?.(url);
       setTokenMsg("✅ Ссылка готова и (возможно) скопирована");
@@ -248,10 +252,12 @@ async function createRsvpLink(tg_id) {
     }
   } catch (e) {
     setTokenMsg("❌ Не удалось создать ссылку (ошибка запроса)");
+    setTokenForId(null);
   } finally {
     setTokenBusy(false);
   }
 }
+
 
   async function revokeToken() {
   if (!tokenValue) return;
@@ -1123,54 +1129,6 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                   {tokenMsg}
                 </div>
               )}
-              
-              {tokenUrl && (
-                            <div className="card" style={{ marginTop: 10 }}>
-                              <div className="small" style={{ opacity: 0.85, marginBottom: 6 }}>
-                                Ссылка для гостя:
-                              </div>
-                          
-                              <input className="input" value={tokenUrl} readOnly />
-                          
-                              <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                                <button
-                                  className="btn"
-                                  type="button"
-                                  onClick={async () => {
-                                    try {
-                                      await navigator.clipboard?.writeText?.(tokenUrl);
-                                      setTokenMsg("✅ Ссылка скопирована");
-                                    } catch {
-                                      setTokenMsg("✅ Скопируй вручную (долгий тап по полю)");
-                                    }
-                                  }}
-                                >
-                                  📋 Копировать
-                                </button>
-                          
-                                <button
-                                  className="btn secondary"
-                                  type="button"
-                                  onClick={() => {
-                                    const tg = window.Telegram?.WebApp;
-                                    if (tg?.openLink) tg.openLink(tokenUrl);
-                                    else window.open(tokenUrl, "_blank", "noopener,noreferrer");
-                                  }}
-                                >
-                                  🔎 Открыть
-                                </button>
-                                <button
-                                  className="btn secondary"
-                                  type="button"
-                                  disabled={tokenBusy || !tokenValue}
-                                  onClick={revokeToken}
-                                >
-                                  🚫 Отозвать
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
           
             {attLoading ? (
               <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю игроков…</div>
@@ -1179,7 +1137,13 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 {attendanceRows.map((p) => {
                   const st = p.status || "maybe";
                   return (
-                    <div key={p.tg_id} className="listItem">
+                    <div key={p.tg_id}
+                      className="listItem"
+                      ref={(el) => {
+                        if (el && tokenForId === p.tg_id) {
+                          setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+                        }
+                      }}>
                       <div className="rowBetween">
                         <div style={{ fontWeight: 900 }}>
                           {showName(p)}{showNum(p)}
@@ -1201,6 +1165,73 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
           
                       <div className="segRow" role="radiogroup" aria-label="Посещаемость">
+                        {tokenForId === p.tg_id && tokenUrl && (
+                          <div className="card" style={{ marginTop: 10 }}>
+                            <div className="small" style={{ opacity: 0.85, marginBottom: 6 }}>
+                              Ссылка для: <b>{showName(p)}{showNum(p)}</b>
+                            </div>
+                        
+                            <input className="input" value={tokenUrl} readOnly />
+                        
+                            <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard?.writeText?.(tokenUrl);
+                                    setTokenMsg("✅ Ссылка скопирована");
+                                  } catch {
+                                    setTokenMsg("✅ Скопируй вручную (долгий тап по полю)");
+                                  }
+                                }}
+                              >
+                                📋 Копировать
+                              </button>
+                        
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                onClick={() => {
+                                  const tg = window.Telegram?.WebApp;
+                                  if (tg?.openLink) tg.openLink(tokenUrl);
+                                  else window.open(tokenUrl, "_blank", "noopener,noreferrer");
+                                }}
+                              >
+                                🔎 Открыть
+                              </button>
+                        
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                disabled={tokenBusy || !tokenValue}
+                                onClick={revokeToken}
+                              >
+                                🚫 Отозвать
+                              </button>
+                        
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                onClick={() => {
+                                  setTokenForId(null);
+                                  setTokenUrl("");
+                                  setTokenValue("");
+                                  setTokenMsg("");
+                                }}
+                              >
+                                ✕ Скрыть
+                              </button>
+                            </div>
+                        
+                            {tokenMsg && (
+                              <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+                                {tokenMsg}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <button
                           className={st === "yes" ? "segBtn on" : "segBtn"}
                           onClick={() => setAttend(p.tg_id, "yes")}
