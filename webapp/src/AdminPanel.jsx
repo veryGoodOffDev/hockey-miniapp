@@ -179,16 +179,21 @@ async function syncHistory() {
 }
 
 
-  async function loadAttendanceForGame(gameId) {
-  if (!gameId) return;
-  setAttLoading(true);
-  try {
-    const r = await apiGet(`/api/game?game_id=${gameId}`);
-    setAttendanceRows(r.rsvps || []);
-  } finally {
-    setAttLoading(false);
-  }
-}
+    async function loadAttendanceForGame(gameId) {
+      if (!gameId) return;
+      setAttLoading(true);
+      try {
+        const r = await apiGet(`/api/game?game_id=${gameId}`);
+        setAttendanceRows(r.rsvps || []);
+      } finally {
+        setAttLoading(false);
+      }
+    }
+    
+    // ✅ совместимость: старое имя всё ещё существует
+    async function loadAttendance() {
+      return loadAttendanceForGame(gameDraft?.id);
+    }
 
 async function setAttend(tg_id, status) {
   await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id, status });
