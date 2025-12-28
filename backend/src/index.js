@@ -558,6 +558,15 @@ async function sendRsvpReminder(chatId) {
     disable_web_page_preview: true,
   });
 
+  // ✅ НОВОЕ: закрепляем сразу после отправки
+  try {
+    await bot.api.pinChatMessage(Number(chatId), sent.message_id, {
+      disable_notification: true, // чтобы не было лишнего уведомления "Pinned message"
+    });
+  } catch (e) {
+    console.error("pinChatMessage failed:", e?.description || e?.message || e);
+  }
+
   await logBotMessage({
     chat_id: chatId,
     message_id: sent.message_id,
@@ -569,8 +578,10 @@ async function sendRsvpReminder(chatId) {
     meta: { game_id: game.id, type: "auto_reminder" },
   });
 
-  return { ok: true, game_id: game.id };
+  return { ok: true, game_id: game.id, pinned: true };
 }
+
+
 function escapeHtml(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
