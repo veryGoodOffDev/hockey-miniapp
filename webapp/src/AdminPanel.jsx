@@ -40,6 +40,15 @@ function posLabel(pos) {
   if (pos === "D") return "D";
   return "F";
 }
+const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
+const DEFAULT_SKILL = 5;
+
+function clampSkill(v) {
+  if (v === "" || v == null) return DEFAULT_SKILL;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return DEFAULT_SKILL;
+  return Math.max(1, Math.min(10, Math.round(n)));
+}
 
 const GUEST_DEFAULT = {
   display_name: "",
@@ -56,7 +65,6 @@ const GUEST_DEFAULT = {
 };
 
 function Sheet({ title, onClose, children }) {
-  const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
   return (
     <div className="sheetBackdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -425,50 +433,32 @@ async function createRsvpLink(tg_id) {
     setPlayerDraft(null);
   }
 
-  async function savePlayer() {
-    if (!playerDraft) return;
-    const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
 
-function clamp(n, min, max) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return null;
-  return Math.max(min, Math.min(max, Math.round(x)));
-}
 
 async function savePlayer() {
-  const DEFAULT_SKILL = 5; // <- хочешь 1 — поставь 1
+  if (!playerDraft) return;
 
   const body = {
-    display_name: playerDraft.display_name ?? "",
-    jersey_number: playerDraft.jersey_number ?? null,
-    position: playerDraft.position ?? "F",
+    display_name: (playerDraft.display_name ?? "").trim(),
+    jersey_number:
+      playerDraft.jersey_number === "" || playerDraft.jersey_number == null
+        ? null
+        : Number(String(playerDraft.jersey_number).replace(/[^\d]/g, "").slice(0, 2)),
+    position: (playerDraft.position || "F").toUpperCase(),
     notes: playerDraft.notes ?? "",
     disabled: !!playerDraft.disabled,
-    player_kind: playerDraft.player_kind,
   };
 
   for (const k of SKILLS) {
-    const v = playerDraft[k];
-    // ✅ если поле пустое -> отправляем 5 (или 1)
-    body[k] = (v === "" || v == null) ? DEFAULT_SKILL : clamp(v, 1, 10);
+    body[k] = clampSkill(playerDraft[k]);
   }
 
-    await apiPatch(`/api/admin/players/${playerDraft.tg_id}`, {
-      display_name: playerDraft.display_name,
-      jersey_number: playerDraft.jersey_number,
-      position: playerDraft.position,
-      skill: Number(playerDraft.skill),
-      skating: Number(playerDraft.skating),
-      iq: Number(playerDraft.iq),
-      stamina: Number(playerDraft.stamina),
-      passing: Number(playerDraft.passing),
-      shooting: Number(playerDraft.shooting),
-      notes: playerDraft.notes,
-      disabled: Boolean(playerDraft.disabled),
-    });
-    await load();
-    onChanged?.();
-  }
+  await apiPatch(`/api/admin/players/${playerDraft.tg_id}`, body);
+
+  await load();
+  onChanged?.();
+}
+
 
   async function toggleAdmin() {
     if (!playerDraft) return;
