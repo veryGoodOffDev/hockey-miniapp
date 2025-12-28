@@ -1446,4 +1446,18 @@ textarea:focus{
   font-size: 13px;
   opacity: .95;
   text-shadow: 0 2px 12px rgba(0,0,0,.55);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.talismanIcon{
+  width: 18px;
+  height: 18px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.20);
+  border: 1px solid rgba(255,255,255,.14);
+  backdrop-filter: blur(8px);
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.45));
 }
