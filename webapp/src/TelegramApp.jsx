@@ -10,6 +10,7 @@ import bg3 from "./bg3.webp";
 import bg4 from "./bg4.webp";
 import bg5 from "./bg5.webp";
 import bg6 from "./bg6.webp";
+import talismanIcon from "./talisman.webp";
 
 const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 
@@ -82,6 +83,8 @@ export default function TelegramApp() {
 
   const [teamsSendBusy, setTeamsSendBusy] = useState(false);
   const [teamsSendMsg, setTeamsSendMsg] = useState("");
+  const [talismanHolder, setTalismanHolder] = useState(null);
+  const [bestPick, setBestPick] = useState("");
 
   function normalizeTeams(t) {
     if (!t) return null;
@@ -179,6 +182,7 @@ export default function TelegramApp() {
       // игры (предстоящие)
       const gl = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
       setGames(gl.games || []);
+      setTalismanHolder(gl.talisman_holder || null);
 
       if (gl?.ok === false) {
         setGamesError(gl);
@@ -322,6 +326,11 @@ export default function TelegramApp() {
       }
     })();
   }, [tab]);
+
+  useEffect(() => {
+  if (!game) return;
+    setBestPick(game.best_player_tg_id ? String(game.best_player_tg_id) : "");
+  }, [game?.id]);
 
   async function rsvp(status) {
     if (!selectedGameId) return;
@@ -933,6 +942,21 @@ const teamsStaleInfo = useMemo(() => {
                               <div className="gameCard__when">{when}</div>
                               <div className="gameCard__loc">📍 {g.location || "—"}</div>
                             </div>
+
+                            
+                            {past && g.best_player_name ? (
+                              <div className="gameCard__awardLine">
+                                <img className="talismanIcon" src={talismanIcon} alt="" />
+                                <b>Best player:</b>&nbsp;{g.best_player_name}
+                              </div>
+                            ) : null}
+                            {!past && isNext && talismanHolder?.name ? (
+                              <div className="gameCard__awardLine">
+                                <img className="talismanIcon" src={talismanIcon} alt="" />
+                                <b>Талисман у:</b>&nbsp;{talismanHolder.name}
+                              </div>
+                            ) : null}
+                            
                     
                             {/* RING */}
                             <div className="gameCard__ringWrap" title={`${yes} будут (цель ${target})`}>
@@ -1007,6 +1031,7 @@ const teamsStaleInfo = useMemo(() => {
                 (() => {
                   const past = isPastGame(game);
                   const lockRsvp = past && !isAdmin;
+                  const bestCandidates = (rsvps || []).filter((p) => p.status === "yes");
 
                   return (
                     <>
@@ -1014,7 +1039,7 @@ const teamsStaleInfo = useMemo(() => {
                         <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
                         <span className="badge">📍 {game.location || "—"}</span>
                         <span className="badge">{uiStatus(game)}</span>
-
+                        
                         {game.video_url ? (
                           <button
                             className="btn secondary"
@@ -1028,6 +1053,49 @@ const teamsStaleInfo = useMemo(() => {
 
                         {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
                       </div>
+                      {isAdmin && game && isPastGame(game) && (
+                        <hr />
+                        <div className="card" style={{ marginTop: 12 }}>
+                          <h3 style={{ margin: 0 }}>🏆 Best player</h3>
+                      
+                          <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+                            Выбери лучшего игрока матча — он станет обладателем талисмана до следующей игры.
+                          </div>
+                      
+                          <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center" }}>
+                            <select
+                              className="input"
+                              value={bestPick}
+                              onChange={(e) => setBestPick(e.target.value)}
+                              style={{ flex: 1 }}
+                            >
+                              <option value="">— не выбран —</option>
+                              {bestCandidates.map((p) => (
+                                <option key={p.tg_id} value={String(p.tg_id)}>
+                                  {p.display_name || p.first_name || (p.username ? `@${p.username}` : p.tg_id)}
+                                </option>
+                              ))}
+                            </select>
+                      
+                            <button
+                              className="btn"
+                              onClick={async () => {
+                                const v = bestPick ? Number(bestPick) : null;
+                                await apiPost(`/api/admin/games/${game.id}/best-player`, { best_player_tg_id: v });
+                                await refreshAll(game.id); // чтобы game.best_player_* обновились
+                              }}
+                            >
+                              Сохранить
+                            </button>
+                          </div>
+                      
+                          {game.best_player_name ? (
+                            <div className="small" style={{ marginTop: 10 }}>
+                              Сейчас: <b>{game.best_player_name}</b>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
 
                       <hr />
 
