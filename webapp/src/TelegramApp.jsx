@@ -1054,7 +1054,6 @@ const teamsStaleInfo = useMemo(() => {
                         {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
                       </div>
                       {isAdmin && game && isPastGame(game) && (
-                        <hr />
                         <div className="card" style={{ marginTop: 12 }}>
                           <h3 style={{ margin: 0 }}>🏆 Best player</h3>
                       
