@@ -1441,3 +1441,9 @@ textarea:focus{
   opacity: .55;
   filter: grayscale(.25);
 }
+.gameCard__awardLine{
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: .95;
+  text-shadow: 0 2px 12px rgba(0,0,0,.55);
+}
