@@ -943,7 +943,7 @@ const teamsStaleInfo = useMemo(() => {
                               <div className="gameCard__loc">📍 {g.location || "—"}</div>
                             </div>
 
-                            
+                            {/* BEST PLAYER */}
                             {past && g.best_player_name ? (
                               <div className="gameCard__awardLine">
                                 <img className="talismanIcon" src={talismanIcon} alt="" />
