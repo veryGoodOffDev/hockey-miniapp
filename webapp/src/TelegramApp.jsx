@@ -924,6 +924,21 @@ const teamsStaleInfo = useMemo(() => {
                           {/* TOP BAR */}
                           <div className="gameCard__topbar">
                             <div className="gameCard__title">{uiStatus(g)}</div>
+                            
+                            {/* BEST PLAYER */}
+                            {past && g.best_player_name ? (
+                              <div className="gameCard__awardLine">
+                                <img className="talismanIcon" src={talismanIcon} alt="" />
+                                <b>Best player:</b>&nbsp;{g.best_player_name}
+                              </div>
+                            ) : null}
+                            {!past && isNext && talismanHolder?.name ? (
+                              <div className="gameCard__awardLine">
+                                <img className="talismanIcon" src={talismanIcon} alt="" />
+                                <b>Талисман у:</b>&nbsp;{talismanHolder.name}
+                              </div>
+                            ) : null}
+                            
                             <div className="gameCard__topRight">
                               {g.video_url ? <span className="gameCard__pill" title="Есть видео">▶️</span> : null}
                             </div>
@@ -943,20 +958,6 @@ const teamsStaleInfo = useMemo(() => {
                               <div className="gameCard__loc">📍 {g.location || "—"}</div>
                             </div>
 
-                            {/* BEST PLAYER */}
-                            {past && g.best_player_name ? (
-                              <div className="gameCard__awardLine">
-                                <img className="talismanIcon" src={talismanIcon} alt="" />
-                                <b>Best player:</b>&nbsp;{g.best_player_name}
-                              </div>
-                            ) : null}
-                            {!past && isNext && talismanHolder?.name ? (
-                              <div className="gameCard__awardLine">
-                                <img className="talismanIcon" src={talismanIcon} alt="" />
-                                <b>Талисман у:</b>&nbsp;{talismanHolder.name}
-                              </div>
-                            ) : null}
-                            
                     
                             {/* RING */}
                             <div className="gameCard__ringWrap" title={`${yes} будут (цель ${target})`}>
