@@ -1418,11 +1418,19 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             <label>Номер (0–99)</label>
             <input
               className="input"
+              type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              value={playerDraft.jersey_number}
-              onChange={(e) => setPlayerDraft((d) => ({ ...d, jersey_number: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))}
+              placeholder="Например: 17"
+              value={playerDraft.jersey_number == null ? "" : String(playerDraft.jersey_number)}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^\d]/g, "");
+                if (raw === "") return setPlayerDraft((d) => ({ ...d, jersey_number: null }));
+                const n = Math.max(0, Math.min(99, parseInt(raw, 10)));
+                setPlayerDraft((d) => ({ ...d, jersey_number: n }));
+              }}
             />
+
 
             <label>Позиция</label>
             <select
@@ -1441,15 +1449,22 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                   <label>{k}</label>
                   <input
                     className="input"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={playerDraft[k]}
-                    onChange={(e) => setPlayerDraft((d) => ({ ...d, [k]: Number(e.target.value || 5) }))}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="1–10"
+                    value={playerDraft[k] == null ? "" : String(playerDraft[k])}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^\d]/g, "");
+                      if (raw === "") return setPlayerDraft((d) => ({ ...d, [k]: null }));
+                      const n = Math.max(1, Math.min(10, parseInt(raw, 10)));
+                      setPlayerDraft((d) => ({ ...d, [k]: n }));
+                    }}
                   />
                 </div>
               ))}
             </div>
+
 
             <label>Заметки</label>
             <textarea
