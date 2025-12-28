@@ -18,6 +18,11 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS video_url TEXT;`);
+  // ✅ Best player (обладатель талисмана после игры)
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS best_player_tg_id BIGINT;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS best_player_set_by BIGINT;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS best_player_set_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS best_player_source TEXT DEFAULT 'manual';`);
 
   await q(`CREATE INDEX IF NOT EXISTS idx_games_starts_at ON games(starts_at);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);`);
