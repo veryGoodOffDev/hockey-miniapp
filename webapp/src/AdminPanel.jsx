@@ -426,6 +426,32 @@ async function createRsvpLink(tg_id) {
 
   async function savePlayer() {
     if (!playerDraft) return;
+    const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
+
+function clamp(n, min, max) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return null;
+  return Math.max(min, Math.min(max, Math.round(x)));
+}
+
+async function savePlayer() {
+  const DEFAULT_SKILL = 5; // <- хочешь 1 — поставь 1
+
+  const body = {
+    display_name: playerDraft.display_name ?? "",
+    jersey_number: playerDraft.jersey_number ?? null,
+    position: playerDraft.position ?? "F",
+    notes: playerDraft.notes ?? "",
+    disabled: !!playerDraft.disabled,
+    player_kind: playerDraft.player_kind,
+  };
+
+  for (const k of SKILLS) {
+    const v = playerDraft[k];
+    // ✅ если поле пустое -> отправляем 5 (или 1)
+    body[k] = (v === "" || v == null) ? DEFAULT_SKILL : clamp(v, 1, 10);
+  }
+
     await apiPatch(`/api/admin/players/${playerDraft.tg_id}`, {
       display_name: playerDraft.display_name,
       jersey_number: playerDraft.jersey_number,
@@ -578,6 +604,7 @@ const pastAdminGames = useMemo(() => {
 }, [games]);
 
 const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
+const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
 
   useEffect(() => {
   if (section === "reminders" && isSuperAdmin) loadMsgHistory();
@@ -1443,8 +1470,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
               <option value="G">G</option>
             </select>
 
+            
             <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-              {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+              {SKILLS.map((k) => (
                 <div key={k} style={{ flex: 1, minWidth: 120 }}>
                   <label>{k}</label>
                   <input
@@ -1453,10 +1481,13 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                     inputMode="numeric"
                     pattern="[0-9]*"
                     placeholder="1–10"
-                    value={playerDraft[k] == null ? "" : String(playerDraft[k])}
+                    value={playerDraft?.[k] == null ? "" : String(playerDraft[k])}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/[^\d]/g, "");
-                      if (raw === "") return setPlayerDraft((d) => ({ ...d, [k]: null }));
+                      if (raw === "") {
+                        // ✅ UI пустое значение разрешаем
+                        return setPlayerDraft((d) => ({ ...d, [k]: "" }));
+                      }
                       const n = Math.max(1, Math.min(10, parseInt(raw, 10)));
                       setPlayerDraft((d) => ({ ...d, [k]: n }));
                     }}
