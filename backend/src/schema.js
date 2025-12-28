@@ -104,6 +104,21 @@ export async function ensureSchema(q) {
   // ✅ индекс на rsvps — важно создавать ПОСЛЕ таблицы
   await q(`CREATE INDEX IF NOT EXISTS idx_rsvps_tg_id ON rsvps(tg_id);`);
 
+  /** ===================== BEST PLAYER VOTES ===================== */
+await q(`
+  CREATE TABLE IF NOT EXISTS best_player_votes (
+    game_id INT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    voter_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+    candidate_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (game_id, voter_tg_id)
+  );
+`);
+
+await q(`CREATE INDEX IF NOT EXISTS idx_best_votes_game_candidate ON best_player_votes(game_id, candidate_tg_id);`);
+
+
   /** ===================== TEAMS ===================== */
   await q(`
     CREATE TABLE IF NOT EXISTS teams (
