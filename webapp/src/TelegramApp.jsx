@@ -867,101 +867,113 @@ const teamsStaleInfo = useMemo(() => {
                     </div>
                   )}
 
-                  {listToShow.map((g, idx) => {
-                    const past = isPastGame(g);
-                    const lockRsvp = past && !isAdmin;
-                    const when = formatWhen(g.starts_at);
-                    const status = g.my_status || "maybe";
-                    const tone = cardToneByMyStatus(status);
-                    const isNext = !showPast && idx === 0;
-                  
-                    // ✅ строго по очереди, независимо от игры
-                    const bgUrl = GAME_BGS[idx % GAME_BGS.length];
-
-                    return (
-                            <div
-                                key={g.id}
-                                className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
-                                style={{
-                                  cursor: "pointer",
-                                  opacity: past ? 0.85 : 1,
-                          
-                                  // красивый фон: затемнение + картинка
-                                  backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.65)), url(${bgUrl})`,
-                                  backgroundSize: "cover",
-                                  backgroundPosition: "center",
-                                  backgroundRepeat: "no-repeat",
-                                }}
-                                onClick={() => {
-                                  const id = g.id;
-                          
-                                  setSelectedGameId(id);
-                                  setGameView("detail");
-                          
-                                  setGame(null);
-                                  setRsvps([]);
-                                  setTeams(null);
-                          
-                                  setDetailLoading(true);
-                                  refreshAll(id).finally(() => setDetailLoading(false));
-                                }}
-                              >
-                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ fontWeight: 900 }}>{when}</div>
-
-                          <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                            <span className="badge">{uiStatus(g)}</span>
-                            {g.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
+                    {listToShow.map((g, idx) => {
+                      const past = isPastGame(g);
+                      const lockRsvp = past && !isAdmin;
+                      const when = formatWhen(g.starts_at);
+                      const status = g.my_status || "maybe";
+                      const tone = cardToneByMyStatus(status);
+                      const isNext = !showPast && idx === 0;
+                    
+                      const bgUrl = GAME_BGS[idx % GAME_BGS.length];
+                    
+                      const { month, day } = monthDayRu(g.starts_at);
+                      const yes = g.yes_count ?? 0;
+                    
+                      // чем делим (цель для заполнения круга)
+                      const target =
+                        g.rsvp_target ?? g.target_players ?? g.min_players ?? RSVP_TARGET_DEFAULT;
+                    
+                      const progress = Math.min(1, yes / Math.max(1, target));
+                    
+                      return (
+                        <div
+                          key={g.id}
+                          className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
+                          style={{
+                            cursor: "pointer",
+                            opacity: past ? 0.85 : 1,
+                            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.65)), url(${bgUrl})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            backgroundRepeat: "no-repeat",
+                          }}
+                          onClick={() => {
+                            const id = g.id;
+                    
+                            setSelectedGameId(id);
+                            setGameView("detail");
+                    
+                            setGame(null);
+                            setRsvps([]);
+                            setTeams(null);
+                    
+                            setDetailLoading(true);
+                            refreshAll(id).finally(() => setDetailLoading(false));
+                          }}
+                        >
+                          {/* TOP BAR */}
+                          <div className="gameCard__topbar">
+                            <div className="gameCard__title">{uiStatus(g)}</div>
+                            <div className="gameCard__topRight">
+                              {g.video_url ? <span className="gameCard__pill" title="Есть видео">▶️</span> : null}
+                            </div>
+                          </div>
+                    
+                          {/* MAIN */}
+                          <div className="gameCard__main">
+                            {/* DATE BADGE */}
+                            <div className="gameCard__date">
+                              <div className="gameCard__month">{month}</div>
+                              <div className="gameCard__day">{day}</div>
+                            </div>
+                    
+                            {/* INFO */}
+                            <div className="gameCard__info">
+                              <div className="gameCard__when">{when}</div>
+                              <div className="gameCard__loc">📍 {g.location || "—"}</div>
+                            </div>
+                    
+                            {/* RING */}
+                            <div className="gameCard__ringWrap" title={`${yes} будут (цель ${target})`}>
+                              <div className="progressRing" style={{ "--p": progress }}>
+                                <div className="ringCenter">{yes}</div>
+                              </div>
+                            </div>
+                          </div>
+                    
+                          {/* ACTIONS */}
+                          <div className="gameCard__actions" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              disabled={lockRsvp}
+                              className={`rsvpBtn in ${status === "yes" ? "active" : ""}`}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (lockRsvp) return;
+                                await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
+                                await refreshAll(g.id);
+                              }}
+                            >
+                              👍 IN
+                            </button>
+                    
+                            <button
+                              disabled={lockRsvp}
+                              className={`rsvpBtn out ${status === "no" ? "active" : ""}`}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (lockRsvp) return;
+                                await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
+                                await refreshAll(g.id);
+                              }}
+                            >
+                              👎 OUT
+                            </button>
                           </div>
                         </div>
+                      );
+                    })}
 
-                        <div className="small" style={{ marginTop: 6 }}>
-                          📍 {g.location || "—"}
-                        </div>
-
-                        <div className="row" style={{ marginTop: 10 }}>
-                          <span className="badge">✅ {g.yes_count ?? 0}</span>
-                          <span className="badge">❌ {g.no_count ?? 0}</span>
-                        </div>
-
-                        <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-                          {past ? "Игра прошла — отметки закрыты" : "Нажми, чтобы открыть игру"}
-                        </div>
-
-                        <div
-                          className="row"
-                          style={{ marginTop: 10, gap: 8 }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            disabled={lockRsvp}
-                            className={status === "yes" ? "btn tiny" : "btn secondary tiny"}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (lockRsvp) return;
-                              await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
-                              await refreshAll(g.id);
-                            }}
-                          >
-                            ✅ Буду
-                          </button>
-
-                          <button
-                            disabled={lockRsvp}
-                            className={status === "no" ? "btn tiny" : "btn secondary tiny"}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (lockRsvp) return;
-                              await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
-                              await refreshAll(g.id);
-                            }}
-                          >
-                            ❌ Не буду
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
             </>
@@ -1565,6 +1577,19 @@ function formatWhen(starts_at) {
   const cleaned = String(s).replace(/\s+/g, " ").trim();
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
+
+const RSVP_TARGET_DEFAULT = 24; // сколько "нужно" для заполнения круга (поменяй под себя)
+
+function monthDayRu(iso) {
+  const d = new Date(iso);
+  const month = d
+    .toLocaleString("ru-RU", { month: "short" })
+    .replace(".", "")
+    .toUpperCase(); // ДЕК / ЯНВ
+  const day = String(d.getDate());
+  return { month, day };
+}
+
 
 const posOrder = (p) => {
   const pos = (p?.position || "F").toUpperCase();
