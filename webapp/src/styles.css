@@ -1452,8 +1452,8 @@ textarea:focus{
 }
 
 .talismanIcon{
-  width: 18px;
-  height: 18px;
+  width: 45px;
+  height: 45px;
   padding: 3px;
   border-radius: 999px;
   background: rgba(0,0,0,.20);
