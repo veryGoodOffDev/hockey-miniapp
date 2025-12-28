@@ -926,7 +926,7 @@ const teamsStaleInfo = useMemo(() => {
                             <div className="gameCard__title">{uiStatus(g)}</div>
                             
                             {/* BEST PLAYER */}
-                            {past && g.best_player_name ? (
+                           {/*  {past && g.best_player_name ? (
                               <div className="gameCard__awardLine">
                                 <img className="talismanIcon" src={talismanIcon} alt="" />
                                 <b>Best player:</b>&nbsp;{g.best_player_name}
@@ -937,7 +937,7 @@ const teamsStaleInfo = useMemo(() => {
                                 <img className="talismanIcon" src={talismanIcon} alt="" />
                                 <b>Талисман у:</b>&nbsp;{talismanHolder.name}
                               </div>
-                            ) : null}
+                            ) : null}*/}
                             
                             <div className="gameCard__topRight">
                               {g.video_url ? <span className="gameCard__pill" title="Есть видео">▶️</span> : null}
@@ -1054,7 +1054,7 @@ const teamsStaleInfo = useMemo(() => {
 
                         {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
                       </div>
-                      {isAdmin && game && isPastGame(game) && (
+                     {/*   {isAdmin && game && isPastGame(game) && (
                         <div className="card" style={{ marginTop: 12 }}>
                           <h3 style={{ margin: 0 }}>🏆 Best player</h3>
                       
@@ -1095,7 +1095,7 @@ const teamsStaleInfo = useMemo(() => {
                             </div>
                           ) : null}
                         </div>
-                      )}
+                      )}*/}
 
                       <hr />
 
