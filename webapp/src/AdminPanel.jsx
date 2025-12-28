@@ -604,7 +604,6 @@ const pastAdminGames = useMemo(() => {
 }, [games]);
 
 const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
-const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
 
   useEffect(() => {
   if (section === "reminders" && isSuperAdmin) loadMsgHistory();
