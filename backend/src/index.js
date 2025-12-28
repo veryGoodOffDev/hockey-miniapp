@@ -892,20 +892,40 @@ app.get("/api/games", async (req, res) => {
       COALESCE(c.yes_count,0)   AS yes_count,
       COALESCE(c.maybe_count,0) AS maybe_count,
       COALESCE(c.no_count,0)    AS no_count,
-      my.status AS my_status
+      my.status AS my_status,
+      ${sqlPlayerName("bp")} AS best_player_name
     FROM page p
     CROSS JOIN total t
     LEFT JOIN counts c ON c.game_id = p.id
     LEFT JOIN rsvps my ON my.game_id = p.id AND my.tg_id = $7
+    LEFT JOIN players bp ON bp.tg_id = p.best_player_tg_id
     ORDER BY p.starts_at ${order};
   `;
 
   const r = await q(sql, [scope, from, to, search, limit, offset, user.id, daysInt]);
 
+  const holderR = await q(`
+  SELECT
+    g.id AS game_id,
+    g.starts_at,
+    g.best_player_tg_id AS tg_id,
+    ${sqlPlayerName("p")} AS name
+  FROM games g
+  LEFT JOIN players p ON p.tg_id = g.best_player_tg_id
+  WHERE g.status <> 'cancelled'
+    AND g.best_player_tg_id IS NOT NULL
+    AND g.starts_at < (NOW() - INTERVAL '3 hours')
+  ORDER BY g.starts_at DESC
+  LIMIT 1
+`);
+
+const talisman_holder = holderR.rows[0] || null;
+
+  
   const total = r.rows[0]?.total ?? 0;
   const games = r.rows.map(({ total, ...rest }) => rest);
 
-  res.json({ ok: true, games, total, limit, offset, scope });
+ res.json({ ok: true, games, total, limit, offset, scope, talisman_holder });
 });
 
 /** ====== GAME DETAILS (supports game_id) ====== */
@@ -937,7 +957,23 @@ app.get("/api/game", async (req, res) => {
   }
 
   if (!game) return res.json({ ok: true, game: null, rsvps: [], teams: null });
+  
+  let best_player_name = null;
+  if (game?.best_player_tg_id) {
+    const br = await q(
+      `SELECT ${sqlPlayerName("p")} AS name FROM players p WHERE p.tg_id=$1`,
+      [game.best_player_tg_id]
+    );
+    best_player_name = br.rows[0]?.name || null;
+  }
 
+  // ===== Окно голосования (пример: 36 часов после начала игры) =====
+const VOTE_HOURS = 36;
+const startsMs = game?.starts_at ? new Date(game.starts_at).getTime() : 0;
+const nowMs = Date.now();
+const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOURS * 3600 * 1000);
+
+  
   // ✅ ВАЖНО: показываем roster (tg+manual) + гостей, которые реально отмечены на ЭТУ игру
   let rr;
   if (is_admin) {
@@ -992,13 +1028,69 @@ app.get("/api/game", async (req, res) => {
     );
   }
 
+
   const tr = await q(
     `SELECT team_a, team_b, meta, generated_at FROM teams WHERE game_id=$1`,
     [game.id]
   );
-  const teams = tr.rows[0] || null;
+const teams = tr.rows[0] || null;
 
-  res.json({ ok: true, game, rsvps: rr.rows, teams });
+// ===== Мой голос (анонимно: не показываем другим, но храним чтобы 1 человек = 1 голос) =====
+let my_vote = null;
+let vote_results = [];
+let vote_winner = null;
+
+try {
+  const mv = await q(
+    `SELECT candidate_tg_id
+     FROM best_player_votes
+     WHERE game_id=$1 AND voter_tg_id=$2`,
+    [game.id, user.id]
+  );
+  my_vote = mv.rows[0]?.candidate_tg_id ?? null;
+
+  const vr = await q(
+    `
+    SELECT
+      v.candidate_tg_id,
+      COUNT(*)::int AS votes,
+      COALESCE(
+        NULLIF(BTRIM(p.display_name), ''),
+        NULLIF(BTRIM(p.first_name), ''),
+        CASE WHEN BTRIM(p.username) <> '' THEN '@' || BTRIM(p.username) ELSE NULL END,
+        p.tg_id::text
+      ) AS name
+    FROM best_player_votes v
+    JOIN players p ON p.tg_id = v.candidate_tg_id
+    WHERE v.game_id=$1
+    GROUP BY v.candidate_tg_id, p.display_name, p.first_name, p.username, p.tg_id
+    ORDER BY votes DESC, name ASC
+    `,
+    [game.id]
+  );
+
+  vote_results = vr.rows || [];
+  vote_winner = vote_results[0] || null;
+} catch (e) {
+  // если миграции ещё не применились/таблица не создана — не валим /api/game
+  console.error("best_player votes query failed:", e?.message || e);
+}
+
+// отдаём расширенный game
+res.json({
+  ok: true,
+  game: {
+    ...game,
+    best_player_name,
+  },
+  rsvps: rr.rows,
+  teams,
+  vote_open,
+  my_vote,
+  vote_results,
+  vote_winner,
+});
+
 });
 
 /** ====== RSVP (requires game_id) ====== */
@@ -2204,6 +2296,79 @@ app.post("/api/admin/teams/send", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
+app.post("/api/best-player/vote", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  await ensurePlayer(user);
+
+  const game_id = Number(req.body?.game_id);
+  const candidate_tg_id = Number(req.body?.candidate_tg_id);
+
+  if (!game_id || !candidate_tg_id) {
+    return res.status(400).json({ ok: false, reason: "bad_params" });
+  }
+
+  const gr = await q(`SELECT id, starts_at, status FROM games WHERE id=$1`, [game_id]);
+  const game = gr.rows[0];
+  if (!game) return res.status(404).json({ ok: false, reason: "game_not_found" });
+  if (game.status === "cancelled") return res.status(403).json({ ok: false, reason: "game_cancelled" });
+
+  const starts = new Date(game.starts_at).getTime();
+  const now = Date.now();
+  const VOTE_HOURS = 36;
+  const vote_open = starts < now && now < starts + VOTE_HOURS * 3600 * 1000;
+  if (!vote_open) return res.status(403).json({ ok: false, reason: "vote_closed" });
+
+  const pr = await q(`SELECT tg_id, disabled FROM players WHERE tg_id=$1`, [candidate_tg_id]);
+  const cand = pr.rows[0];
+  if (!cand || cand.disabled) return res.status(400).json({ ok: false, reason: "bad_candidate" });
+
+  await q(
+    `INSERT INTO best_player_votes(game_id, voter_tg_id, candidate_tg_id)
+     VALUES($1,$2,$3)
+     ON CONFLICT(game_id, voter_tg_id)
+     DO UPDATE SET candidate_tg_id=EXCLUDED.candidate_tg_id, updated_at=NOW()`,
+    [game_id, user.id, candidate_tg_id]
+  );
+
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/games/:id/best-player", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const game_id = Number(req.params.id);
+  const best_player_tg_id = req.body?.best_player_tg_id === null ? null : Number(req.body?.best_player_tg_id);
+
+  if (!game_id) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  if (best_player_tg_id !== null) {
+    const pr = await q(`SELECT tg_id, disabled FROM players WHERE tg_id=$1`, [best_player_tg_id]);
+    const p = pr.rows[0];
+    if (!p || p.disabled) return res.status(400).json({ ok: false, reason: "bad_player" });
+  }
+
+  const ur = await q(
+    `UPDATE games
+     SET best_player_tg_id=$2,
+         best_player_set_by=$3,
+         best_player_set_at=NOW(),
+         best_player_source='manual',
+         updated_at=NOW()
+     WHERE id=$1
+     RETURNING *`,
+    [game_id, best_player_tg_id, user.id]
+  );
+
+  res.json({ ok: true, game: ur.rows[0] });
+});
+
 
 const port = process.env.PORT || 10000;
 app.listen(port, () => console.log("Backend listening on", port));
