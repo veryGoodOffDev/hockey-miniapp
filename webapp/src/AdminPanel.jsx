@@ -56,6 +56,7 @@ const GUEST_DEFAULT = {
 };
 
 function Sheet({ title, onClose, children }) {
+  const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
   return (
     <div className="sheetBackdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
