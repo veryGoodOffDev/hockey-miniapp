@@ -680,6 +680,18 @@ async function ensurePlayer(user) {
   );
 }
 
+    function sqlPlayerName(alias = "p") {
+      return `
+        COALESCE(
+          NULLIF(BTRIM(${alias}.display_name), ''),
+          NULLIF(BTRIM(${alias}.first_name), ''),
+          CASE WHEN BTRIM(${alias}.username) <> '' THEN '@' || BTRIM(${alias}.username) ELSE NULL END,
+          ${alias}.tg_id::text
+        )
+      `;
+    }
+
+
 /** ===================== ROUTES ===================== */
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
