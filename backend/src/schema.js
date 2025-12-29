@@ -101,8 +101,29 @@ export async function ensureSchema(q) {
     );
   `);
 
+  
+    // ✅ позиция на конкретную игру (оверрайд профиля)
+  await q(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS pos_override TEXT;`);
+
+  // ✅ check-constraint (idempotent)
+  await q(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'rsvps_pos_override_chk'
+      ) THEN
+        ALTER TABLE rsvps
+          ADD CONSTRAINT rsvps_pos_override_chk
+          CHECK (pos_override IN ('F','D','G') OR pos_override IS NULL);
+      END IF;
+    END$$;
+  `);
+
   // ✅ индекс на rsvps — важно создавать ПОСЛЕ таблицы
   await q(`CREATE INDEX IF NOT EXISTS idx_rsvps_tg_id ON rsvps(tg_id);`);
+
+  
+
 
   /** ===================== BEST PLAYER VOTES ===================== */
 await q(`
