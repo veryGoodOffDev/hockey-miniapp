@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function toLocal(starts_at) {
   const d = new Date(starts_at);
@@ -136,6 +136,32 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [tokenValue, setTokenValue] = useState(""); // сам токен, чтобы можно было отозвать
   const [tokenForId, setTokenForId] = useState(null); // tg_id игрока, для которого показана ссылка
 
+  const [op, setOp] = useState({ busy: false, text: "", tone: "info" });
+const opTimerRef = useRef(null);
+const opBusy = !!op.busy;
+
+function flashAdmin(text, tone = "info", busy = false, holdMs = 1800) {
+  setOp({ text, tone, busy });
+  if (opTimerRef.current) clearTimeout(opTimerRef.current);
+  if (holdMs > 0) {
+    opTimerRef.current = setTimeout(() => setOp((s) => ({ ...s, text: "" })), holdMs);
+  }
+}
+
+async function runAdminOp(label, fn, { successText = "✅ Готово", errorText = "❌ Ошибка" } = {}) {
+  flashAdmin(label, "info", true, 0);
+  try {
+    await fn();
+    flashAdmin(successText, "success", false, 1400);
+    return true;
+  } catch (e) {
+    console.error("Admin op failed:", label, e);
+    flashAdmin(errorText, "error", false, 2400);
+    return false;
+  }
+}
+
+
 
 function fmtTs(ts) {
   try {
@@ -209,11 +235,19 @@ async function syncHistory() {
     }
 
 async function setAttend(tg_id, status) {
-  await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id, status });
-  // обновим локально без перезагрузки
-  setAttendanceRows(prev => prev.map(x => String(x.tg_id) === String(tg_id) ? { ...x, status } : x));
-  // если у тебя статистика/счётчики — можешь refreshAll дернуть
+  if (!gameDraft?.id) return;
+
+  await runAdminOp("Сохраняю посещаемость…", async () => {
+    await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id, status });
+
+    setAttendanceRows((prev) =>
+      prev.map((x) => (String(x.tg_id) === String(tg_id) ? { ...x, status } : x))
+    );
+
+    await onChanged?.({ label: "✅ Посещаемость сохранена — обновляю приложение…", gameId: gameDraft.id });
+  }, { successText: "✅ Сохранено" });
 }
+
 
 async function createRsvpLink(tg_id) {
   if (!gameDraft?.id || !tg_id) return;
@@ -289,19 +323,31 @@ async function createRsvpLink(tg_id) {
 }
 
 
-  async function load() {
-    const g = await apiGet("/api/games?scope=all&days=180&limit=100");
-    setGames(g.games || []);
+    async function load(opts = {}) {
+      const { silent = false } = opts;
+    
+      if (!silent) flashAdmin("Обновляю админ-данные…", "info", true, 0);
+    
+      try {
+        const g = await apiGet("/api/games?scope=all&days=180&limit=100");
+        setGames(g.games || []);
+    
+        const p = await apiGet("/api/admin/players");
+        setPlayers(p.players || []);
+        setIsSuperAdmin(!!p.is_super_admin);
+    
+        if (!silent) flashAdmin("✅ Обновлено", "success", false, 1200);
+      } catch (e) {
+        console.error("load failed", e);
+        if (!silent) flashAdmin("❌ Не удалось обновить", "error", false, 2400);
+      }
+    }
 
-    const p = await apiGet("/api/admin/players");
-    setPlayers(p.players || []);
-    setIsSuperAdmin(!!p.is_super_admin);
-  }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    useEffect(() => {
+      load({ silent: true });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
   const filteredPlayers = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -316,30 +362,41 @@ async function createRsvpLink(tg_id) {
   }, [players, q]);
 
   async function sendReminderNow() {
-    setReminderMsg("");
-    const r = await apiPost("/api/admin/reminder/sendNow", {});
-    if (r?.ok) setReminderMsg("✅ Напоминание отправлено");
-    else setReminderMsg(`❌ Ошибка: ${r?.reason || r?.error || "unknown"}`);
+    await runAdminOp("Отправляю напоминание…", async () => {
+      setReminderMsg("");
+      const r = await apiPost("/api/admin/reminder/sendNow", {});
+      if (r?.ok) setReminderMsg("✅ Напоминание отправлено");
+      else setReminderMsg(`❌ Ошибка: ${r?.reason || r?.error || "unknown"}`);
+    });
   }
 
   async function createOne() {
     if (!date || !time) return;
-    const starts_at = toIsoFromLocal(date, time);
-    await apiPost("/api/games", { starts_at, location });
-    await load();
-    onChanged?.();
+  
+    await runAdminOp("Создаю игру…", async () => {
+      const starts_at = toIsoFromLocal(date, time);
+      await apiPost("/api/games", { starts_at, location });
+  
+      await load({ silent: true });
+      await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
+    }, { successText: "✅ Игра создана" });
   }
-
+  
   async function createSeries() {
     if (!date || !time || weeks < 1) return;
-    for (let i = 0; i < weeks; i++) {
-      const base = new Date(`${date}T${time}`);
-      base.setDate(base.getDate() + i * 7);
-      await apiPost("/api/games", { starts_at: base.toISOString(), location });
-    }
-    await load();
-    onChanged?.();
+  
+    await runAdminOp(`Создаю расписание (${weeks} нед.)…`, async () => {
+      for (let i = 0; i < weeks; i++) {
+        const base = new Date(`${date}T${time}`);
+        base.setDate(base.getDate() + i * 7);
+        await apiPost("/api/games", { starts_at: base.toISOString(), location });
+      }
+  
+      await load({ silent: true });
+      await onChanged?.({ label: "✅ Расписание создано — обновляю приложение…", refreshPlayers: false });
+    }, { successText: "✅ Расписание создано" });
   }
+
 
   function openGameSheet(g) {
     const dt = toLocal(g.starts_at);
@@ -373,36 +430,51 @@ async function createRsvpLink(tg_id) {
     setVideoOpen(false);
   }
 
-  async function saveGame() {
-    if (!gameDraft) return;
+async function saveGame() {
+  if (!gameDraft) return;
+
+  await runAdminOp("Сохраняю игру…", async () => {
     const starts_at = toIsoFromLocal(gameDraft.date, gameDraft.time);
+
     await apiPatch(`/api/games/${gameDraft.id}`, {
       starts_at,
       location: gameDraft.location,
       status: gameDraft.status,
       video_url: gameDraft.video_url || "",
     });
-    await load();
-    onChanged?.();
-  }
 
-  async function setGameStatus(status) {
-    if (!gameDraft) return;
+    await load({ silent: true });
+    await onChanged?.({ label: "✅ Игра сохранена — обновляю приложение…", gameId: gameDraft.id });
+  }, { successText: "✅ Игра сохранена" });
+}
+
+async function setGameStatus(status) {
+  if (!gameDraft) return;
+
+  await runAdminOp("Меняю статус игры…", async () => {
     await apiPost(`/api/games/${gameDraft.id}/status`, { status });
     setGameDraft((d) => ({ ...d, status }));
-    await load();
-    onChanged?.();
-  }
 
-  async function deleteGame() {
-    if (!gameDraft) return;
-    const ok = confirm(`Удалить игру #${gameDraft.id}?`);
-    if (!ok) return;
+    await load({ silent: true });
+    await onChanged?.({ label: "✅ Статус обновлён — обновляю приложение…", gameId: gameDraft.id });
+  }, { successText: "✅ Статус обновлён" });
+}
+
+async function deleteGame() {
+  if (!gameDraft) return;
+  const ok = confirm(`Удалить игру #${gameDraft.id}?`);
+  if (!ok) return;
+
+  await runAdminOp("Удаляю игру…", async () => {
     await apiDelete(`/api/games/${gameDraft.id}`);
+    const deletedId = gameDraft.id;
+
     closeGameSheet();
-    await load();
-    onChanged?.();
-  }
+    await load({ silent: true });
+    await onChanged?.({ label: "✅ Игра удалена — обновляю приложение…", gameId: deletedId });
+  }, { successText: "✅ Игра удалена" });
+}
+
 
   async function openPlayerSheet(p) {
     setOpenPlayerId(p.tg_id);
@@ -435,38 +507,42 @@ async function createRsvpLink(tg_id) {
 
 
 
-async function savePlayer() {
-  if (!playerDraft) return;
+    async function savePlayer() {
+      if (!playerDraft) return;
+    
+      await runAdminOp("Сохраняю игрока…", async () => {
+        const body = {
+          display_name: (playerDraft.display_name ?? "").trim(),
+          jersey_number:
+            playerDraft.jersey_number === "" || playerDraft.jersey_number == null
+              ? null
+              : Number(String(playerDraft.jersey_number).replace(/[^\d]/g, "").slice(0, 2)),
+          position: (playerDraft.position || "F").toUpperCase(),
+          notes: playerDraft.notes ?? "",
+          disabled: !!playerDraft.disabled,
+        };
+    
+        for (const k of SKILLS) body[k] = clampSkill(playerDraft[k]);
+    
+        await apiPatch(`/api/admin/players/${playerDraft.tg_id}`, body);
+    
+        await load({ silent: true });
+        await onChanged?.({ label: "✅ Игрок сохранён — обновляю приложение…", refreshPlayers: true });
+      }, { successText: "✅ Игрок сохранён" });
+    }
+    
+    async function toggleAdmin() {
+      if (!playerDraft) return;
+    
+      await runAdminOp("Меняю права админа…", async () => {
+        await apiPost(`/api/admin/players/${playerDraft.tg_id}/admin`, { is_admin: !playerDraft.is_admin });
+        setPlayerDraft((d) => ({ ...d, is_admin: !d.is_admin }));
+    
+        await load({ silent: true });
+        await onChanged?.({ label: "✅ Права обновлены — обновляю приложение…", refreshPlayers: true });
+      }, { successText: "✅ Права обновлены" });
+    }
 
-  const body = {
-    display_name: (playerDraft.display_name ?? "").trim(),
-    jersey_number:
-      playerDraft.jersey_number === "" || playerDraft.jersey_number == null
-        ? null
-        : Number(String(playerDraft.jersey_number).replace(/[^\d]/g, "").slice(0, 2)),
-    position: (playerDraft.position || "F").toUpperCase(),
-    notes: playerDraft.notes ?? "",
-    disabled: !!playerDraft.disabled,
-  };
-
-  for (const k of SKILLS) {
-    body[k] = clampSkill(playerDraft[k]);
-  }
-
-  await apiPatch(`/api/admin/players/${playerDraft.tg_id}`, body);
-
-  await load();
-  onChanged?.();
-}
-
-
-  async function toggleAdmin() {
-    if (!playerDraft) return;
-    await apiPost(`/api/admin/players/${playerDraft.tg_id}/admin`, { is_admin: !playerDraft.is_admin });
-    setPlayerDraft((d) => ({ ...d, is_admin: !d.is_admin }));
-    await load();
-    onChanged?.();
-  }
 
   /** ===================== GUESTS ===================== */
   async function loadGuestsForGame(gameId) {
@@ -506,9 +582,10 @@ async function savePlayer() {
     setGuestFormOpen(true);
   }
 
-  async function saveGuest() {
-    if (!gameDraft) return;
+async function saveGuest() {
+  if (!gameDraft) return;
 
+  await runAdminOp(guestEditingId ? "Сохраняю гостя…" : "Добавляю гостя…", async () => {
     const payload = {
       game_id: gameDraft.id,
       status: guestDraft.status,
@@ -531,7 +608,7 @@ async function savePlayer() {
 
     if (guestEditingId) {
       await apiPatch(`/api/admin/players/${guestEditingId}`, payload);
-      await apiPost(`/api/admin/rsvp`, { game_id: gameDraft.id, tg_id: guestEditingId, status: payload.status });
+      await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id: guestEditingId, status: payload.status });
     } else {
       await apiPost("/api/admin/guests", payload);
     }
@@ -541,39 +618,53 @@ async function savePlayer() {
     setGuestDraft({ ...GUEST_DEFAULT });
 
     await loadGuestsForGame(gameDraft.id);
-    await load();
-    onChanged?.();
-  }
+    await loadAttendanceForGame(gameDraft.id);
+    await load({ silent: true });
 
-  async function deleteGuest(tgId) {
-    const ok = confirm("Удалить гостя? (Он исчезнет из списков и состава)");
-    if (!ok) return;
+    await onChanged?.({ label: "✅ Гости обновлены — обновляю приложение…", gameId: gameDraft.id });
+  }, { successText: "✅ Сохранено" });
+}
+
+async function deleteGuest(tgId) {
+  const ok = confirm("Удалить гостя? (Он исчезнет из списков и состава)");
+  if (!ok) return;
+
+  await runAdminOp("Удаляю гостя…", async () => {
     await apiDelete(`/api/admin/players/${tgId}`);
-    if (gameDraft) await loadGuestsForGame(gameDraft.id);
-    await load();
-    onChanged?.();
-  }
 
-  async function promoteGuestToManual(tg_id) {
+    if (gameDraft) {
+      await loadGuestsForGame(gameDraft.id);
+      await loadAttendanceForGame(gameDraft.id);
+    }
+    await load({ silent: true });
+
+    await onChanged?.({ label: "✅ Гость удалён — обновляю приложение…", gameId: gameDraft?.id });
+  }, { successText: "✅ Гость удалён" });
+}
+
+async function promoteGuestToManual(tg_id) {
   const ok = confirm("Сделать этого гостя постоянным игроком команды (без Telegram)?");
   if (!ok) return;
 
-  const r = await apiPost(`/api/admin/players/${tg_id}/promote`, {});
-  if (!r?.ok) {
-    setTokenMsg(`❌ Не удалось: ${r?.reason || r?.error || "unknown"}`);
-    return;
-  }
+  await runAdminOp("Перевожу гостя в игроки…", async () => {
+    const r = await apiPost(`/api/admin/players/${tg_id}/promote`, {});
+    if (!r?.ok) {
+      setTokenMsg(`❌ Не удалось: ${r?.reason || r?.error || "unknown"}`);
+      return;
+    }
 
-  setTokenMsg("⭐ Гость переведён в игроки команды (manual)");
+    setTokenMsg("⭐ Гость переведён в игроки команды (manual)");
 
-  // обновим всё, чтобы он исчез из “Гости” и появился в “Игроки”
-  if (gameDraft?.id) {
-    await loadGuestsForGame(gameDraft.id);
-    await loadAttendanceForGame(gameDraft.id);
-  }
-  await load();
-  onChanged?.();
+    if (gameDraft?.id) {
+      await loadGuestsForGame(gameDraft.id);
+      await loadAttendanceForGame(gameDraft.id);
+    }
+    await load({ silent: true });
+
+    await onChanged?.({ label: "✅ Состав игроков обновлён — обновляю приложение…", refreshPlayers: true, gameId: gameDraft?.id });
+  }, { successText: "✅ Переведено" });
 }
+
 
   
   function isPastGameAdmin(g) {
@@ -759,7 +850,14 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       `}</style>
 
       <h2 style={{ marginTop: 0 }}>Админ</h2>
-
+        {op.text ? (
+            <div className="card" style={{ marginTop: 10, padding: "10px 12px" }}>
+              <div className="small" style={{ opacity: 0.92 }}>
+                {op.busy ? "⏳ " : op.tone === "success" ? "✅ " : op.tone === "error" ? "❌ " : "ℹ️ "}
+                {op.text}
+              </div>
+            </div>
+          ) : null}
       <div className="segRow">
         <button className={`segBtn ${section === "games" ? "active" : ""}`} onClick={() => setSection("games")}>
           Игры
@@ -1087,7 +1185,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             />
 
             <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-              <button className="btn" onClick={saveGame}>Сохранить</button>
+              <button className="btn" onClick={saveGame} disabled={opBusy}> {opBusy ? "…" : "Сохранить"} </button>
 
               {gameDraft.status === "cancelled" ? (
                 <button className="btn secondary" onClick={() => setGameStatus("scheduled")}>
@@ -1099,7 +1197,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 </button>
               )}
 
-              <button className="btn secondary" onClick={deleteGame}>Удалить</button>
+              <button className="btn secondary" onClick={deleteGame} disabled={opBusy}> {opBusy ? "…" : "Удалить"} </button>
             </div>
 
             <div className="row" style={{ marginTop: 10, gap: 8 }}>
