@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
@@ -86,6 +86,100 @@ export default function TelegramApp() {
   const [talismanHolder, setTalismanHolder] = useState(null);
   const [bestPick, setBestPick] = useState("");
   const [posPopup, setPosPopup] = useState(null); 
+
+  // ===== UI feedback for any mutations =====
+const [op, setOp] = useState({ busy: false, text: "", tone: "info" }); // tone: info|success|error
+const opTimerRef = useRef(null);
+const opBusy = !!op.busy;
+
+function flashOp(text, tone = "info", busy = false, holdMs = 1800) {
+  setOp({ text, tone, busy });
+  if (opTimerRef.current) clearTimeout(opTimerRef.current);
+  if (holdMs > 0) {
+    opTimerRef.current = setTimeout(() => {
+      setOp((s) => ({ ...s, text: "" }));
+    }, holdMs);
+  }
+}
+
+async function runOp(label, fn, { successText = "Готово", errorText = "Не удалось", sync = null } = {}) {
+  flashOp(label, "info", true, 0);
+  try {
+    if (typeof fn === "function") await fn();
+    if (sync) {
+      const syncOpts = sync === true ? {} : sync;
+      await syncAfterMutation(syncOpts);
+    }
+    flashOp(successText, "success", false, 1400);
+    return true;
+  } catch (e) {
+    console.error("runOp failed:", label, e);
+    flashOp(errorText, "error", false, 2400);
+    return false;
+  }
+}
+
+// ===== light refreshes (avoid heavy refreshAll) =====
+async function refreshUpcomingGamesOnly() {
+  const gl = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
+
+  if (gl?.ok === false) {
+    setGamesError(gl);
+    setGames([]);
+    return null;
+  }
+
+  setGamesError(null);
+  setGames(gl.games || []);
+  setTalismanHolder(gl.talisman_holder || null);
+  return gl.games || [];
+}
+
+async function refreshPlayersDirOnly() {
+  const r = await apiGet("/api/players");
+  setPlayersDir(r.players || []);
+  return r.players || [];
+}
+
+async function refreshGameOnly(gameId = selectedGameId) {
+  if (!gameId) return null;
+  const gg = await apiGet(`/api/game?game_id=${gameId}`);
+  setGame(gg.game || null);
+  setRsvps(gg.rsvps || []);
+  setTeams(normalizeTeams(gg.teams));
+  return gg;
+}
+
+/**
+ * Единственная точка синхронизации UI после мутаций
+ * opts:
+ * - gameId: какой game обновлять
+ * - refreshGames: обновить карточки игр (upcoming)
+ * - refreshGame: обновить деталку выбранной игры + отметки
+ * - refreshPlayers: обновить справочник игроков (вкладка players)
+ * - refreshPast: если показываем прошедшие - перезагрузить pastPage
+ */
+async function syncAfterMutation(opts = {}) {
+  const {
+    gameId = selectedGameId,
+    refreshGames = true,
+    refreshGame = true,
+    refreshPlayers = false,
+    refreshPast = showPast,
+  } = opts;
+
+  const tasks = [];
+  if (refreshGames) tasks.push(refreshUpcomingGamesOnly());
+  if (refreshGame && gameId) tasks.push(refreshGameOnly(gameId));
+  if (refreshPlayers) tasks.push(refreshPlayersDirOnly());
+  await Promise.all(tasks);
+
+  if (refreshPast) {
+    setPastOffset(0);
+    await loadPast(true);
+  }
+}
+
 
   function normalizeTeams(t) {
     if (!t) return null;
@@ -343,16 +437,22 @@ export default function TelegramApp() {
     setBestPick(game.best_player_tg_id ? String(game.best_player_tg_id) : "");
   }, [game?.id]);
 
-  async function rsvp(status) {
-    if (!selectedGameId) return;
-    try {
-      setLoading(true);
+async function rsvp(status) {
+  if (!selectedGameId) return;
+
+  await runOp(
+    "Сохраняю отметку…",
+    async () => {
       await apiPost("/api/rsvp", { game_id: selectedGameId, status });
-      await refreshAll(selectedGameId);
-    } finally {
-      setLoading(false);
+    },
+    {
+      successText: "✅ Отметка сохранена",
+      errorText: "❌ Не удалось сохранить отметку",
+      sync: { gameId: selectedGameId, refreshGames: true, refreshGame: true },
     }
-  }
+  );
+}
+
 
   function posHuman(p) {
   const x = String(p || "F").toUpperCase();
@@ -371,11 +471,8 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
 
   const profile = String(player?.profile_position || player?.position || "F").toUpperCase();
   const desired = String(nextPos || "").toUpperCase();
-
-  // если выбрали как в профиле — просто сбрасываем override
   const pos_override = desired === profile ? null : desired;
 
-  // подтверждаем только если отличается от профиля
   if (pos_override && pos_override !== profile) {
     const ok = window.confirm(
       `Вы уверены, что хотите изменить позицию игрока "${player?.display_name || player?.first_name || player?.username || player?.tg_id}" ` +
@@ -385,18 +482,24 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
     if (!ok) return;
   }
 
-  // ⚠️ позиция имеет смысл только для тех, кто "yes"
-  // так как игрок уже в списке ✅, просто фиксируем status='yes'
-  await apiPost("/api/admin/rsvp", {
-    game_id: game.id,
-    tg_id: player.tg_id,
-    status: "yes",
-    pos_override, // null = по профилю
-  });
-
-  // обновить данные игры (как ты уже делаешь после действий)
-  await loadGame(game.id); // или твоя функция перезагрузки /api/game
+  await runOp(
+    "Сохраняю позицию…",
+    async () => {
+      await apiPost("/api/admin/rsvp", {
+        game_id: game.id,
+        tg_id: player.tg_id,
+        status: "yes",
+        pos_override,
+      });
+    },
+    {
+      successText: "✅ Позиция сохранена",
+      errorText: "❌ Не удалось сохранить позицию",
+      sync: { gameId: game.id, refreshGames: true, refreshGame: true },
+    }
+  );
 }
+
 
   
   async function sendTeamsToChat() {
@@ -457,69 +560,106 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
 }
 
 
-  async function saveProfile() {
-    setSaving(true);
-    try {
-      const numeric = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
-      const payload = { ...me };
-      for (const k of numeric) {
-        if (payload[k] == null || payload[k] === "") payload[k] = 5;
+async function saveProfile() {
+  await runOp(
+    "Сохраняю профиль…",
+    async () => {
+      setSaving(true);
+      try {
+        const numeric = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
+        const payload = { ...me };
+        for (const k of numeric) {
+          if (payload[k] == null || payload[k] === "") payload[k] = 5;
+        }
+        const res = await apiPost("/api/me", payload);
+        if (res?.player) setMe(res.player);
+      } finally {
+        setSaving(false);
       }
-
-      const res = await apiPost("/api/me", payload);
-      if (res?.player) setMe(res.player);
-    } finally {
-      setSaving(false);
+    },
+    {
+      successText: "✅ Профиль сохранён",
+      errorText: "❌ Не удалось сохранить профиль",
+      sync: { refreshPlayers: true, refreshGames: true, refreshGame: true },
     }
-  }
+  );
+}
 
-  async function generateTeams() {
-    if (!selectedGameId) return;
-    const res = await apiPost("/api/teams/generate", { game_id: selectedGameId });
-    if (res?.ok) setTeams(normalizeTeams(res));
-    setTab("teams");
-  }
 
-  async function movePicked() {
-    if (!picked || !selectedGameId) return;
-    try {
-      setTeamsBusy(true);
-      const res = await apiPost("/api/teams/manual", {
-        game_id: selectedGameId,
-        op: "move",
-        from: picked.team,
-        tg_id: picked.tg_id,
-      });
-      if (res?.ok) {
-        setTeams(normalizeTeams(res));
-        setPicked(null);
-      }
-    } finally {
-      setTeamsBusy(false);
+    async function generateTeams() {
+      if (!selectedGameId) return;
+    
+      await runOp(
+        "Формирую составы…",
+        async () => {
+          const res = await apiPost("/api/teams/generate", { game_id: selectedGameId });
+          if (res?.ok) setTeams(normalizeTeams(res));
+          setTab("teams");
+        },
+        {
+          successText: "✅ Составы сформированы",
+          errorText: "❌ Не удалось сформировать составы",
+          sync: { gameId: selectedGameId, refreshGames: false, refreshGame: true }, // карточки игр можно не трогать
+        }
+      );
     }
-  }
 
-  async function swapPicked(withTeam, withId) {
-    if (!picked || !selectedGameId) return;
-    const a_id = picked.team === "A" ? picked.tg_id : withId;
-    const b_id = picked.team === "B" ? picked.tg_id : withId;
 
-    try {
-      setTeamsBusy(true);
-      const res = await apiPost("/api/teams/manual", {
-        game_id: selectedGameId,
-        op: "swap",
-        a_id,
-        b_id,
-      });
-      if (res?.ok) {
-        setTeams(normalizeTeams(res));
-        setPicked(null);
-      }
-    } finally {
-      setTeamsBusy(false);
+    async function movePicked() {
+      if (!picked || !selectedGameId) return;
+    
+      await runOp(
+        "Переношу игрока…",
+        async () => {
+          setTeamsBusy(true);
+          try {
+            const res = await apiPost("/api/teams/manual", {
+              game_id: selectedGameId,
+              op: "move",
+              from: picked.team,
+              tg_id: picked.tg_id,
+            });
+            if (res?.ok) {
+              setTeams(normalizeTeams(res));
+              setPicked(null);
+            }
+          } finally {
+            setTeamsBusy(false);
+          }
+        },
+        { successText: "✅ Перенесено", errorText: "❌ Не удалось перенести", sync: false }
+      );
     }
-  }
+    
+    async function swapPicked(withTeam, withId) {
+      if (!picked || !selectedGameId) return;
+    
+      const a_id = picked.team === "A" ? picked.tg_id : withId;
+      const b_id = picked.team === "B" ? picked.tg_id : withId;
+    
+      await runOp(
+        "Меняю местами…",
+        async () => {
+          setTeamsBusy(true);
+          try {
+            const res = await apiPost("/api/teams/manual", {
+              game_id: selectedGameId,
+              op: "swap",
+              a_id,
+              b_id,
+            });
+            if (res?.ok) {
+              setTeams(normalizeTeams(res));
+              setPicked(null);
+            }
+          } finally {
+            setTeamsBusy(false);
+          }
+        },
+        { successText: "✅ Обмен выполнен", errorText: "❌ Не удалось обменять", sync: false }
+      );
+    }
+
 
   function onPick(teamKey, tg_id) {
     if (!editTeams) return;
@@ -746,6 +886,15 @@ const teamsPosStaleInfo = React.useMemo(() => {
     return (
       <div className="container">
         <h1>🏒 Хоккей: отметки и составы</h1>
+        {op.text ? (
+          <div className="card" style={{ marginTop: 10, padding: "10px 12px" }}>
+            <div className="small" style={{ opacity: 0.92 }}>
+              {op.busy ? "⏳ " : op.tone === "success" ? "✅ " : op.tone === "error" ? "❌ " : "ℹ️ "}
+              {op.text}
+            </div>
+          </div>
+        ) : null}
+
         <div className="card">
           <div className="small">
             Ты открыл приложение как обычный сайт, поэтому Telegram не передал данные пользователя.
@@ -949,25 +1098,48 @@ const teamsPosStaleInfo = React.useMemo(() => {
                     <div className="row" style={{ marginTop: 10, gap: 8 }}>
                       <button
                         className="btn secondary"
+                        disabled={opBusy}
                         onClick={async () => {
                           if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
-                          await apiPost("/api/rsvp/bulk", { status: "yes" });
-                          await refreshAll(selectedGameId);
+                      
+                          await runOp(
+                            "Ставлю ✅ на все будущие…",
+                            async () => {
+                              await apiPost("/api/rsvp/bulk", { status: "yes" });
+                            },
+                            {
+                              successText: "✅ Применено",
+                              errorText: "❌ Не удалось применить",
+                              sync: { refreshGames: true, refreshGame: true },
+                            }
+                          );
                         }}
                       >
                         ✅ Буду на все будущие
                       </button>
-
+                      
                       <button
                         className="btn secondary"
+                        disabled={opBusy}
                         onClick={async () => {
                           if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
-                          await apiPost("/api/rsvp/bulk", { status: "no" });
-                          await refreshAll(selectedGameId);
+                      
+                          await runOp(
+                            "Ставлю ❌ на все будущие…",
+                            async () => {
+                              await apiPost("/api/rsvp/bulk", { status: "no" });
+                            },
+                            {
+                              successText: "✅ Применено",
+                              errorText: "❌ Не удалось применить",
+                              sync: { refreshGames: true, refreshGame: true },
+                            }
+                          );
                         }}
                       >
                         ❌ Не буду на все будущие
                       </button>
+
                     </div>
                   )}
 
@@ -1065,30 +1237,51 @@ const teamsPosStaleInfo = React.useMemo(() => {
                           {/* ACTIONS */}
                           <div className="gameCard__actions" onClick={(e) => e.stopPropagation()}>
                             <button
-                              disabled={lockRsvp}
+                              disabled={opBusy || lockRsvp}
                               className={`rsvpBtn in ${status === "yes" ? "active" : ""}`}
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (lockRsvp) return;
-                                await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
-                                await refreshAll(g.id);
+                            
+                                await runOp(
+                                  "Сохраняю IN…",
+                                  async () => {
+                                    await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
+                                  },
+                                  {
+                                    successText: "✅ IN сохранён",
+                                    errorText: "❌ Не удалось сохранить IN",
+                                    sync: { gameId: g.id, refreshGames: true, refreshGame: false }, // деталка не нужна на list
+                                  }
+                                );
                               }}
                             >
                               👍 IN
                             </button>
-                    
+                            
                             <button
-                              disabled={lockRsvp}
+                              disabled={opBusy || lockRsvp}
                               className={`rsvpBtn out ${status === "no" ? "active" : ""}`}
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (lockRsvp) return;
-                                await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
-                                await refreshAll(g.id);
+                            
+                                await runOp(
+                                  "Сохраняю OUT…",
+                                  async () => {
+                                    await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
+                                  },
+                                  {
+                                    successText: "✅ OUT сохранён",
+                                    errorText: "❌ Не удалось сохранить OUT",
+                                    sync: { gameId: g.id, refreshGames: true, refreshGame: false },
+                                  }
+                                );
                               }}
                             >
                               👎 OUT
                             </button>
+
                           </div>
                         </div>
                       );
@@ -1387,9 +1580,20 @@ const teamsPosStaleInfo = React.useMemo(() => {
     </div>
 
     <div className="row" style={{ marginTop: 10 }}>
-      <button className="btn secondary" onClick={() => refreshAll(selectedGameId)}>
-        Обновить
-      </button>
+    <button
+      className="btn secondary"
+      disabled={opBusy}
+      onClick={() =>
+        runOp("Обновляю данные…", async () => {}, {
+          successText: "✅ Обновлено",
+          errorText: "❌ Не удалось обновить",
+          sync: { gameId: selectedGameId, refreshGames: true, refreshGame: true },
+        })
+      }
+    >
+      {opBusy ? "…" : "Обновить"}
+    </button>
+
 
       {isAdmin && (
         <>
@@ -1610,8 +1814,25 @@ const teamsPosStaleInfo = React.useMemo(() => {
           apiPost={apiPost}
           apiPatch={apiPatch}
           apiDelete={apiDelete}
-          onChanged={() => refreshAll(selectedGameId)}
+          onChanged={async (payload) => {
+            const p = typeof payload === "string" ? { label: payload } : (payload || {});
+            const label = p.label || "Обновляю данные после админки…";
+            const gameId = p.gameId ?? selectedGameId;
+        
+            await runOp(label, async () => {}, {
+              successText: "✅ Данные обновлены",
+              errorText: "❌ Не удалось обновить данные",
+              sync: {
+                gameId,
+                refreshGames: true,
+                refreshGame: true,
+                refreshPlayers: !!p.refreshPlayers,
+                refreshPast: showPast,
+              },
+            });
+          }}
         />
+
       )}
 
       {/* ====== PLAYERS ====== */}
