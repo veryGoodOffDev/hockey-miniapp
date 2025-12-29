@@ -119,6 +119,11 @@ async function runOp(label, fn, { successText = "Готово", errorText = "Н�
   }
 }
 
+
+  function closeOp() {
+  setOp((s) => ({ ...s, busy: false, text: "" }));
+  if (opTimerRef.current) clearTimeout(opTimerRef.current);
+}
 // ===== light refreshes (avoid heavy refreshAll) =====
 async function refreshUpcomingGamesOnly() {
   const gl = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
@@ -886,14 +891,27 @@ const teamsPosStaleInfo = React.useMemo(() => {
     return (
       <div className="container">
         <h1>🏒 Хоккей: отметки и составы</h1>
-        {op.text ? (
-          <div className="card" style={{ marginTop: 10, padding: "10px 12px" }}>
-            <div className="small" style={{ opacity: 0.92 }}>
-              {op.busy ? "⏳ " : op.tone === "success" ? "✅ " : op.tone === "error" ? "❌ " : "ℹ️ "}
-              {op.text}
+        <div className="toastWrap" aria-live="polite" aria-atomic="true">
+          <div className={`toast tone-${op.tone} ${op.text ? "isShow" : ""}`}>
+            <div className="toastRow">
+              <div className="toastIcon">
+                {op.busy ? "⏳" : op.tone === "success" ? "✅" : op.tone === "error" ? "❌" : "ℹ️"}
+              </div>
+        
+              <div className="toastText">{op.text || ""}</div>
+        
+              <button className="toastClose" onClick={closeOp} aria-label="Закрыть">
+                ✕
+              </button>
             </div>
+        
+            {op.busy ? (
+              <div className="toastBar" aria-hidden="true">
+                <i />
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
 
         <div className="card">
           <div className="small">
