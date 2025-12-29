@@ -1183,7 +1183,7 @@ const teamsStaleInfo = useMemo(() => {
                       <StatusBlock
                         title="Буду"
                         tone="yes"
-                        list={yesList}
+                        list={grouped.yes}
                         isAdmin={isAdmin}
                         me={me}
                         canPickPos={true}
