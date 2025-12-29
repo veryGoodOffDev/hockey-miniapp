@@ -1137,8 +1137,6 @@ app.post("/api/rsvp", async (req, res) => {
   if (!user) return;
   if (!(await requireGroupMember(req, res, user))) return;
   const b = req.body || {};
-  const gid = Number(b?.game_id);
-  const status = String(b?.status || "").trim();
 
   const hasPos = Object.prototype.hasOwnProperty.call(b, "pos_override");
   const pos_override_raw = hasPos ? b.pos_override : undefined;
