@@ -85,6 +85,7 @@ export default function TelegramApp() {
   const [teamsSendMsg, setTeamsSendMsg] = useState("");
   const [talismanHolder, setTalismanHolder] = useState(null);
   const [bestPick, setBestPick] = useState("");
+  const [posPopup, setPosPopup] = useState(null); 
 
   function normalizeTeams(t) {
     if (!t) return null;
@@ -1179,15 +1180,16 @@ const teamsStaleInfo = useMemo(() => {
                       <div className="small">Отметки:</div>
 
                       <div style={{ marginTop: 10 }}>
-                        <StatusBlock
-                          title="✅ Будут на игре"
-                          tone="yes"
-                          list={grouped.yes}
-                          isAdmin={isAdmin}
-                          me={me}
-                          canPickPos={isAdmin && !lockRsvp && game?.status !== "cancelled"}
-                          onPickPos={setGamePosOverride}
-                        />
+                      <StatusBlock
+                        title="Буду"
+                        tone="yes"
+                        list={yesList}
+                        isAdmin={isAdmin}
+                        me={me}
+                        canPickPos={true}
+                        setPosPopup={setPosPopup}
+                      />
+
                         <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} />
                         <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
                       </div>
@@ -1655,6 +1657,57 @@ const teamsStaleInfo = useMemo(() => {
           )}
         </div>
       )}
+      {isAdmin && posPopup && (
+  <div className="modalBackdrop" onClick={() => setPosPopup(null)}>
+    <div className="modalSheet" onClick={(e) => e.stopPropagation()}>
+      <div style={{ fontWeight: 900, fontSize: 16 }}>
+        Позиция на игру
+      </div>
+
+      <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+        {showName(posPopup)}
+      </div>
+
+      <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <button
+          className="btn"
+          onClick={async () => {
+            await setGamePosOverride(posPopup, "G");
+            setPosPopup(null);
+          }}
+        >
+          🥅 Вратарь
+        </button>
+
+        <button
+          className="btn"
+          onClick={async () => {
+            await setGamePosOverride(posPopup, "D");
+            setPosPopup(null);
+          }}
+        >
+          🛡️ Защитник
+        </button>
+
+        <button
+          className="btn"
+          onClick={async () => {
+            await setGamePosOverride(posPopup, "F");
+            setPosPopup(null);
+          }}
+        >
+          🏒 Нападающий
+        </button>
+      </div>
+
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="btn secondary" onClick={() => setPosPopup(null)}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </div>
@@ -1734,7 +1787,7 @@ function posLabel(posRaw) {
   return pos === "G" ? "🥅 G" : pos === "D" ? "🛡 D" : "🏒 F";
 }
 
-function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, onPickPos }) {
+function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, setPosPopup }) {
   const cls = `statusBlock ${tone}`;
   const [openId, setOpenId] = React.useState(null);
 
@@ -1748,7 +1801,8 @@ function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, 
   const profilePos = (r) => String(r?.profile_position || r?.position || "F").toUpperCase();
   const hasOverride = (r) => !!(r?.pos_override && String(r.pos_override).trim());
 
-  const allowPicker = canPickPos && tone === "yes" && typeof onPickPos === "function";
+  const allowPicker = isAdmin && canPickPos && tone === "yes" && typeof setPosPopup === "function";
+
 
   return (
     <div className={cls}>
@@ -1770,8 +1824,6 @@ function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, 
               const n = showNum(r);
               const mine = me?.tg_id != null && String(r.tg_id) === String(me.tg_id);
 
-              const opened = openId != null && String(openId) === String(r.tg_id);
-
               return (
                 <div key={r.tg_id} style={{ position: "relative" }}>
                   <div
@@ -1780,7 +1832,7 @@ function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, 
                     onClick={(e) => {
                       if (!allowPicker) return;
                       e.stopPropagation();
-                      setOpenId(opened ? null : r.tg_id);
+                      setPosPopup(r);
                     }}
                   >
                     <span className="posTag">
@@ -1796,82 +1848,6 @@ function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, 
 
                     {isAdmin && r.skill != null && <span className="pillMeta">skill {r.skill}</span>}
                   </div>
-
-                  {/* тултип */}
-                  {allowPicker && opened && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        position: "absolute",
-                        right: 0,
-                        top: "calc(100% + 8px)",
-                        zIndex: 999,
-                        width: 260,
-                        padding: 10,
-                        borderRadius: 12,
-                        background: "rgba(20,20,20,.92)",
-                        backdropFilter: "blur(10px)",
-                        boxShadow: "0 10px 30px rgba(0,0,0,.35)",
-                      }}
-                    >
-                      <div className="small" style={{ opacity: 0.85, marginBottom: 8 }}>
-                        Позиция на эту игру
-                        <div style={{ marginTop: 4, opacity: 0.75 }}>
-                          Профиль: <b>{posHuman(profilePos(r))}</b>
-                          {" · "}
-                          Сейчас: <b>{hasOverride(r) ? posHuman(effPos(r)) : "по профилю"}</b>
-                        </div>
-                      </div>
-
-                      <div className="row" style={{ gap: 8 }}>
-                        <button
-                          className={effPos(r) === "G" ? "btn" : "btn secondary"}
-                          onClick={async () => {
-                            await onPickPos(r, "G");
-                            setOpenId(null);
-                          }}
-                        >
-                          🥅
-                        </button>
-                        <button
-                          className={effPos(r) === "D" ? "btn" : "btn secondary"}
-                          onClick={async () => {
-                            await onPickPos(r, "D");
-                            setOpenId(null);
-                          }}
-                        >
-                          🛡
-                        </button>
-                        <button
-                          className={effPos(r) === "F" ? "btn" : "btn secondary"}
-                          onClick={async () => {
-                            await onPickPos(r, "F");
-                            setOpenId(null);
-                          }}
-                        >
-                          🏒
-                        </button>
-                      </div>
-
-                      <div style={{ marginTop: 8 }}>
-                        <button
-                          className="btn secondary"
-                          style={{ width: "100%" }}
-                          onClick={async () => {
-                            // “как в профиле” -> передаём профильную, а в setGamePosOverride это сбросит override
-                            await onPickPos(r, profilePos(r));
-                            setOpenId(null);
-                          }}
-                        >
-                          По профилю
-                        </button>
-                      </div>
-
-                      <div className="small" style={{ opacity: 0.65, marginTop: 6 }}>
-                        * звёздочка = стоит оверрайд на игру
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
