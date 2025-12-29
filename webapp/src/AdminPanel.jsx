@@ -162,6 +162,11 @@ async function runAdminOp(label, fn, { successText = "✅ Готово", errorTe
 }
 
 
+  function closeAdminOp() {
+  setOp((s) => ({ ...s, busy: false, text: "" }));
+  if (opTimerRef.current) clearTimeout(opTimerRef.current);
+}
+
 
 function fmtTs(ts) {
   try {
@@ -850,14 +855,28 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       `}</style>
 
       <h2 style={{ marginTop: 0 }}>Админ</h2>
-        {op.text ? (
-            <div className="card" style={{ marginTop: 10, padding: "10px 12px" }}>
-              <div className="small" style={{ opacity: 0.92 }}>
-                {op.busy ? "⏳ " : op.tone === "success" ? "✅ " : op.tone === "error" ? "❌ " : "ℹ️ "}
-                {op.text}
+        <div className="toastWrap" aria-live="polite" aria-atomic="true">
+          <div className={`toast tone-${op.tone} ${op.text ? "isShow" : ""}`}>
+            <div className="toastRow">
+              <div className="toastIcon">
+                {op.busy ? "⏳" : op.tone === "success" ? "✅" : op.tone === "error" ? "❌" : "ℹ️"}
               </div>
+        
+              <div className="toastText">{op.text || ""}</div>
+        
+              <button className="toastClose" onClick={closeAdminOp} aria-label="Закрыть">
+                ✕
+              </button>
             </div>
-          ) : null}
+        
+            {op.busy ? (
+              <div className="toastBar" aria-hidden="true">
+                <i />
+              </div>
+            ) : null}
+          </div>
+        </div>
+
       <div className="segRow">
         <button className={`segBtn ${section === "games" ? "active" : ""}`} onClick={() => setSection("games")}>
           Игры
