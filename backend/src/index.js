@@ -604,6 +604,15 @@ function normalizePos(pos) {
   return "F"; // всё остальное считаем нападающим
 }
 
+function normalizePosOverride(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().toUpperCase();
+  if (!s) return null;
+  if (s === "F" || s === "D" || s === "G") return s;
+  return null; // можно сделать 400, но лучше мягко: null
+}
+
+
 function parseTeamIds(teamJson) {
   const arr = Array.isArray(teamJson) ? teamJson : [];
   const ids = [];
@@ -990,13 +999,22 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
   if (is_admin) {
     rr = await q(
       `SELECT
-          COALESCE(r.status, 'maybe') AS status,
-          p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
-          p.position, p.skill,
-          p.player_kind
-       FROM players p
-       LEFT JOIN rsvps r
-         ON r.game_id=$1 AND r.tg_id=p.tg_id
+        COALESCE(r.status, 'maybe') AS status,
+        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
+      
+        p.position AS profile_position,
+        r.pos_override,
+        CASE
+          WHEN COALESCE(r.status,'maybe') = 'yes'
+            THEN COALESCE(r.pos_override, p.position)
+          ELSE p.position
+        END AS position,
+      
+        p.skill,
+        p.player_kind
+      FROM players p
+      LEFT JOIN rsvps r
+        ON r.game_id=$1 AND r.tg_id=p.tg_id
        WHERE p.disabled=FALSE
          AND (
            p.player_kind IN ('tg','manual')
@@ -1016,12 +1034,21 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
   } else {
     rr = await q(
       `SELECT
-          COALESCE(r.status, 'maybe') AS status,
-          p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number, p.position,
-          p.player_kind
-       FROM players p
-       LEFT JOIN rsvps r
-         ON r.game_id=$1 AND r.tg_id=p.tg_id
+        COALESCE(r.status, 'maybe') AS status,
+        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
+      
+        p.position AS profile_position,
+        r.pos_override,
+        CASE
+          WHEN COALESCE(r.status,'maybe') = 'yes'
+            THEN COALESCE(r.pos_override, p.position)
+          ELSE p.position
+        END AS position,
+      
+        p.player_kind
+      FROM players p
+      LEFT JOIN rsvps r
+        ON r.game_id=$1 AND r.tg_id=p.tg_id
        WHERE p.disabled=FALSE
          AND (
            p.player_kind IN ('tg','manual')
@@ -1109,7 +1136,13 @@ app.post("/api/rsvp", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
   if (!(await requireGroupMember(req, res, user))) return;
+  const b = req.body || {};
+  const gid = Number(b?.game_id);
+  const status = String(b?.status || "").trim();
 
+  const hasPos = Object.prototype.hasOwnProperty.call(b, "pos_override");
+  const pos_override_raw = hasPos ? b.pos_override : undefined;
+  const pos_override = hasPos ? normalizePosOverride(pos_override_raw) : undefined;
   const gid = Number(req.body?.game_id);
   const status = String(req.body?.status || "").trim();
 
@@ -1134,13 +1167,29 @@ app.post("/api/rsvp", async (req, res) => {
     return res.json({ ok: true });
   }
 
-  await q(
-    `INSERT INTO rsvps(game_id, tg_id, status)
-     VALUES($1,$2,$3)
-     ON CONFLICT(game_id, tg_id)
-     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
-    [gid, user.id, status]
-  );
+  // ✅ оверрайд разрешаем только для "yes"
+  const finalPos =
+    status === "yes"
+      ? (hasPos ? pos_override : undefined) // если поле не прислали — не трогаем
+      : (hasPos ? null : undefined);        // если не yes — сбрасываем (если прислали)
+
+  if (finalPos !== undefined) {
+    await q(
+      `INSERT INTO rsvps(game_id, tg_id, status, pos_override)
+       VALUES($1,$2,$3,$4)
+       ON CONFLICT(game_id, tg_id)
+       DO UPDATE SET status=EXCLUDED.status, pos_override=EXCLUDED.pos_override, updated_at=NOW()`,
+      [gid, user.id, status, finalPos]
+    );
+  } else {
+    await q(
+      `INSERT INTO rsvps(game_id, tg_id, status)
+       VALUES($1,$2,$3)
+       ON CONFLICT(game_id, tg_id)
+       DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+      [gid, user.id, status]
+    );
+  }
 
   res.json({ ok: true });
 });
@@ -1156,7 +1205,9 @@ app.post("/api/teams/generate", async (req, res) => {
   if (!gid) return res.status(400).json({ ok: false, reason: "no_game_id" });
 
   const pr = await q(
-    `SELECT p.*
+    `SELECT
+      p.*,
+      COALESCE(r.pos_override, p.position) AS position
      FROM rsvps r
      JOIN players p ON p.tg_id = r.tg_id
      WHERE r.game_id = $1 AND r.status = 'yes' AND p.disabled=FALSE`,
@@ -1447,12 +1498,30 @@ app.post("/api/admin/rsvp", async (req, res) => {
   const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [tgId]);
   if (!pr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_player_id" });
 
-  await q(
-    `INSERT INTO rsvps(game_id, tg_id, status)
-     VALUES($1,$2,$3)
-     ON CONFLICT(game_id, tg_id) DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
-    [gid, tgId, status]
-  );
+
+  // ✅ оверрайд разрешаем только для "yes"
+  const finalPos =
+    status === "yes"
+      ? (hasPos ? pos_override : undefined) // если поле не прислали — не трогаем
+      : (hasPos ? null : undefined);        // если не yes — сбрасываем (если прислали)
+
+  if (finalPos !== undefined) {
+    await q(
+      `INSERT INTO rsvps(game_id, tg_id, status, pos_override)
+       VALUES($1,$2,$3,$4)
+       ON CONFLICT(game_id, tg_id)
+       DO UPDATE SET status=EXCLUDED.status, pos_override=EXCLUDED.pos_override, updated_at=NOW()`,
+      [gid, tgId, status, finalPos]
+    );
+  } else {
+    await q(
+      `INSERT INTO rsvps(game_id, tg_id, status)
+       VALUES($1,$2,$3)
+       ON CONFLICT(game_id, tg_id)
+       DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+      [gid, tgId, status]
+    );
+  }
 
   res.json({ ok: true });
 });
@@ -2247,10 +2316,14 @@ app.post("/api/admin/teams/send", async (req, res) => {
     // 3) подтягиваем игроков из БД (имя/номер/позиция)
     const allIds = Array.from(new Set([...teamAIds, ...teamBIds]));
     const pr = await q(
-      `SELECT tg_id, display_name, first_name, username, jersey_number, position
-       FROM players
-       WHERE tg_id = ANY($1::bigint[])`,
-      [allIds]
+      `SELECT
+         p.tg_id, p.display_name, p.first_name, p.username, p.jersey_number,
+         COALESCE(r.pos_override, p.position) AS position
+       FROM players p
+       LEFT JOIN rsvps r
+         ON r.game_id=$2 AND r.tg_id=p.tg_id AND r.status='yes'
+       WHERE p.tg_id = ANY($1::bigint[])`,
+      [allIds, game_id]
     );
     const map = new Map(pr.rows.map((p) => [String(p.tg_id), p]));
 
