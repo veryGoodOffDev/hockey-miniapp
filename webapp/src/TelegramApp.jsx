@@ -824,7 +824,7 @@ const teamsPosStaleInfo = React.useMemo(() => {
       </div>
     );
   }
-
+  const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
   return (
     <div className="container appShell">
       <h1>🏒 Хоккей: отметки и составы</h1>
@@ -1425,48 +1425,64 @@ const teamsPosStaleInfo = React.useMemo(() => {
       </div>
     ) : null}
 
-    {teams?.ok && teamsStaleInfo?.stale && (
-      <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
-        <div style={{ fontWeight: 900 }}>⚠️ Составы устарели</div>
+{teams?.ok && teamsStaleInfo?.stale && (
+  <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
+    <div style={{ fontWeight: 900 }}>⚠️ Составы устарели</div>
 
-        <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
-          После последнего формирования составов изменились отметки игроков. Сейчас “✅ Буду”:{" "}
-          <b>{teamsStaleInfo.current}</b>, в составах: <b>{teamsStaleInfo.inTeams}</b>.
-          {teamsStaleInfo.removed ? ` Ушли: ${teamsStaleInfo.removed}.` : ""}
-          {teamsStaleInfo.added ? ` Добавились: ${teamsStaleInfo.added}.` : ""}
-        </div>
+    <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
+      После последнего формирования составов изменились отметки игроков. Сейчас “✅ Буду”:{" "}
+      <b>{teamsStaleInfo.current}</b>, в составах: <b>{teamsStaleInfo.inTeams}</b>.
+      {teamsStaleInfo.removed ? ` Ушли: ${teamsStaleInfo.removed}.` : ""}
+      {teamsStaleInfo.added ? ` Добавились: ${teamsStaleInfo.added}.` : ""}
+    </div>
 
-          <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
-          <div style={{ fontWeight: 900 }}>⚠️ Позиции на игру менялись вручную</div>
-      
-          <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
-            После последнего формирования составов у <b>{teamsPosStaleInfo.changed.length}</b>{" "}
-            игроков изменилась позиция на эту игру. Чтобы в “Составах” были актуальные позиции —
-            сформируй составы заново.
-          </div>
-      
-          <div className="small" style={{ opacity: 0.9, marginTop: 6, whiteSpace: "pre-line" }}>
-            {teamsPosStaleInfo.changed.slice(0, 6).map((x) =>
-              `• ${x.name}: было ${posHumanLocal(x.from)}, стало ${posHumanLocal(x.to)}`
-            ).join("\n")}
-            {teamsPosStaleInfo.changed.length > 6
-              ? `\n…и ещё ${teamsPosStaleInfo.changed.length - 6}`
-              : ""}
-          </div>
-
-        {isAdmin ? (
-          <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
-              🔄 Сформировать заново
-            </button>
-          </div>
-        ) : (
-          <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
-            Попроси админа нажать “Сформировать сейчас”.
-          </div>
-        )}
+    {isAdmin ? (
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
+          🔄 Сформировать заново
+        </button>
+      </div>
+    ) : (
+      <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
+        Попроси админа нажать “Сформировать сейчас”.
       </div>
     )}
+  </div>
+)}
+
+{teams?.ok && teamsPosStaleInfo?.stale && (
+  <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
+    <div style={{ fontWeight: 900 }}>⚠️ Позиции на игру менялись вручную</div>
+
+    <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
+      После последнего формирования составов у <b>{teamsPosStaleInfo.changed.length}</b>{" "}
+      игроков изменилась позиция на эту игру. Чтобы в “Составах” были актуальные позиции —
+      сформируй составы заново.
+    </div>
+
+    <div className="small" style={{ opacity: 0.9, marginTop: 6, whiteSpace: "pre-line" }}>
+      {teamsPosStaleInfo.changed
+        .slice(0, 6)
+        .map((x) => `• ${x.name}: было ${posHumanLocal(x.from)}, стало ${posHumanLocal(x.to)}`)
+        .join("\n")}
+      {teamsPosStaleInfo.changed.length > 6
+        ? `\n…и ещё ${teamsPosStaleInfo.changed.length - 6}`
+        : ""}
+    </div>
+
+    {isAdmin ? (
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
+          🔄 Сформировать заново
+        </button>
+      </div>
+    ) : (
+      <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
+        Попроси админа нажать “Сформировать сейчас”.
+      </div>
+    )}
+  </div>
+)}
 
     {teams?.ok ? (
       <>
@@ -1714,14 +1730,10 @@ const teamsPosStaleInfo = React.useMemo(() => {
           )}
         </div>
       )}
-      {isAdmin && posPopup && (
-  const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
-
+ {isAdmin && posPopup && (
   <div className="modalBackdrop" onClick={() => setPosPopup(null)}>
     <div className="modalSheet" onClick={(e) => e.stopPropagation()}>
-      <div style={{ fontWeight: 900, fontSize: 16 }}>
-        Позиция на игру
-      </div>
+      <div style={{ fontWeight: 900, fontSize: 16 }}>Позиция на игру</div>
 
       <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
         {showName(posPopup)}
@@ -1737,7 +1749,7 @@ const teamsPosStaleInfo = React.useMemo(() => {
         >
           🥅 Вратарь
         </button>
-      
+
         <button
           className={`btn outline ${curPos === "D" ? "active" : ""}`}
           onClick={async () => {
@@ -1747,7 +1759,7 @@ const teamsPosStaleInfo = React.useMemo(() => {
         >
           🛡️ Защитник
         </button>
-      
+
         <button
           className={`btn outline ${curPos === "F" ? "active" : ""}`}
           onClick={async () => {
