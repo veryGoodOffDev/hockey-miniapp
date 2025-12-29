@@ -598,6 +598,45 @@ const teamsStaleInfo = useMemo(() => {
     added,
   };
 }, [teams, rsvps]);
+
+  const posHumanLocal = (p) => (p === "G" ? "Вратарь" : p === "D" ? "Защитник" : "Нападающий");
+
+const teamsPosStaleInfo = React.useMemo(() => {
+  if (!teams?.ok) return null;
+
+  // актуальные "yes" из текущих rsvps (ВАЖНО: это rsvps из /api/game, а не из teams)
+  const yesNow = (rsvps || []).filter((x) => x.status === "yes");
+  const nowPos = new Map(
+    yesNow.map((x) => [
+      String(x.tg_id),
+      String(x.position || x.profile_position || "F").toUpperCase(),
+    ])
+  );
+
+  const inTeams = [...(teams.teamA || []), ...(teams.teamB || [])];
+
+  const changed = [];
+  for (const p of inTeams) {
+    const id = String(p.tg_id);
+    if (!nowPos.has(id)) continue; // если игрок уже не "yes" — это твой teamsStaleInfo про removed/added
+
+    const teamP = String(p.position || p.profile_position || "F").toUpperCase();
+    const curP = nowPos.get(id);
+
+    if (teamP !== curP) {
+      const name =
+        (p.display_name || "").trim() ||
+        (p.first_name || "").trim() ||
+        (p.username ? "@" + p.username : "") ||
+        id;
+
+      changed.push({ id, name, from: teamP, to: curP });
+    }
+  }
+
+  return { stale: changed.length > 0, changed };
+}, [teams?.ok, teams?.teamA, teams?.teamB, rsvps]);
+
   // ВНИМАНИЕ: прошедшие теперь показываем не из games, а из pastPage (загружаем постранично)
   const listToShow = showPast ? pastPage : upcomingGames;
 
@@ -1397,6 +1436,24 @@ const teamsStaleInfo = useMemo(() => {
           {teamsStaleInfo.added ? ` Добавились: ${teamsStaleInfo.added}.` : ""}
         </div>
 
+          <div className="card" style={{ border: "1px solid rgba(255,200,0,.35)", marginTop: 10 }}>
+          <div style={{ fontWeight: 900 }}>⚠️ Позиции на игру менялись вручную</div>
+      
+          <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
+            После последнего формирования составов у <b>{teamsPosStaleInfo.changed.length}</b>{" "}
+            игроков изменилась позиция на эту игру. Чтобы в “Составах” были актуальные позиции —
+            сформируй составы заново.
+          </div>
+      
+          <div className="small" style={{ opacity: 0.9, marginTop: 6, whiteSpace: "pre-line" }}>
+            {teamsPosStaleInfo.changed.slice(0, 6).map((x) =>
+              `• ${x.name}: было ${posHumanLocal(x.from)}, стало ${posHumanLocal(x.to)}`
+            ).join("\n")}
+            {teamsPosStaleInfo.changed.length > 6
+              ? `\n…и ещё ${teamsPosStaleInfo.changed.length - 6}`
+              : ""}
+          </div>
+
         {isAdmin ? (
           <div className="row" style={{ marginTop: 10 }}>
             <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
@@ -1658,6 +1715,8 @@ const teamsStaleInfo = useMemo(() => {
         </div>
       )}
       {isAdmin && posPopup && (
+  const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
+
   <div className="modalBackdrop" onClick={() => setPosPopup(null)}>
     <div className="modalSheet" onClick={(e) => e.stopPropagation()}>
       <div style={{ fontWeight: 900, fontSize: 16 }}>
@@ -1670,7 +1729,7 @@ const teamsStaleInfo = useMemo(() => {
 
       <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <button
-          className="btn"
+          className={`btn outline ${curPos === "G" ? "active" : ""}`}
           onClick={async () => {
             await setGamePosOverride(posPopup, "G");
             setPosPopup(null);
@@ -1678,9 +1737,9 @@ const teamsStaleInfo = useMemo(() => {
         >
           🥅 Вратарь
         </button>
-
+      
         <button
-          className="btn"
+          className={`btn outline ${curPos === "D" ? "active" : ""}`}
           onClick={async () => {
             await setGamePosOverride(posPopup, "D");
             setPosPopup(null);
@@ -1688,9 +1747,9 @@ const teamsStaleInfo = useMemo(() => {
         >
           🛡️ Защитник
         </button>
-
+      
         <button
-          className="btn"
+          className={`btn outline ${curPos === "F" ? "active" : ""}`}
           onClick={async () => {
             await setGamePosOverride(posPopup, "F");
             setPosPopup(null);
