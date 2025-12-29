@@ -1136,20 +1136,23 @@ app.post("/api/rsvp", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
   if (!(await requireGroupMember(req, res, user))) return;
+
+  await ensurePlayer(user);
+
   const b = req.body || {};
+  const gid = Number(b.game_id);
+  const status = String(b.status || "").trim();
 
+  // pos_override может быть: "F"|"D"|"G"|null
   const hasPos = Object.prototype.hasOwnProperty.call(b, "pos_override");
-  const pos_override_raw = hasPos ? b.pos_override : undefined;
-  const pos_override = hasPos ? normalizePosOverride(pos_override_raw) : undefined;
-  const gid = Number(req.body?.game_id);
-  const status = String(req.body?.status || "").trim();
+  const pos_override = hasPos ? normalizePosOverride(b.pos_override) : undefined;
 
-  if (!gid) return res.status(400).json({ ok: false, reason: "no_game_id" });
+  if (!Number.isFinite(gid) || gid <= 0) {
+    return res.status(400).json({ ok: false, reason: "no_game_id" });
+  }
   if (!["yes", "no", "maybe"].includes(status)) {
     return res.status(400).json({ ok: false, reason: "bad_status" });
   }
-
-  await ensurePlayer(user);
 
   const gr = await q(`SELECT starts_at FROM games WHERE id=$1`, [gid]);
   const startsAt = gr.rows[0]?.starts_at ? new Date(gr.rows[0].starts_at) : null;
@@ -1160,16 +1163,19 @@ app.post("/api/rsvp", async (req, res) => {
     return res.status(403).json({ ok: false, reason: "game_closed" });
   }
 
+  // maybe = снять отметку (как у тебя задумано)
   if (status === "maybe") {
     await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, user.id]);
     return res.json({ ok: true });
   }
 
-  // ✅ оверрайд разрешаем только для "yes"
+  // ✅ оверрайд позиции храним только для yes
+  // - если hasPos=false -> позицию не трогаем
+  // - если status!='yes' и hasPos=true -> сброс (null)
   const finalPos =
     status === "yes"
-      ? (hasPos ? pos_override : undefined) // если поле не прислали — не трогаем
-      : (hasPos ? null : undefined);        // если не yes — сбрасываем (если прислали)
+      ? (hasPos ? pos_override : undefined)
+      : (hasPos ? null : undefined);
 
   if (finalPos !== undefined) {
     await q(
@@ -1475,7 +1481,7 @@ app.post("/api/admin/guests", async (req, res) => {
   res.json({ ok: true, guest: pr.rows[0] });
 });
 
-// admin set RSVP for any player/guest
+// admin set RSVP for any player/guest (+ optional pos_override)
 app.post("/api/admin/rsvp", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
@@ -1487,8 +1493,16 @@ app.post("/api/admin/rsvp", async (req, res) => {
   const tgId = Number(b.tg_id);
   const status = String(b.status || "").trim();
 
-  if (!gid || !tgId) return res.status(400).json({ ok: false, reason: "bad_params" });
-  if (!["yes", "no", "maybe"].includes(status)) return res.status(400).json({ ok: false, reason: "bad_status" });
+  // ✅ ВОТ ЭТОГО у тебя не хватало:
+  const hasPos = Object.prototype.hasOwnProperty.call(b, "pos_override");
+  const pos_override = hasPos ? normalizePosOverride(b.pos_override) : undefined;
+
+  if (!Number.isFinite(gid) || gid <= 0 || !Number.isFinite(tgId)) {
+    return res.status(400).json({ ok: false, reason: "bad_params" });
+  }
+  if (!["yes", "no", "maybe"].includes(status)) {
+    return res.status(400).json({ ok: false, reason: "bad_status" });
+  }
 
   const gr = await q(`SELECT id FROM games WHERE id=$1`, [gid]);
   if (!gr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_game_id" });
@@ -1496,12 +1510,16 @@ app.post("/api/admin/rsvp", async (req, res) => {
   const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [tgId]);
   if (!pr.rows[0]) return res.status(400).json({ ok: false, reason: "bad_player_id" });
 
+  // ✅ делаем поведение как у обычного /api/rsvp: maybe = удалить запись
+  if (status === "maybe") {
+    await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, tgId]);
+    return res.json({ ok: true });
+  }
 
-  // ✅ оверрайд разрешаем только для "yes"
   const finalPos =
     status === "yes"
-      ? (hasPos ? pos_override : undefined) // если поле не прислали — не трогаем
-      : (hasPos ? null : undefined);        // если не yes — сбрасываем (если прислали)
+      ? (hasPos ? pos_override : undefined)
+      : (hasPos ? null : undefined);
 
   if (finalPos !== undefined) {
     await q(
@@ -1523,6 +1541,7 @@ app.post("/api/admin/rsvp", async (req, res) => {
 
   res.json({ ok: true });
 });
+
 
 /** ====== ADMIN: players list + patch ====== */
 app.get("/api/admin/players", async (req, res) => {
