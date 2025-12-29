@@ -1465,3 +1465,26 @@ textarea:focus{
   backdrop-filter: blur(8px);
   filter: drop-shadow(0 2px 6px rgba(0,0,0,.45));
 }
+.modalBackdrop{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modalSheet{
+  width: min(92vw, 380px);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(20,20,20,.92);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 18px 50px rgba(0,0,0,.45);
+}
+html[data-theme="light"] .modalSheet{
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(0,0,0,.10);
+}
