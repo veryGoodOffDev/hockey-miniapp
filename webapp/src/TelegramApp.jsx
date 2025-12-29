@@ -214,7 +214,17 @@ export default function TelegramApp() {
       setGamesError({ ok: false, error: "network_or_unknown" });
     }
   }
-  
+
+  async function loadGame(gameId) {
+  const gid = gameId ?? selectedGameId;
+  if (!gid) return null;
+
+  const gg = await apiGet(`/api/game?game_id=${gid}`);
+  setGame(gg.game || null);
+  setRsvps(gg.rsvps || []);
+  setTeams(normalizeTeams(gg.teams));
+  return gg;
+}
   async function loadPast(reset = false) {
     try {
       setPastLoading(true);
@@ -343,6 +353,51 @@ export default function TelegramApp() {
     }
   }
 
+  function posHuman(p) {
+  const x = String(p || "F").toUpperCase();
+  if (x === "G") return "Вратарь";
+  if (x === "D") return "Защитник";
+  return "Нападающий";
+}
+
+function getMyTgId(me) {
+  return me?.player?.tg_id ?? me?.tg_id ?? me?.id ?? null;
+}
+
+// ⚙️ смена позиции на конкретную игру (админом)
+async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
+  if (!game?.id) return;
+
+  const profile = String(player?.profile_position || player?.position || "F").toUpperCase();
+  const desired = String(nextPos || "").toUpperCase();
+
+  // если выбрали как в профиле — просто сбрасываем override
+  const pos_override = desired === profile ? null : desired;
+
+  // подтверждаем только если отличается от профиля
+  if (pos_override && pos_override !== profile) {
+    const ok = window.confirm(
+      `Вы уверены, что хотите изменить позицию игрока "${player?.display_name || player?.first_name || player?.username || player?.tg_id}" ` +
+      `на эту игру на "${posHuman(pos_override)}"?\n\n` +
+      `Позиция в профиле останется "${posHuman(profile)}".`
+    );
+    if (!ok) return;
+  }
+
+  // ⚠️ позиция имеет смысл только для тех, кто "yes"
+  // так как игрок уже в списке ✅, просто фиксируем status='yes'
+  await apiPost("/api/admin/rsvp", {
+    game_id: game.id,
+    tg_id: player.tg_id,
+    status: "yes",
+    pos_override, // null = по профилю
+  });
+
+  // обновить данные игры (как ты уже делаешь после действий)
+  await loadGame(game.id); // или твоя функция перезагрузки /api/game
+}
+
+  
   async function sendTeamsToChat() {
   if (!selectedGameId) return;
 
@@ -1124,7 +1179,15 @@ const teamsStaleInfo = useMemo(() => {
                       <div className="small">Отметки:</div>
 
                       <div style={{ marginTop: 10 }}>
-                        <StatusBlock title="✅ Будут на игре" tone="yes" list={grouped.yes} isAdmin={isAdmin} me={me} />
+                        <StatusBlock
+                          title="✅ Будут на игре"
+                          tone="yes"
+                          list={grouped.yes}
+                          isAdmin={isAdmin}
+                          me={me}
+                          canPickPos={isAdmin && !lockRsvp && game?.status !== "cancelled"}
+                          onPickPos={setGamePosOverride}
+                        />
                         <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} />
                         <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
                       </div>
@@ -1671,8 +1734,21 @@ function posLabel(posRaw) {
   return pos === "G" ? "🥅 G" : pos === "D" ? "🛡 D" : "🏒 F";
 }
 
-function StatusBlock({ title, tone, list = [], isAdmin, me }) {
+function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, onPickPos }) {
   const cls = `statusBlock ${tone}`;
+  const [openId, setOpenId] = React.useState(null);
+
+  React.useEffect(() => {
+    const onDoc = () => setOpenId(null);
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, []);
+
+  const effPos = (r) => String(r?.position || r?.profile_position || "F").toUpperCase();
+  const profilePos = (r) => String(r?.profile_position || r?.position || "F").toUpperCase();
+  const hasOverride = (r) => !!(r?.pos_override && String(r.pos_override).trim());
+
+  const allowPicker = canPickPos && tone === "yes" && typeof onPickPos === "function";
 
   return (
     <div className={cls}>
@@ -1688,23 +1764,114 @@ function StatusBlock({ title, tone, list = [], isAdmin, me }) {
       ) : (
         <div className="pills">
           {[...list]
-            .sort((a, b) => posOrder(a) - posOrder(b))
+            .sort((a, b) => posOrder({ position: effPos(a) }) - posOrder({ position: effPos(b) }))
             .map((r) => {
-              const pos = (r.position || "F").toUpperCase();
+              const pos = effPos(r);
               const n = showNum(r);
               const mine = me?.tg_id != null && String(r.tg_id) === String(me.tg_id);
 
+              const opened = openId != null && String(openId) === String(r.tg_id);
+
               return (
-                <div key={r.tg_id} className={`pill pos-${pos} ${mine ? "isMeGold" : ""}`}>
-                  <span className="posTag">{posLabel(pos)}</span>
+                <div key={r.tg_id} style={{ position: "relative" }}>
+                  <div
+                    className={`pill pos-${pos} ${mine ? "isMeGold" : ""}`}
+                    style={{ cursor: allowPicker ? "pointer" : "default" }}
+                    onClick={(e) => {
+                      if (!allowPicker) return;
+                      e.stopPropagation();
+                      setOpenId(opened ? null : r.tg_id);
+                    }}
+                  >
+                    <span className="posTag">
+                      {posLabel(pos)}
+                      {hasOverride(r) ? " *" : ""}
+                    </span>
 
-                  <span className="pillName">
-                    {showName(r)}
-                    {n && ` № ${n}`}
-                    {r.is_guest ? " · 👤 гость" : ""}
-                  </span>
+                    <span className="pillName">
+                      {showName(r)}
+                      {n && ` № ${n}`}
+                      {r.is_guest ? " · 👤 гость" : ""}
+                    </span>
 
-                  {isAdmin && r.skill != null && <span className="pillMeta">skill {r.skill}</span>}
+                    {isAdmin && r.skill != null && <span className="pillMeta">skill {r.skill}</span>}
+                  </div>
+
+                  {/* тултип */}
+                  {allowPicker && opened && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        top: "calc(100% + 8px)",
+                        zIndex: 999,
+                        width: 260,
+                        padding: 10,
+                        borderRadius: 12,
+                        background: "rgba(20,20,20,.92)",
+                        backdropFilter: "blur(10px)",
+                        boxShadow: "0 10px 30px rgba(0,0,0,.35)",
+                      }}
+                    >
+                      <div className="small" style={{ opacity: 0.85, marginBottom: 8 }}>
+                        Позиция на эту игру
+                        <div style={{ marginTop: 4, opacity: 0.75 }}>
+                          Профиль: <b>{posHuman(profilePos(r))}</b>
+                          {" · "}
+                          Сейчас: <b>{hasOverride(r) ? posHuman(effPos(r)) : "по профилю"}</b>
+                        </div>
+                      </div>
+
+                      <div className="row" style={{ gap: 8 }}>
+                        <button
+                          className={effPos(r) === "G" ? "btn" : "btn secondary"}
+                          onClick={async () => {
+                            await onPickPos(r, "G");
+                            setOpenId(null);
+                          }}
+                        >
+                          🥅
+                        </button>
+                        <button
+                          className={effPos(r) === "D" ? "btn" : "btn secondary"}
+                          onClick={async () => {
+                            await onPickPos(r, "D");
+                            setOpenId(null);
+                          }}
+                        >
+                          🛡
+                        </button>
+                        <button
+                          className={effPos(r) === "F" ? "btn" : "btn secondary"}
+                          onClick={async () => {
+                            await onPickPos(r, "F");
+                            setOpenId(null);
+                          }}
+                        >
+                          🏒
+                        </button>
+                      </div>
+
+                      <div style={{ marginTop: 8 }}>
+                        <button
+                          className="btn secondary"
+                          style={{ width: "100%" }}
+                          onClick={async () => {
+                            // “как в профиле” -> передаём профильную, а в setGamePosOverride это сбросит override
+                            await onPickPos(r, profilePos(r));
+                            setOpenId(null);
+                          }}
+                        >
+                          По профилю
+                        </button>
+                      </div>
+
+                      <div className="small" style={{ opacity: 0.65, marginTop: 6 }}>
+                        * звёздочка = стоит оверрайд на игру
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1713,6 +1880,7 @@ function StatusBlock({ title, tone, list = [], isAdmin, me }) {
     </div>
   );
 }
+
 
 function Avatar({ p, big = false }) {
   const size = big ? 72 : 44;
