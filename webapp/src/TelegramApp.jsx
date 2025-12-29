@@ -995,7 +995,27 @@ const teamsPosStaleInfo = React.useMemo(() => {
   return (
     <div className="container appShell">
       <h1>🏒 Хоккей: отметки и составы</h1>
-
+          <div className="toastWrap" aria-live="polite" aria-atomic="true">
+            <div className={`toast tone-${op.tone} ${op.text ? "isShow" : ""}`}>
+              <div className="toastRow">
+                <div className="toastIcon">
+                  {op.busy ? "⏳" : op.tone === "success" ? "✅" : op.tone === "error" ? "❌" : "ℹ️"}
+                </div>
+      
+                <div className="toastText">{op.text || ""}</div>
+      
+                <button className="toastClose" onClick={closeOp} aria-label="Закрыть">
+                  ✕
+                </button>
+              </div>
+      
+              {op.busy ? (
+                <div className="toastBar" aria-hidden="true">
+                  <i />
+                </div>
+              ) : null}
+            </div>
+          </div>
       {/* ====== GAMES ====== */}
       {tab === "game" && (
         <div className="card">
