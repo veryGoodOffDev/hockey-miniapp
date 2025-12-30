@@ -89,6 +89,18 @@ export default function TelegramApp() {
   const [talismanHolder, setTalismanHolder] = useState(null);
   const [bestPick, setBestPick] = useState("");
   const [posPopup, setPosPopup] = useState(null); 
+  // ===== players photo modal =====
+const [photoModal, setPhotoModal] = useState({ open: false, src: "", title: "" });
+
+function openPhotoModal(p) {
+  const src = (p?.photo_url || "").trim();
+  if (!src) return;
+  setPhotoModal({ open: true, src, title: showName(p) || "Фото игрока" });
+}
+
+function closePhotoModal() {
+  setPhotoModal({ open: false, src: "", title: "" });
+}
 
   const [funStatus, setFunStatus] = useState({
   thanks_done: false,
@@ -420,6 +432,34 @@ async function loadAttendance(opts = {}) {
       setPastLoading(false);
     }
   }
+
+  function openPhotoModal(p) {
+  const src = getAvatarSrc(p);
+  if (!src) return; // если нет фото - ничего
+  setPhotoModal({
+    open: true,
+    src,
+    title: showName(p) || "Фото игрока",
+  });
+}
+
+function closePhotoModal() {
+  setPhotoModal({ open: false, src: "", title: "" });
+}
+
+useEffect(() => {
+  function onKey(e) {
+    if (e.key === "Escape") closePhotoModal();
+  }
+  if (photoModal.open) window.addEventListener("keydown", onKey);
+  return () => window.removeEventListener("keydown", onKey);
+}, [photoModal.open]);
+
+function clipText(s, max = 70) {
+  const t = String(s || "").trim().replace(/\s+/g, " ");
+  if (!t) return "";
+  return t.length > max ? t.slice(0, max).trimEnd() + "…" : t;
+}
 
   // init
   useEffect(() => {
@@ -2262,7 +2302,7 @@ async function handleDonateJoke() {
                       >
                         <div className="row" style={{ alignItems: "center", gap: 12, marginTop: 2 }}>
                           <JerseyBadge number={showNum(p)} variant="modern" striped size={52} />
-                          <Avatar p={p} />
+                          <Avatar p={p} big onClick={() => openPhotoModal(p)} />
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 900 }}>{showName(p)}</div>
                             <div className="small" style={{ opacity: 0.8 }}>
@@ -2294,7 +2334,7 @@ async function handleDonateJoke() {
               ) : (
                 <div className="card">
                   <div className="row" style={{ alignItems: "center", gap: 14 }}>
-                    <Avatar p={selectedPlayer} big />
+                    <Avatar p={selectedPlayer} big onClick={() => openPhotoModal(selectedPlayer)}/>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 900, fontSize: 18 }}>
                         {showName(selectedPlayer)}{" "}
@@ -2332,55 +2372,75 @@ async function handleDonateJoke() {
           )}
         </div>
       )}
- {isAdmin && posPopup && (
-  <div className="modalBackdrop" onClick={() => setPosPopup(null)}>
-    <div className="modalSheet" onClick={(e) => e.stopPropagation()}>
-      <div style={{ fontWeight: 900, fontSize: 16 }}>Позиция на игру</div>
+       {/* ====== MODAL POSITION ====== */}
+              {isAdmin && posPopup && (
+                <div className="modalBackdrop" onClick={() => setPosPopup(null)}>
+                  <div className="modalSheet" onClick={(e) => e.stopPropagation()}>
+                    <div style={{ fontWeight: 900, fontSize: 16 }}>Позиция на игру</div>
 
-      <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-        {showName(posPopup)}
-      </div>
+                    <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                      {showName(posPopup)}
+                    </div>
 
-      <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-        <button
-          className={`btn outline ${curPos === "G" ? "active" : ""}`}
-          onClick={async () => {
-            await setGamePosOverride(posPopup, "G");
-            setPosPopup(null);
-          }}
-        >
-          🥅 Вратарь
-        </button>
+                    <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                      <button
+                        className={`btn outline ${curPos === "G" ? "active" : ""}`}
+                        onClick={async () => {
+                          await setGamePosOverride(posPopup, "G");
+                          setPosPopup(null);
+                        }}
+                      >
+                        🥅 Вратарь
+                      </button>
 
-        <button
-          className={`btn outline ${curPos === "D" ? "active" : ""}`}
-          onClick={async () => {
-            await setGamePosOverride(posPopup, "D");
-            setPosPopup(null);
-          }}
-        >
-          🛡️ Защитник
-        </button>
+                      <button
+                        className={`btn outline ${curPos === "D" ? "active" : ""}`}
+                        onClick={async () => {
+                          await setGamePosOverride(posPopup, "D");
+                          setPosPopup(null);
+                        }}
+                      >
+                        🛡️ Защитник
+                      </button>
 
-        <button
-          className={`btn outline ${curPos === "F" ? "active" : ""}`}
-          onClick={async () => {
-            await setGamePosOverride(posPopup, "F");
-            setPosPopup(null);
-          }}
-        >
-          🏒 Нападающий
-        </button>
-      </div>
+                      <button
+                        className={`btn outline ${curPos === "F" ? "active" : ""}`}
+                        onClick={async () => {
+                          await setGamePosOverride(posPopup, "F");
+                          setPosPopup(null);
+                        }}
+                      >
+                        🏒 Нападающий
+                      </button>
+                    </div>
 
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="btn secondary" onClick={() => setPosPopup(null)}>
-          Отмена
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+                    <div className="row" style={{ marginTop: 10 }}>
+                      <button className="btn secondary" onClick={() => setPosPopup(null)}>
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+               {/* ====== MODAL PHOTO ====== */}
+              {photoModal?.open && (
+                <div className="modalOverlay" onClick={closePhotoModal}>
+                  <div className="modalBody" onClick={(e) => e.stopPropagation()}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {photoModal.title}
+                      </div>
+                      <button className="btn secondary" onClick={closePhotoModal}>✕</button>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <img className="modalImg" src={photoModal.src} alt="" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
 
       <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </div>
@@ -2531,17 +2591,55 @@ function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, 
 }
 
 
-function Avatar({ p, big = false }) {
-  const size = big ? 72 : 44;
+function Avatar({ p, big = false, onClick }) {
+  const size = big ? 84 : 52; // было 72/44 — чуть крупнее
   const url = (p?.photo_url || "").trim();
+  const clickable = typeof onClick === "function";
+
+  const handleClick = (e) => {
+    if (!clickable) return;
+    e.stopPropagation(); // важно: не даём сработать клику по карточке игрока
+    onClick(e);
+  };
+
+  const handleKeyDown = (e) => {
+    if (!clickable) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleClick(e);
+    }
+  };
+
+  const wrapStyle = {
+    width: size,
+    height: size,
+    borderRadius: 999,
+    overflow: "hidden",
+    display: "grid",
+    placeItems: "center",
+    cursor: clickable ? "zoom-in" : "default",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.06)",
+    flex: "0 0 auto",
+  };
 
   if (url) {
     return (
-      <img
-        src={url}
-        alt=""
-        style={{ width: size, height: size, objectFit: "cover" }}
-      />
+      <div
+        style={wrapStyle}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        title={clickable ? "Открыть фото" : ""}
+      >
+        <img
+          src={url}
+          alt=""
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          draggable={false}
+        />
+      </div>
     );
   }
 
@@ -2549,18 +2647,20 @@ function Avatar({ p, big = false }) {
   return (
     <div
       style={{
-        width: size,
-        height: size,
-        display: "grid",
-        placeItems: "center",
+        ...wrapStyle,
         fontWeight: 900,
-        background: "rgba(255,255,255,0.08)",
       }}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      title={clickable ? "Открыть фото" : ""}
     >
       {letter}
     </div>
   );
 }
+
 
 function posHuman(posRaw) {
   const pos = String(posRaw || "F").toUpperCase();
