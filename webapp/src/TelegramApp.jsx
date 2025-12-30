@@ -1774,7 +1774,7 @@ async function handleDonateJoke() {
               </div>
           
               <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-                <button className="btn" onClick={handleThanksJoke} disabled={funBusy}>
+                <button className="btn secondary" onClick={handleThanksJoke} disabled={funBusy}>
                   🙏 Сказать спасибо
                 </button>
                 <button className="btn secondary" onClick={handleDonateJoke} disabled={funBusy}>
@@ -1789,13 +1789,13 @@ async function handleDonateJoke() {
                       </div>
                 
                       <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-                        <button className="btn" disabled={funBusy} onClick={() => submitDonate("highfive")}>
+                        <button className="btn secondary" disabled={funBusy} onClick={() => submitDonate("highfive")}>
                           🤝 Дать пятюню
                         </button>
-                        <button className="btn" disabled={funBusy} onClick={() => submitDonate("hug")}>
+                        <button className="btn secondary" disabled={funBusy} onClick={() => submitDonate("hug")}>
                           🤗 Обнять по-братски
                         </button>
-                        <button className="btn" disabled={funBusy} onClick={() => submitDonate("sz")}>
+                        <button className="btn secondary" disabled={funBusy} onClick={() => submitDonate("sz")}>
                           🍀 «Щастя здоровя»
                         </button>
                       </div>
