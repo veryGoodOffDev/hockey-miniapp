@@ -944,6 +944,34 @@ async function handleThanksJoke() {
   }
 }
 
+async function pickDonateValue() {
+  // Шаг 1: 2 варианта + "Ещё" (всего 3 кнопки)
+  let pick = await tgPopup({
+    title: "Задонатить (по приколу)",
+    message: "Выбери вариант:",
+    buttons: [
+      { id: "highfive", type: "default", text: "🤝 Дать пятюню" },
+      { id: "hug", type: "default", text: "🫂 Обнять по-братски" },
+      { id: "more", type: "default", text: "➕ Ещё" },
+    ],
+  });
+
+  if (pick.id === "more") {
+    // Шаг 2: оставшийся вариант + отмена
+    pick = await tgPopup({
+      title: "Задонатить (по приколу)",
+      message: "Ещё вариант:",
+      buttons: [
+        { id: "sz", type: "default", text: "🍀 «Щастя здоровя»" },
+        { id: "cancel", type: "cancel", text: "Отмена" },
+      ],
+    });
+  }
+
+  if (!["highfive", "hug", "sz"].includes(pick.id)) return null;
+  return pick.id;
+}
+
 async function handleDonateJoke() {
   if (funBusy) return;
 
@@ -959,23 +987,19 @@ async function handleDonateJoke() {
     if (ask.id !== "yes") return;
   }
 
-  const pick = await tgPopup({
-    title: "Задонатить (по приколу)",
-    message: "Выбери вариант:",
-    buttons: [
-      { id: "highfive", type: "default", text: "🤝 Дать пятюню" },
-      { id: "hug", type: "default", text: "🫂 Обнять по-братски" },
-      { id: "sz", type: "default", text: "🍀 «Щастя здоровя»" },
-      { id: "cancel", type: "cancel", text: "Отмена" },
-    ],
-  });
-  if (pick.id === "cancel") return;
+  const value = await pickDonateValue();
+  if (!value) return;
 
   setFunBusy(true);
   try {
-    const r = await apiPost("/api/fun/donate", { value: pick.id });
+    const r = await apiPost("/api/fun/donate", { value });
     if (r?.ok) {
-      setFun((s) => ({ ...(s || {}), donate_total: r.donate_total, thanks_total: s?.thanks_total || 0, premium: !!r.premium }));
+      setFun((s) => ({
+        ...(s || {}),
+        donate_total: r.donate_total,
+        thanks_total: s?.thanks_total || 0,
+        premium: !!r.premium,
+      }));
 
       await tgPopup({
         title: "Готово",
@@ -986,7 +1010,7 @@ async function handleDonateJoke() {
       if (r.unlocked) {
         await tgPopup({
           title: "🌟 Премиум активирован",
-          message: `Поздравляем! Вы накопили ${r.donate_total}/${r.threshold} донатов и получили Премиум-статус аккаунта 😎`,
+          message: `Поздравляем! Вы накопили ${r.donate_total}/${r.threshold} донатов и получили Премиум-статус 😎`,
           buttons: [{ id: "ok", type: "ok", text: "Оооо да" }],
         });
       }
@@ -995,6 +1019,7 @@ async function handleDonateJoke() {
     setFunBusy(false);
   }
 }
+
 
 
 
