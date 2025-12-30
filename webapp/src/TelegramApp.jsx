@@ -92,6 +92,16 @@ export default function TelegramApp() {
   // ===== players photo modal =====
 const [photoModal, setPhotoModal] = useState({ open: false, src: "", title: "" });
 
+function getAvatarSrc(p) {
+  // подстрой под своё поле, если оно другое
+  return (
+    p?.photo_url ||
+    p?.photo ||
+    p?.avatar_url ||
+    p?.avatar ||
+    ""
+  );
+}
 function openPhotoModal(p) {
   const src = (p?.photo_url || "").trim();
   if (!src) return;
