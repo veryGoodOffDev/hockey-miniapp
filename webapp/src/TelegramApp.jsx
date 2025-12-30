@@ -87,6 +87,46 @@ export default function TelegramApp() {
   const [bestPick, setBestPick] = useState("");
   const [posPopup, setPosPopup] = useState(null); 
 
+  const [funStatus, setFunStatus] = useState({
+  thanks_done: false,
+  donate_done: false,
+  donate_value: null,
+});
+const [funBusy, setFunBusy] = useState(false);
+  const [fun, setFun] = useState(null); // {thanks_total, donate_total, premium}
+const [funBusy, setFunBusy] = useState(false);
+
+
+
+const tg = window.Telegram?.WebApp;
+
+function tgPopup({ title, message, buttons }) {
+  return new Promise((resolve) => {
+    if (!tg?.showPopup) {
+      // fallback
+      if (buttons?.length === 1) {
+        alert(message);
+        return resolve({ id: "ok" });
+      }
+      const ok = confirm(message);
+      return resolve({ id: ok ? "yes" : "no" });
+    }
+    tg.showPopup({ title, message, buttons }, (id) => resolve({ id }));
+  });
+}
+
+async function loadFunStatus() {
+  try {
+    const r = await apiGet("/api/fun/status");
+    if (r?.ok) setFun(r);
+  } catch {}
+}
+
+function errReason(e) {
+  return e?.reason || e?.data?.reason || e?.response?.data?.reason || null;
+}
+
+
   // ===== UI feedback for any mutations =====
 const [op, setOp] = useState({ busy: false, text: "", tone: "info" }); // tone: info|success|error
 const opTimerRef = useRef(null);
@@ -441,6 +481,11 @@ async function syncAfterMutation(opts = {}) {
   if (!game) return;
     setBestPick(game.best_player_tg_id ? String(game.best_player_tg_id) : "");
   }, [game?.id]);
+
+useEffect(() => {
+  if (tab === "profile" && profileView === "thanks") loadFunStatus();
+}, [tab, profileView]);
+
 
 async function rsvp(status) {
   if (!selectedGameId) return;
@@ -871,6 +916,92 @@ const teamsPosStaleInfo = React.useMemo(() => {
       </>
     );
   }
+
+async function handleThanksJoke() {
+  if (funBusy) return;
+
+  // если уже есть клики — спрашиваем "ещё раз?"
+  if ((fun?.thanks_total || 0) > 0) {
+    const ask = await tgPopup({
+      title: "😄",
+      message: "Вы ещё хотите поблагодарить?",
+      buttons: [
+        { id: "yes", type: "default", text: "Да" },
+        { id: "no", type: "cancel", text: "Не-не" },
+      ],
+    });
+    if (ask.id !== "yes") return;
+  }
+
+  setFunBusy(true);
+  try {
+    const r = await apiPost("/api/fun/thanks", {});
+    if (r?.ok) {
+      setFun((s) => ({ ...(s || {}), thanks_total: r.thanks_total, donate_total: s?.donate_total || 0, premium: s?.premium || false }));
+      await tgPopup({
+        title: "Готово",
+        message: "Ваша благодарность отправлена ✅",
+        buttons: [{ id: "ok", type: "ok", text: "Ок" }],
+      });
+    }
+  } finally {
+    setFunBusy(false);
+  }
+}
+
+async function handleDonateJoke() {
+  if (funBusy) return;
+
+  if ((fun?.donate_total || 0) > 0) {
+    const ask = await tgPopup({
+      title: "😄",
+      message: "Вы ещё хотите задонатить?",
+      buttons: [
+        { id: "yes", type: "default", text: "Да" },
+        { id: "no", type: "cancel", text: "Не-не" },
+      ],
+    });
+    if (ask.id !== "yes") return;
+  }
+
+  const pick = await tgPopup({
+    title: "Задонатить (по приколу)",
+    message: "Выбери вариант:",
+    buttons: [
+      { id: "highfive", type: "default", text: "🤝 Дать пятюню" },
+      { id: "hug", type: "default", text: "🫂 Обнять по-братски" },
+      { id: "sz", type: "default", text: "🍀 «Щастя здоровя»" },
+      { id: "cancel", type: "cancel", text: "Отмена" },
+    ],
+  });
+  if (pick.id === "cancel") return;
+
+  setFunBusy(true);
+  try {
+    const r = await apiPost("/api/fun/donate", { value: pick.id });
+    if (r?.ok) {
+      setFun((s) => ({ ...(s || {}), donate_total: r.donate_total, thanks_total: s?.thanks_total || 0, premium: !!r.premium }));
+
+      await tgPopup({
+        title: "Готово",
+        message: "Донат отправлен ✅",
+        buttons: [{ id: "ok", type: "ok", text: "Ок" }],
+      });
+
+      if (r.unlocked) {
+        await tgPopup({
+          title: "🌟 Премиум активирован",
+          message: `Поздравляем! Вы накопили ${r.donate_total}/${r.threshold} донатов и получили Премиум-статус аккаунта 😎`,
+          buttons: [{ id: "ok", type: "ok", text: "Оооо да" }],
+        });
+      }
+    }
+  } finally {
+    setFunBusy(false);
+  }
+}
+
+
 
   const filteredPlayersDir = useMemo(() => {
     const s = playerQ.trim().toLowerCase();
@@ -1497,6 +1628,12 @@ const teamsPosStaleInfo = React.useMemo(() => {
               ℹ️ О приложении
             </button>
           </div>
+          <button
+            className={profileView === "thanks" ? "btn" : "btn secondary"}
+            onClick={() => setProfileView("thanks")}
+          >
+            🙏 Поблагодарить
+          </button>
 
           {profileView === "me" && (
             <div className="card">
@@ -1595,6 +1732,29 @@ const teamsPosStaleInfo = React.useMemo(() => {
 
           {profileView === "support" && <SupportForm />}
           {profileView === "about" && <AboutBlock />}
+          {profileView === "thanks" && (
+            <div className="card">
+              <h2>Поблагодарить</h2>
+              <div className="small" style={{ opacity: 0.8 }}>
+                По правилам — 1 раз. Но если очень хочется — спросим ещё раз 😄
+              </div>
+          
+              <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                <button className="btn" onClick={handleThanksJoke} disabled={funBusy}>
+                  🙏 Сказать спасибо
+                </button>
+                <button className="btn secondary" onClick={handleDonateJoke} disabled={funBusy}>
+                  💸 Задонатить
+                </button>
+              </div>
+          
+              <div className="small" style={{ marginTop: 10, opacity: 0.85 }}>
+                Спасибо: <b>{fun?.thanks_total ?? 0}</b> • Донатов: <b>{fun?.donate_total ?? 0}</b>
+                {fun?.premium ? <> • <b>🌟 Премиум</b></> : null}
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
@@ -2253,3 +2413,5 @@ function BottomNav({ tab, setTab, isAdmin }) {
     </nav>
   );
 }
+
+
