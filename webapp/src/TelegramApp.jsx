@@ -1659,13 +1659,15 @@ async function handleDonateJoke() {
             >
               ℹ️ О приложении
             </button>
-          </div>
+
           <button
             className={profileView === "thanks" ? "btn" : "btn secondary"}
             onClick={() => setProfileView("thanks")}
           >
             🙏 Поблагодарить
           </button>
+          </div>
+
 
           {profileView === "me" && (
             <div className="card">
