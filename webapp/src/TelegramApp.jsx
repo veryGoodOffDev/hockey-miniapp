@@ -94,6 +94,7 @@ export default function TelegramApp() {
 });
 const [funBusy, setFunBusy] = useState(false);
   const [fun, setFun] = useState(null); // {thanks_total, donate_total, premium}
+  const [donateOpen, setDonateOpen] = useState(false);
 
 function tgPopup({ title, message, buttons }) {
   return new Promise((resolve) => {
@@ -987,12 +988,17 @@ async function handleDonateJoke() {
     if (ask.id !== "yes") return;
   }
 
-  const value = await pickDonateValue();
-  if (!value) return;
+  setDonateOpen(true);
+}
 
+  async function submitDonate(value /* 'highfive'|'hug'|'sz' */) {
+  if (funBusy) return;
+
+  setDonateOpen(false);
   setFunBusy(true);
   try {
     const r = await apiPost("/api/fun/donate", { value });
+
     if (r?.ok) {
       setFun((s) => ({
         ...(s || {}),
@@ -1014,11 +1020,17 @@ async function handleDonateJoke() {
           buttons: [{ id: "ok", type: "ok", text: "Оооо да" }],
         });
       }
+    } else {
+      flashOp("❌ Не удалось задонатить", "error", false, 2000);
     }
+  } catch (e) {
+    console.error("submitDonate failed:", e);
+    flashOp("❌ Ошибка доната", "error", false, 2000);
   } finally {
     setFunBusy(false);
   }
 }
+
 
 
 
@@ -1766,6 +1778,35 @@ async function handleDonateJoke() {
                 <button className="btn secondary" onClick={handleDonateJoke} disabled={funBusy}>
                   💸 Задонатить
                 </button>
+                {donateOpen && (
+                  <div className="modalOverlay" onClick={() => !funBusy && setDonateOpen(false)}>
+                    <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+                      <h3 style={{ margin: 0 }}>Задонатить (по приколу)</h3>
+                      <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                        Выбери вариант:
+                      </div>
+                
+                      <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
+                        <button className="btn" disabled={funBusy} onClick={() => submitDonate("highfive")}>
+                          🤝 Дать пятюню
+                        </button>
+                        <button className="btn" disabled={funBusy} onClick={() => submitDonate("hug")}>
+                          🫂 Обнять по-братски
+                        </button>
+                        <button className="btn" disabled={funBusy} onClick={() => submitDonate("sz")}>
+                          🍀 «Щастя здоровя»
+                        </button>
+                      </div>
+                
+                      <div className="row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+                        <button className="btn secondary" disabled={funBusy} onClick={() => setDonateOpen(false)}>
+                          Закрыть
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               </div>
           
               <div className="small" style={{ marginTop: 10, opacity: 0.85 }}>
