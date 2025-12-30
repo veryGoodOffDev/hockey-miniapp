@@ -775,26 +775,26 @@ app.get("/api/fun/status", async (req, res) => {
 
   await ensurePlayer(user);
 
+  const pr = await q(`SELECT joke_premium FROM players WHERE tg_id=$1`, [user.id]);
+  const premium = pr.rows[0]?.joke_premium === true;
+
   const r = await q(
-    `SELECT action, value, created_at
-     FROM fun_actions
-     WHERE user_id=$1`,
+    `SELECT action, COUNT(*)::int AS total
+     FROM fun_actions_log
+     WHERE user_id=$1
+     GROUP BY action`,
     [user.id]
   );
 
-  const map = new Map(r.rows.map((x) => [x.action, x]));
-  const t = map.get("thanks");
-  const d = map.get("donate");
-
+  const map = new Map(r.rows.map(x => [x.action, x.total]));
   res.json({
     ok: true,
-    thanks_done: !!t,
-    thanks_at: t?.created_at ?? null,
-    donate_done: !!d,
-    donate_value: d?.value ?? null,
-    donate_at: d?.created_at ?? null,
+    thanks_total: map.get("thanks") || 0,
+    donate_total: map.get("donate") || 0,
+    premium
   });
 });
+
 
 app.post("/api/fun/thanks", async (req, res) => {
   const user = requireWebAppAuth(req, res);
@@ -803,20 +803,22 @@ app.post("/api/fun/thanks", async (req, res) => {
 
   await ensurePlayer(user);
 
-  const ins = await q(
-    `INSERT INTO fun_actions(user_id, action, value)
-     VALUES($1,'thanks',NULL)
-     ON CONFLICT (user_id, action) DO NOTHING
-     RETURNING created_at`,
+  // лог — всегда
+  await q(`INSERT INTO fun_actions_log(user_id, action, value) VALUES($1,'thanks',NULL)`, [user.id]);
+
+  // totals
+  const tr = await q(
+    `SELECT COUNT(*)::int AS total
+     FROM fun_actions_log
+     WHERE user_id=$1 AND action='thanks'`,
     [user.id]
   );
 
-  if (!ins.rowCount) {
-    return res.status(409).json({ ok: false, reason: "already_done" });
-  }
-
-  res.json({ ok: true, created_at: ins.rows[0].created_at });
+  res.json({ ok: true, thanks_total: tr.rows[0].total });
 });
+
+
+const DONATE_PREMIUM_AT = Number(process.env.DONATE_PREMIUM_AT || 9);
 
 app.post("/api/fun/donate", async (req, res) => {
   const user = requireWebAppAuth(req, res);
@@ -831,20 +833,29 @@ app.post("/api/fun/donate", async (req, res) => {
     return res.status(400).json({ ok: false, reason: "bad_value" });
   }
 
-  const ins = await q(
-    `INSERT INTO fun_actions(user_id, action, value)
-     VALUES($1,'donate',$2)
-     ON CONFLICT (user_id, action) DO NOTHING
-     RETURNING created_at`,
-    [user.id, value]
-  );
+  await q(`INSERT INTO fun_actions_log(user_id, action, value) VALUES($1,'donate',$2)`, [user.id, value]);
 
-  if (!ins.rowCount) {
-    return res.status(409).json({ ok: false, reason: "already_done" });
+  const tr = await q(
+    `SELECT COUNT(*)::int AS total
+     FROM fun_actions_log
+     WHERE user_id=$1 AND action='donate'`,
+    [user.id]
+  );
+  const donate_total = tr.rows[0].total;
+
+  // премиум: выдаём один раз при достижении порога
+  const pr = await q(`SELECT joke_premium FROM players WHERE tg_id=$1`, [user.id]);
+  const already = pr.rows[0]?.joke_premium === true;
+
+  let unlocked = false;
+  if (!already && donate_total >= DONATE_PREMIUM_AT) {
+    await q(`UPDATE players SET joke_premium=TRUE, updated_at=NOW() WHERE tg_id=$1`, [user.id]);
+    unlocked = true;
   }
 
-  res.json({ ok: true, created_at: ins.rows[0].created_at });
+  res.json({ ok: true, donate_total, premium: already || unlocked, unlocked, threshold: DONATE_PREMIUM_AT });
 });
+
 
 
 app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
