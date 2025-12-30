@@ -2191,10 +2191,22 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
 
 app.get("/api/stats/attendance", async (req, res) => {
   try {
-    let days = parseInt(String(req.query.days ?? "365"), 10);
-    if (!Number.isFinite(days) || days < 0) days = 365;
+    const isoDateOrNull = (v) => {
+      const s = String(v || "").trim();
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+    };
 
-    const useDays = days > 0 && days < 100000;
+    // ✅ новые параметры
+    const from = isoDateOrNull(req.query.from);
+    const to = isoDateOrNull(req.query.to);
+
+    // ✅ старый режим (days) остаётся
+    let days = parseInt(String(req.query.days ?? "0"), 10);
+    if (!Number.isFinite(days) || days < 0) days = 0;
+
+    // если задан диапазон — days игнорируем
+    const useRange = !!(from || to);
+    const useDays = !useRange && days > 0 && days < 100000;
 
     const sql = `
       SELECT
@@ -2221,22 +2233,39 @@ app.get("/api/stats/attendance", async (req, res) => {
 
       WHERE g.status <> 'cancelled'
         AND g.starts_at < NOW()
-        ${useDays ? `AND g.starts_at >= NOW() - make_interval(days => $1::int)` : ""}
+
+        -- ✅ диапазон дат (включительно по дням)
+        AND ($1::date IS NULL OR g.starts_at >= $1::date)
+        AND ($2::date IS NULL OR g.starts_at < ($2::date + INTERVAL '1 day'))
+
+        -- ✅ последние N дней (если нет диапазона)
+        ${useDays ? `AND g.starts_at >= NOW() - make_interval(days => $3::int)` : ""}
+
         AND p.disabled IS DISTINCT FROM TRUE
 
       GROUP BY p.tg_id, name, p.position, p.jersey_number, p.is_guest, p.player_kind
       ORDER BY yes DESC, maybe DESC, total DESC, name ASC;
     `;
 
-    const params = useDays ? [days] : [];
+    const params = [
+      useRange ? from : null,
+      useRange ? to : null,
+      useDays ? days : null,
+    ];
+
     const { rows } = await q(sql, params);
 
-    res.json({ ok: true, days: useDays ? days : 0, rows });
+    res.json({
+      ok: true,
+      filter: useRange ? { mode: "range", from, to } : { mode: useDays ? "days" : "all", days: useDays ? days : 0 },
+      rows,
+    });
   } catch (e) {
     console.error("attendance stats error:", e);
     res.status(500).json({ ok: false, error: "stats_error" });
   }
 });
+
 
 app.post("/api/rsvp/bulk", async (req, res) => {
   const user = requireWebAppAuth(req, res);

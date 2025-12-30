@@ -50,6 +50,9 @@ export default function TelegramApp() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsDays, setStatsDays] = useState(365);
   const [attendance, setAttendance] = useState([]);
+  const [statsMode, setStatsMode] = useState("yes"); // yes | no | all
+  const [statsFrom, setStatsFrom] = useState("");
+  const [statsTo, setStatsTo] = useState("");
 
   // игры: прошедшие
   const [showPast, setShowPast] = useState(false);
@@ -250,16 +253,36 @@ async function syncAfterMutation(opts = {}) {
     return "Запланирована";
   }
 
-  async function loadAttendance(days = statsDays) {
-    try {
-      setStatsLoading(true);
-      const res = await apiGet(`/api/stats/attendance?days=${days}`);
-      if (res?.ok) setAttendance(res.rows || []);
-      else setAttendance([]);
-    } finally {
-      setStatsLoading(false);
+async function loadAttendance(opts = {}) {
+  const {
+    days = statsDays,
+    from = statsFrom,
+    to = statsTo,
+  } = opts;
+
+  try {
+    setStatsLoading(true);
+
+    const qs = new URLSearchParams();
+
+    // если задан диапазон — используем его
+    const useRange = (from && from.trim()) || (to && to.trim());
+    if (useRange) {
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      qs.set("days", "0"); // на всякий
+    } else {
+      qs.set("days", String(days ?? 0));
     }
+
+    const res = await apiGet(`/api/stats/attendance?${qs.toString()}`);
+    if (res?.ok) setAttendance(res.rows || []);
+    else setAttendance([]);
+  } finally {
+    setStatsLoading(false);
   }
+}
+
 
   async function refreshAll(forceGameId) {
     try {
@@ -716,6 +739,32 @@ async function saveProfile() {
 
     swapPicked(teamKey, tg_id);
   }
+
+  function medalMapForTop(list, key) {
+  // медали по "местам" (по уникальным значениям), максимум 3 места
+  const uniq = [];
+  for (const r of list) {
+    const v = Number(r?.[key] ?? 0);
+    if (v <= 0) continue;
+    if (!uniq.includes(v)) uniq.push(v);
+    if (uniq.length >= 3) break;
+  }
+  return {
+    [uniq[0]]: "🥇",
+    [uniq[1]]: "🥈",
+    [uniq[2]]: "🥉",
+  };
+}
+
+function sortByMetricDesc(list, key) {
+  return [...(list || [])].sort((a, b) => {
+    const av = Number(a?.[key] ?? 0);
+    const bv = Number(b?.[key] ?? 0);
+    if (bv !== av) return bv - av;
+    return String(a?.name || "").localeCompare(String(b?.name || ""), "ru");
+  });
+}
+
 
   const myRsvp = useMemo(() => {
     if (!me?.tg_id) return null;
@@ -2010,63 +2059,134 @@ async function handleDonateJoke() {
 )}
 
       {/* ====== STATS ====== */}
-      {tab === "stats" && (
-        <div className="card">
-          <h2>Статистика посещений</h2>
+{tab === "stats" && (
+  <div className="card">
+    <h2>
+      {statsMode === "yes" ? "✅ Топ посещаемости (Буду)" :
+       statsMode === "no" ? "❌ Топ отказов (Не буду)" :
+       "📊 Общая статистика"}
+    </h2>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <select
-              value={statsDays}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setStatsDays(v);
-                loadAttendance(v);
-              }}
-            >
-              <option value={30}>30 дней</option>
-              <option value={90}>90 дней</option>
-              <option value={365}>365 дней</option>
-              <option value={0}>Всё время</option>
-            </select>
+    {/* переключатель режима */}
+    <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+      <button className={statsMode === "yes" ? "btn" : "btn secondary"} onClick={() => setStatsMode("yes")}>
+        ✅ Топ “Буду”
+      </button>
+      <button className={statsMode === "no" ? "btn" : "btn secondary"} onClick={() => setStatsMode("no")}>
+        ❌ Топ “Не буду”
+      </button>
+      <button className={statsMode === "all" ? "btn" : "btn secondary"} onClick={() => setStatsMode("all")}>
+        📊 Общая
+      </button>
+    </div>
 
-            <button className="btn secondary" onClick={() => loadAttendance(statsDays)} disabled={statsLoading}>
-              {statsLoading ? "Считаю..." : "Обновить"}
-            </button>
-          </div>
+    {/* фильтры периода */}
+    <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <select
+        value={statsDays}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          setStatsDays(v);
+          setStatsFrom("");
+          setStatsTo("");
+          loadAttendance({ days: v, from: "", to: "" });
+        }}
+      >
+        <option value={0}>Всё время</option>
+        <option value={30}>30 дней</option>
+        <option value={90}>90 дней</option>
+        <option value={365}>365 дней</option>
+      </select>
 
-          <hr />
+      <span className="small" style={{ opacity: 0.8 }}>или диапазон:</span>
 
-          {attendance.length === 0 ? (
-            <div className="small">Пока нет данных.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {attendance.map((r, idx) => {
-                const medal = idx === 0 ? "🐑🥇" : idx === 1 ? "🐑🥈" : idx === 2 ? "🐑🥉" : "";
-                return (
-                  <div key={r.tg_id} className="row" style={{ justifyContent: "space-between" }}>
-                    <div>
-                      <b>
-                        {idx + 1}. {medal} {r.name}
-                        {r.jersey_number != null ? ` №${r.jersey_number}` : ""}
-                      </b>
-                      <div className="small" style={{ opacity: 0.8 }}>
-                        {r.position ? `Позиция: ${r.position}` : ""}
-                        {r.is_guest ? " · 👤 гость" : ""}
-                      </div>
-                    </div>
+      <input className="input" type="date" value={statsFrom} onChange={(e) => setStatsFrom(e.target.value)} />
+      <input className="input" type="date" value={statsTo} onChange={(e) => setStatsTo(e.target.value)} />
 
-                    <div className="row">
-                      <span className="badge">✅ {r.yes ?? 0}</span>
-                      <span className="badge">❓ {r.maybe ?? 0}</span>
-                      <span className="badge">❌ {r.no ?? 0}</span>
-                    </div>
+      <button
+        className="btn secondary"
+        onClick={() => loadAttendance({ days: 0, from: statsFrom, to: statsTo })}
+        disabled={statsLoading}
+      >
+        Применить
+      </button>
+
+      <button className="btn secondary" onClick={() => loadAttendance()} disabled={statsLoading}>
+        {statsLoading ? "Считаю..." : "Обновить"}
+      </button>
+    </div>
+
+    <hr />
+
+    {attendance.length === 0 ? (
+      <div className="small">Пока нет данных.</div>
+    ) : (() => {
+      // режимы
+      if (statsMode === "all") {
+        return (
+          <div style={{ display: "grid", gap: 8 }}>
+            {attendance.map((r, idx) => (
+              <div key={r.tg_id} className="row" style={{ justifyContent: "space-between" }}>
+                <div>
+                  <b>
+                    {idx + 1}. {r.name}
+                    {r.jersey_number != null ? ` №${r.jersey_number}` : ""}
+                  </b>
+                  <div className="small" style={{ opacity: 0.8 }}>
+                    {r.position ? `Позиция: ${r.position}` : ""}
+                    {r.is_guest ? " · 👤 гость" : ""}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+
+                <div className="row">
+                  <span className="badge">✅ {r.yes ?? 0}</span>
+                  <span className="badge">❓ {r.maybe ?? 0}</span>
+                  <span className="badge">❌ {r.no ?? 0}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      const key = statsMode === "yes" ? "yes" : "no";
+      const sorted = sortByMetricDesc(attendance, key).filter((x) => Number(x?.[key] ?? 0) > 0);
+      const medals = medalMapForTop(sorted, key);
+
+      if (!sorted.length) return <div className="small">Нет данных для выбранного режима.</div>;
+
+      return (
+        <div style={{ display: "grid", gap: 8 }}>
+          {sorted.map((r, idx) => {
+            const v = Number(r?.[key] ?? 0);
+            const medal = medals[v] || "";
+            return (
+              <div key={r.tg_id} className="row" style={{ justifyContent: "space-between" }}>
+                <div>
+                  <b>
+                    {idx + 1}. {medal} {r.name}
+                    {r.jersey_number != null ? ` №${r.jersey_number}` : ""}
+                  </b>
+                  <div className="small" style={{ opacity: 0.8 }}>
+                    {r.position ? `Позиция: ${r.position}` : ""}
+                    {r.is_guest ? " · 👤 гость" : ""}
+                  </div>
+                </div>
+
+                <div className="row">
+                  <span className="badge">
+                    {statsMode === "yes" ? "✅" : "❌"} {v}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
+      );
+    })()}
+  </div>
+)}
+
 
       {/* ====== ADMIN ====== */}
       {tab === "admin" && isAdmin && (
