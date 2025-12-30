@@ -1793,7 +1793,7 @@ async function handleDonateJoke() {
                           🤝 Дать пятюню
                         </button>
                         <button className="btn" disabled={funBusy} onClick={() => submitDonate("hug")}>
-                          🫂 Обнять по-братски
+                          🤗 Обнять по-братски
                         </button>
                         <button className="btn" disabled={funBusy} onClick={() => submitDonate("sz")}>
                           🍀 «Щастя здоровя»
