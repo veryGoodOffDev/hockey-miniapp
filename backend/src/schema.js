@@ -261,4 +261,19 @@ await q(`CREATE INDEX IF NOT EXISTS idx_best_votes_game_candidate ON best_player
   await q(`CREATE INDEX IF NOT EXISTS idx_rsvp_tokens_game_id ON rsvp_tokens(game_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_rsvp_tokens_tg_id ON rsvp_tokens(tg_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_rsvp_tokens_expires_at ON rsvp_tokens(expires_at);`);
+
+    /** ===================== FUN ACTIONS (profile jokes) ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS fun_actions (
+      user_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      action  TEXT NOT NULL CHECK (action IN ('thanks','donate')),
+      value   TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, action)
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_fun_actions_action ON fun_actions(action);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_fun_actions_created_at ON fun_actions(created_at DESC);`);
+
 }
