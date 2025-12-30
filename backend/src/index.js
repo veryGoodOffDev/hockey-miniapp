@@ -55,6 +55,26 @@ app.post("/bot", async (req, res) => {
 });
 
 /** ===================== HELPERS ===================== */
+
+let funStatsTimer = null;
+let funStatsDirty = false;
+
+function scheduleFunStatsUpdate() {
+  funStatsDirty = true;
+  if (funStatsTimer) return;
+
+  funStatsTimer = setTimeout(async () => {
+    funStatsTimer = null;
+    if (!funStatsDirty) return;
+    funStatsDirty = false;
+    try {
+      await upsertPinnedFunStats();
+    } catch (e) {
+      console.error("upsertPinnedFunStats failed:", e?.message || e);
+    }
+  }, 1500); // 1.5 сек — норм
+}
+
 function formatGameWhen(startsAtIso) {
   const tz = process.env.TZ_NAME || "Europe/Moscow";
   const dt = startsAtIso ? new Date(startsAtIso) : null;
@@ -274,6 +294,32 @@ async function supportSendFile({ caption, file }) {
   fd.append("document", blob, file.originalname || "file");
   return supportTgCall("sendDocument", fd);
 }
+
+async function supportEditMessage(messageId, html) {
+  return supportTgCall("editMessageText", {
+    chat_id: Number(SUPPORT_CHAT_ID),
+    message_id: Number(messageId),
+    text: html,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+}
+
+async function supportPinMessage(messageId) {
+  return supportTgCall("pinChatMessage", {
+    chat_id: Number(SUPPORT_CHAT_ID),
+    message_id: Number(messageId),
+    disable_notification: true,
+  });
+}
+
+async function supportDeleteMessage(messageId) {
+  return supportTgCall("deleteMessage", {
+    chat_id: Number(SUPPORT_CHAT_ID),
+    message_id: Number(messageId),
+  });
+}
+
 
 // супер-админ: только из ENV
 function isSuperAdmin(tgId) {
@@ -711,6 +757,146 @@ async function ensurePlayer(user) {
       `;
     }
 
+async function getFunStatsRows(limit = 60) {
+  const r = await q(
+    `
+    SELECT
+      p.tg_id,
+      ${sqlPlayerName("p")} AS name,
+
+      SUM((l.action='thanks')::int)::int AS thanks,
+      SUM((l.action='donate')::int)::int AS donate,
+
+      SUM((l.action='donate' AND l.value='highfive')::int)::int AS highfive,
+      SUM((l.action='donate' AND l.value='hug')::int)::int      AS hug,
+      SUM((l.action='donate' AND l.value='sz')::int)::int       AS sz
+
+    FROM fun_actions_log l
+    JOIN players p ON p.tg_id = l.user_id
+    WHERE p.disabled IS DISTINCT FROM TRUE
+    GROUP BY p.tg_id, p.display_name, p.first_name, p.username
+    ORDER BY donate DESC, thanks DESC, name ASC
+    LIMIT $1
+    `,
+    [limit]
+  );
+  return r.rows || [];
+}
+
+async function getFunTotals() {
+  const r = await q(`
+    SELECT
+      COUNT(*) FILTER (WHERE action='thanks')::int AS thanks_total,
+      COUNT(*) FILTER (WHERE action='donate')::int AS donate_total,
+      COUNT(*) FILTER (WHERE action='donate' AND value='highfive')::int AS highfive_total,
+      COUNT(*) FILTER (WHERE action='donate' AND value='hug')::int      AS hug_total,
+      COUNT(*) FILTER (WHERE action='donate' AND value='sz')::int       AS sz_total
+    FROM fun_actions_log
+  `);
+  return r.rows[0] || null;
+}
+
+function renderFunStatsTable(rows) {
+  // колонки: Имя | Спасибо | Донат | 🤝 | 🫂 | 🍀
+  const nameW = 18; // можно 16..22
+  const nW = 6;
+
+  const lines = [];
+  lines.push(
+    padRightW("Имя", nameW) +
+      " " +
+      padRightW("Спасибо", nW) +
+      " " +
+      padRightW("Донат", nW) +
+      " " +
+      padRightW("🤝", 3) +
+      " " +
+      padRightW("🫂", 3) +
+      " " +
+      padRightW("🍀", 3)
+  );
+
+  lines.push("-".repeat(Math.min(42, nameW + nW + nW + 3 + 3 + 3 + 5)));
+
+  for (const r of rows) {
+    const name = clipW(String(r.name || r.tg_id), nameW);
+    lines.push(
+      padRightW(name, nameW) +
+        " " +
+        padRightW(String(r.thanks ?? 0), nW) +
+        " " +
+        padRightW(String(r.donate ?? 0), nW) +
+        " " +
+        padRightW(String(r.highfive ?? 0), 3) +
+        " " +
+        padRightW(String(r.hug ?? 0), 3) +
+        " " +
+        padRightW(String(r.sz ?? 0), 3)
+    );
+  }
+
+  return lines.join("\n");
+}
+
+async function buildFunStatsHtml() {
+  const tz = process.env.TZ_NAME || "Europe/Moscow";
+  const updated = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: tz,
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date());
+
+  const totals = await getFunTotals();
+  const rows = await getFunStatsRows(80);
+
+  const head =
+    `📊 <b>Благодарности / Донаты</b>\n` +
+    `🕒 <code>${escapeHtml(updated)}</code>\n\n` +
+    `Всего: спасибо <b>${totals?.thanks_total ?? 0}</b>, донатов <b>${totals?.donate_total ?? 0}</b>\n` +
+    `🤝 ${totals?.highfive_total ?? 0}  🫂 ${totals?.hug_total ?? 0}  🍀 ${totals?.sz_total ?? 0}\n\n`;
+
+  const table = renderFunStatsTable(rows);
+
+  // HTML-safe
+  return head + `<pre>${escapeHtml(table)}</pre>`;
+}
+
+async function upsertPinnedFunStats() {
+  if (!SUPPORT_TOKEN || !SUPPORT_CHAT_ID) return;
+
+  const html = await buildFunStatsHtml();
+  const key = "fun_stats_message_id";
+
+  const oldId = await getSetting(key, null);
+
+  if (oldId) {
+    try {
+      await supportEditMessage(oldId, html);
+      // закреп уже останется, но на всякий случай можно перепинить
+      await supportPinMessage(oldId);
+      return;
+    } catch (e) {
+      // если сообщение удалено/недоступно — создадим новое
+      console.error("supportEditMessage failed:", e?.message || e);
+      try { await supportDeleteMessage(oldId); } catch {}
+    }
+  }
+
+  // создать новое + закрепить + сохранить id
+  const sent = await supportTgCall("sendMessage", {
+    chat_id: Number(SUPPORT_CHAT_ID),
+    text: html,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+
+  await supportPinMessage(sent.message_id);
+  await setSetting(key, String(sent.message_id));
+}
+
+
 
 /** ===================== ROUTES ===================== */
 
@@ -805,6 +991,7 @@ app.post("/api/fun/thanks", async (req, res) => {
 
   // лог — всегда
   await q(`INSERT INTO fun_actions_log(user_id, action, value) VALUES($1,'thanks',NULL)`, [user.id]);
+  scheduleFunStatsUpdate();
 
   // totals
   const tr = await q(
@@ -834,7 +1021,7 @@ app.post("/api/fun/donate", async (req, res) => {
   }
 
   await q(`INSERT INTO fun_actions_log(user_id, action, value) VALUES($1,'donate',$2)`, [user.id, value]);
-
+scheduleFunStatsUpdate();
   const tr = await q(
     `SELECT COUNT(*)::int AS total
      FROM fun_actions_log
