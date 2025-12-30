@@ -94,11 +94,6 @@ export default function TelegramApp() {
 });
 const [funBusy, setFunBusy] = useState(false);
   const [fun, setFun] = useState(null); // {thanks_total, donate_total, premium}
-const [funBusy, setFunBusy] = useState(false);
-
-
-
-const tg = window.Telegram?.WebApp;
 
 function tgPopup({ title, message, buttons }) {
   return new Promise((resolve) => {
