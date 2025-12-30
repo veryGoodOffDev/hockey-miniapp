@@ -276,4 +276,19 @@ await q(`CREATE INDEX IF NOT EXISTS idx_best_votes_game_candidate ON best_player
   await q(`CREATE INDEX IF NOT EXISTS idx_fun_actions_action ON fun_actions(action);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_fun_actions_created_at ON fun_actions(created_at DESC);`);
 
+  /** ===================== FUN ACTIONS LOG ===================== */
+await q(`
+  CREATE TABLE IF NOT EXISTS fun_actions_log (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+    action  TEXT NOT NULL CHECK (action IN ('thanks','donate')),
+    value   TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`);
+await q(`CREATE INDEX IF NOT EXISTS idx_fun_actions_log_user ON fun_actions_log(user_id, action);`);
+
+await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium BOOLEAN NOT NULL DEFAULT FALSE;`);
+
+
 }
