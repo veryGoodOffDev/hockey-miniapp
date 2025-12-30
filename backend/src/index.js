@@ -767,6 +767,86 @@ app.post("/api/me", async (req, res) => {
   res.json({ ok: true, player: pr.rows[0] });
 });
 
+      /** ====== FUN (profile jokes) ====== */
+app.get("/api/fun/status", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  await ensurePlayer(user);
+
+  const r = await q(
+    `SELECT action, value, created_at
+     FROM fun_actions
+     WHERE user_id=$1`,
+    [user.id]
+  );
+
+  const map = new Map(r.rows.map((x) => [x.action, x]));
+  const t = map.get("thanks");
+  const d = map.get("donate");
+
+  res.json({
+    ok: true,
+    thanks_done: !!t,
+    thanks_at: t?.created_at ?? null,
+    donate_done: !!d,
+    donate_value: d?.value ?? null,
+    donate_at: d?.created_at ?? null,
+  });
+});
+
+app.post("/api/fun/thanks", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  await ensurePlayer(user);
+
+  const ins = await q(
+    `INSERT INTO fun_actions(user_id, action, value)
+     VALUES($1,'thanks',NULL)
+     ON CONFLICT (user_id, action) DO NOTHING
+     RETURNING created_at`,
+    [user.id]
+  );
+
+  if (!ins.rowCount) {
+    return res.status(409).json({ ok: false, reason: "already_done" });
+  }
+
+  res.json({ ok: true, created_at: ins.rows[0].created_at });
+});
+
+app.post("/api/fun/donate", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+
+  await ensurePlayer(user);
+
+  const value = String(req.body?.value || "").trim();
+  const allowed = new Set(["highfive", "hug", "sz"]);
+  if (!allowed.has(value)) {
+    return res.status(400).json({ ok: false, reason: "bad_value" });
+  }
+
+  const ins = await q(
+    `INSERT INTO fun_actions(user_id, action, value)
+     VALUES($1,'donate',$2)
+     ON CONFLICT (user_id, action) DO NOTHING
+     RETURNING created_at`,
+    [user.id, value]
+  );
+
+  if (!ins.rowCount) {
+    return res.status(409).json({ ok: false, reason: "already_done" });
+  }
+
+  res.json({ ok: true, created_at: ins.rows[0].created_at });
+});
+
+
 app.post("/api/feedback", upload.array("files", 5), async (req, res) => {
   try {
     const user = requireWebAppAuth(req, res);
