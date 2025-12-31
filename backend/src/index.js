@@ -1659,39 +1659,27 @@ app.patch("/api/games/:id", async (req, res) => {
     vals.push(vu);
   }
 
-    // ✅ GEO
-  if (b.geo_lat !== undefined || b.geo_lon !== undefined) {
-    const latRaw = b.geo_lat;
-    const lonRaw = b.geo_lon;
+  // ✅ geo pair
+const hasLat = Object.prototype.hasOwnProperty.call(b, "geo_lat");
+const hasLon = Object.prototype.hasOwnProperty.call(b, "geo_lon");
+if (hasLat || hasLon) {
+  const lat = b.geo_lat === null || b.geo_lat === "" ? null : Number(b.geo_lat);
+  const lon = b.geo_lon === null || b.geo_lon === "" ? null : Number(b.geo_lon);
 
-    const lat =
-      latRaw === null || latRaw === "" ? null : Number(latRaw);
-    const lon =
-      lonRaw === null || lonRaw === "" ? null : Number(lonRaw);
-
-    // либо оба null, либо оба числа
-    if ((lat === null) !== (lon === null)) {
-      return res.status(400).json({ ok: false, reason: "bad_geo_pair" });
-    }
-
-    if (lat !== null) {
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        return res.status(400).json({ ok: false, reason: "bad_geo" });
-      }
-      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-        return res.status(400).json({ ok: false, reason: "bad_geo_range" });
-      }
-
-      sets.push(`geo_lat=$${i++}`);
-      vals.push(lat);
-      sets.push(`geo_lon=$${i++}`);
-      vals.push(lon);
-    } else {
-      // сброс
-      sets.push(`geo_lat=NULL`);
-      sets.push(`geo_lon=NULL`);
-    }
+  if ((lat !== null && !Number.isFinite(lat)) || (lon !== null && !Number.isFinite(lon))) {
+    return res.status(400).json({ ok: false, reason: "bad_geo" });
   }
+  if ((lat === null) !== (lon === null)) {
+    return res.status(400).json({ ok: false, reason: "bad_geo_pair" });
+  }
+
+  sets.push(`geo_lat=$${i++}`);
+  vals.push(lat);
+
+  sets.push(`geo_lon=$${i++}`);
+  vals.push(lon);
+}
+
 
   sets.push(`updated_at=NOW()`);
 

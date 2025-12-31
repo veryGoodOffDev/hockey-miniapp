@@ -403,33 +403,40 @@ async function createRsvpLink(tg_id) {
   }
 
 
-  function openGameSheet(g) {
-    const dt = toLocal(g.starts_at);
-    setOpenGameId(g.id);
-    setVideoOpen(false);
-    setGuestFormOpen(false);
-    setGuestEditingId(null);
-    setGuestDraft({ ...GUEST_DEFAULT });
-
-    setGameDraft({
-      id: g.id,
-      status: g.status,
-      location: g.location || "",
-      date: dt.date,
-      time: dt.time,
-      video_url: g.video_url || "",
-
-      // ✅ подтягиваем сохранённые координаты игры
-      geo_lat: g.geo_lat ?? null,
-      geo_lon: g.geo_lon ?? null,
-
-      raw: g,
-    });
-
-
-    loadGuestsForGame(g.id);
-    loadAttendanceForGame(g.id);
+function openGameSheet(g) {
+  // ✅ защита от null/undefined
+  if (!g) {
+    console.warn("openGameSheet: game is null");
+    return;
   }
+
+  const dt = toLocal(g.starts_at);
+
+  setOpenGameId(g.id);
+  setVideoOpen(false);
+  setGuestFormOpen(false);
+  setGuestEditingId(null);
+  setGuestDraft({ ...GUEST_DEFAULT });
+
+  setGameDraft({
+    id: g.id,
+    status: g.status || "scheduled",
+    location: g.location || "",
+    date: dt.date,
+    time: dt.time,
+    video_url: g.video_url || "",
+
+    // ✅ geo: храним в драфте строкой, чтобы инпуты были controlled
+    geo_lat: g.geo_lat == null ? "" : String(g.geo_lat),
+    geo_lon: g.geo_lon == null ? "" : String(g.geo_lon),
+
+    raw: g,
+  });
+
+  loadGuestsForGame(g.id);
+  loadAttendanceForGame(g.id);
+}
+
 
   function closeGameSheet() {
     setOpenGameId(null);
@@ -447,22 +454,40 @@ async function saveGame() {
   await runAdminOp("Сохраняю игру…", async () => {
     const starts_at = toIsoFromLocal(gameDraft.date, gameDraft.time);
 
+    // ✅ нормализуем geo
+    const latStr = (gameDraft.geo_lat ?? "").trim();
+    const lonStr = (gameDraft.geo_lon ?? "").trim();
+
+    const geo_lat = latStr === "" ? null : Number(latStr);
+    const geo_lon = lonStr === "" ? null : Number(lonStr);
+
+    // если ввели мусор — не сохраняем
+    if ((geo_lat !== null && !Number.isFinite(geo_lat)) || (geo_lon !== null && !Number.isFinite(geo_lon))) {
+      alert("❌ Геоточка: lat/lon должны быть числами (или пусто)");
+      return;
+    }
+
+    // если один заполнен, другой нет — тоже ошибка
+    if ((geo_lat === null) !== (geo_lon === null)) {
+      alert("❌ Геоточка: нужно заполнить и lat, и lon (или оставить оба пустыми)");
+      return;
+    }
+
     await apiPatch(`/api/games/${gameDraft.id}`, {
       starts_at,
       location: gameDraft.location,
       status: gameDraft.status,
       video_url: gameDraft.video_url || "",
 
-      // ✅ geo
-      geo_lat: gameDraft.geo_lat === "" ? null : gameDraft.geo_lat ?? null,
-      geo_lon: gameDraft.geo_lon === "" ? null : gameDraft.geo_lon ?? null,
+      geo_lat,
+      geo_lon,
     });
-
 
     await load({ silent: true });
     await onChanged?.({ label: "✅ Игра сохранена — обновляю приложение…", gameId: gameDraft.id });
   }, { successText: "✅ Игра сохранена" });
 }
+
 
 async function setGameStatus(status) {
   if (!gameDraft) return;
@@ -1030,68 +1055,34 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         onChange={(e) => setLocation(e.target.value)}
         placeholder="Например: Ледовая арена"
       />
-      <label>Гео-точка (для навигатора)</label>
+      <label>Геоточка (необязательно)</label>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <input
+          className="input"
+          style={{ flex: 1, minWidth: 140 }}
+          placeholder="lat (например 55.751244)"
+          value={gameDraft?.geo_lat ?? ""}
+          onChange={(e) => {
+            const v = e.target.value.replace(",", "."); // удобно для RU ввода
+            setGameDraft((d) => ({ ...d, geo_lat: v }));
+          }}
+        />
+        <input
+          className="input"
+          style={{ flex: 1, minWidth: 140 }}
+          placeholder="lon (например 37.618423)"
+          value={gameDraft?.geo_lon ?? ""}
+          onChange={(e) => {
+            const v = e.target.value.replace(",", ".");
+            setGameDraft((d) => ({ ...d, geo_lon: v }));
+          }}
+        />
+      </div>
 
-        <div className="row" style={{ gap: 8 }}>
-          <input
-            className="input"
-            placeholder="lat (55.751244)"
-            value={gameDraft.geo_lat ?? ""}
-            onChange={(e) => {
-              const v = e.target.value.trim();
-              setGameDraft((d) => ({ ...d, geo_lat: v === "" ? null : v }));
-            }}
-          />
-          <input
-            className="input"
-            placeholder="lon (37.618423)"
-            value={gameDraft.geo_lon ?? ""}
-            onChange={(e) => {
-              const v = e.target.value.trim();
-              setGameDraft((d) => ({ ...d, geo_lon: v === "" ? null : v }));
-            }}
-          />
-        </div>
+      <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
+        Можно оставить пустым — тогда кнопки “Маршрут” в игре не будет.
+      </div>
 
-        <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-          <button
-            className="btn secondary"
-            onClick={() => {
-              const tg = window.Telegram?.WebApp;
-              tg?.HapticFeedback?.impactOccurred?.("light");
-
-              if (!navigator.geolocation) {
-                alert("Геолокация недоступна на этом устройстве");
-                return;
-              }
-
-              navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                  const { latitude, longitude } = pos.coords;
-                  setGameDraft((d) => ({ ...d, geo_lat: latitude, geo_lon: longitude }));
-                },
-                (err) => {
-                  console.log("geo error", err);
-                  alert("Не удалось получить геолокацию (проверь доступ)");
-                },
-                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-              );
-            }}
-          >
-            📡 Взять мою геолокацию
-          </button>
-
-          <button
-            className="btn secondary"
-            onClick={() => setGameDraft((d) => ({ ...d, geo_lat: null, geo_lon: null }))}
-          >
-            ✖️ Сбросить точку
-          </button>
-        </div>
-
-        <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
-          Обычно координаты вводят именно арены (а не твоей). Кнопка “моя гео” — просто быстрый способ.
-        </div>
 
 
       <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
