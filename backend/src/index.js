@@ -1626,7 +1626,7 @@ app.post("/api/games", async (req, res) => {
     return res.status(400).json({ ok: false, reason: "bad_geo_pair" });
   }
 
-  console.log("[POST /api/games] body:", req.body);
+
 
   const ir = await q(
     `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon)
@@ -1635,10 +1635,10 @@ app.post("/api/games", async (req, res) => {
     [d.toISOString(), String(location || "").trim(), vu, lat, lon]
   );
 
-  console.log("[POST /api/games] RETURNING:", ir.rows[0]);
+ 
 
   const chk = await q(`SELECT geo_lat, geo_lon FROM games WHERE id=$1`, [ir.rows[0].id]);
-  console.log("[POST /api/games] DB CHECK:", chk.rows[0]);
+
 
   res.json({ ok: true, game: ir.rows[0] });
 });
