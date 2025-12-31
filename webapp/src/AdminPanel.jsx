@@ -686,22 +686,21 @@ function openGameSheet(g) {
   setGuestEditingId(null);
   setGuestDraft({ ...GUEST_DEFAULT });
 
-  setGameDraft({
-    id: g.id,
-    status: g.status || "scheduled",
-    location: g.location || "",
-    date: dt.date,
-    time: dt.time,
-    video_url: g.video_url || "",
+ setGameDraft({
+  id: g.id,
+  status: g.status || "scheduled",
+  location: g.location || "",
+  date: dt.date,
+  time: dt.time,
+  video_url: g.video_url || "",
 
-  // ✅ ДОБАВЬ ЭТО
-geo_lat: g.geo_lat == null ? "" : String(g.geo_lat),
-geo_lon: g.geo_lon == null ? "" : String(g.geo_lon),
-
+  geo_lat: g.geo_lat == null ? "" : String(g.geo_lat),
+  geo_lon: g.geo_lon == null ? "" : String(g.geo_lon),
   geo_address: g.geo_address || "",
 
   raw: g,
-  });
+});
+
 
   loadGuestsForGame(g.id);
   loadAttendanceForGame(g.id);
@@ -724,20 +723,16 @@ async function saveGame() {
   await runAdminOp("Сохраняю игру…", async () => {
     const starts_at = toIsoFromLocal(gameDraft.date, gameDraft.time);
 
-    // ✅ нормализуем geo
-    const latStr = (gameDraft.geo_lat ?? "").trim();
-    const lonStr = (gameDraft.geo_lon ?? "").trim();
+    const latStr = String(gameDraft.geo_lat ?? "").replace(",", ".").trim();
+    const lonStr = String(gameDraft.geo_lon ?? "").replace(",", ".").trim();
 
     const geo_lat = latStr === "" ? null : Number(latStr);
     const geo_lon = lonStr === "" ? null : Number(lonStr);
 
-    // если ввели мусор — не сохраняем
     if ((geo_lat !== null && !Number.isFinite(geo_lat)) || (geo_lon !== null && !Number.isFinite(geo_lon))) {
       alert("❌ Геоточка: lat/lon должны быть числами (или пусто)");
       return;
     }
-
-    // если один заполнен, другой нет — тоже ошибка
     if ((geo_lat === null) !== (geo_lon === null)) {
       alert("❌ Геоточка: нужно заполнить и lat, и lon (или оставить оба пустыми)");
       return;
@@ -748,9 +743,8 @@ async function saveGame() {
       location: gameDraft.location,
       status: gameDraft.status,
       video_url: gameDraft.video_url || "",
-
       geo_lat,
-      geo_lon,
+      geo_lon
     });
 
     await load({ silent: true });
@@ -2014,34 +2008,45 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </Sheet>
       )}
         <MapPickModal
-          open={geoPickOpen}
-          initial={
-            geoPickTarget === "edit"
-              ? {
-                  lat: gameDraft?.geo_lat ? Number(String(gameDraft.geo_lat).replace(",", ".")) : null,
-                  lon: gameDraft?.geo_lon ? Number(String(gameDraft.geo_lon).replace(",", ".")) : null,
-                }
-              : {
-                  lat: createGeo.lat ? Number(String(createGeo.lat).replace(",", ".")) : null,
-                  lon: createGeo.lon ? Number(String(createGeo.lon).replace(",", ".")) : null,
-                }
-          }
-          onClose={() => setGeoPickOpen(false)}
-          onPick={(v) => {
-            const lat = v?.lat == null ? "" : String(v.lat);
-            const lon = v?.lon == null ? "" : String(v.lon);
+  open={geoPickOpen}
+  initial={
+    geoPickTarget === "edit"
+      ? {
+          lat: gameDraft?.geo_lat ? Number(gameDraft.geo_lat) : null,
+          lon: gameDraft?.geo_lon ? Number(gameDraft.geo_lon) : null,
+        }
+      : {
+          lat: createGeo.lat ? Number(createGeo.lat) : null,
+          lon: createGeo.lon ? Number(createGeo.lon) : null,
+        }
+  }
+  onClose={() => setGeoPickOpen(false)}
+  onPick={(v) => {
+    const lat = v.lat != null ? String(v.lat) : "";
+    const lon = v.lon != null ? String(v.lon) : "";
 
-            if (geoPickTarget === "edit") {
-              setGameDraft((d) => ({ ...d, geo_lat: lat, geo_lon: lon }));
-            } else {
-              setCreateGeo({ lat, lon, address: v?.address || "" });
+    if (geoPickTarget === "edit") {
+      setGameDraft((d) =>
+        d
+          ? {
+              ...d,
+              geo_lat: lat,
+              geo_lon: lon,
+              geo_address: v.address || "",
             }
+          : d
+      );
+    } else {
+      setCreateGeo({
+        lat,
+        lon,
+        address: v.address || "",
+      });
+    }
 
-            setGeoPickOpen(false);
-          }}
-        />
-
-
+    setGeoPickOpen(false);
+  }}
+/>
 
     </div>
   );
