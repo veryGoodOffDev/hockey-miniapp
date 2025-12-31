@@ -373,6 +373,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [createGeoLat, setCreateGeoLat] = useState("");
   const [createGeoLon, setCreateGeoLon] = useState("");
   const [geoPickOpen, setGeoPickOpen] = useState(false);
+  const [createGeo, setCreateGeo] = useState({ lat: "", lon: "", address: "" });
 
 
 
@@ -621,8 +622,8 @@ async function createOne() {
   await runAdminOp("Создаю игру…", async () => {
     const starts_at = toIsoFromLocal(date, time);
 
-    const geo_lat = createGeoLat.trim() ? Number(createGeoLat) : null;
-    const geo_lon = createGeoLon.trim() ? Number(createGeoLon) : null;
+    const geo_lat = createGeo.lat.trim() ? Number(createGeo.lat) : null;
+    const geo_lon = createGeo.lon.trim() ? Number(createGeo.lon) : null;
 
     await apiPost("/api/games", {
       starts_at,
@@ -634,19 +635,19 @@ async function createOne() {
     await load({ silent: true });
     await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
 
-    // по желанию: очищаем гео после создания
-    // setCreateGeoLat("");
-    // setCreateGeoLon("");
+    // можно очистить после создания
+    setCreateGeo({ lat: "", lon: "", address: "" });
   }, { successText: "✅ Игра создана" });
 }
+
 
   
 async function createSeries() {
   if (!date || !time || weeks < 1) return;
 
   await runAdminOp(`Создаю расписание (${weeks} нед.)…`, async () => {
-    const geo_lat = createGeoLat.trim() ? Number(createGeoLat) : null;
-    const geo_lon = createGeoLon.trim() ? Number(createGeoLon) : null;
+    const geo_lat = createGeo.lat.trim() ? Number(createGeo.lat) : null;
+    const geo_lon = createGeo.lon.trim() ? Number(createGeo.lon) : null;
 
     for (let i = 0; i < weeks; i++) {
       const base = new Date(`${date}T${time}`);
@@ -662,8 +663,11 @@ async function createSeries() {
 
     await load({ silent: true });
     await onChanged?.({ label: "✅ Расписание создано — обновляю приложение…", refreshPlayers: false });
+
+    setCreateGeo({ lat: "", lon: "", address: "" });
   }, { successText: "✅ Расписание создано" });
 }
+
 
 
 
@@ -1320,56 +1324,44 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         onChange={(e) => setLocation(e.target.value)}
         placeholder="Например: Ледовая арена"
       />
-      <label>Геоточка (необязательно)</label>
-      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-      <input
-        className="input"
-        style={{ flex: 1, minWidth: 140 }}
-        placeholder="lat (например 55.751244)"
-        value={createGeoLat}
-        onChange={(e) => setCreateGeoLat(e.target.value.replace(",", "."))}
-      />
+<label>Геоточка (необязательно)</label>
 
-      <input
-        className="input"
-        style={{ flex: 1, minWidth: 140 }}
-        placeholder="lat (например 55.751244)"
-        value={createGeoLat}
-        onChange={(e) => setCreateGeoLat(e.target.value.replace(",", "."))}
-      />
+<div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+  <input
+    className="input"
+    style={{ flex: 1, minWidth: 140 }}
+    placeholder="lat (например 55.751244)"
+    value={createGeo.lat}
+    onChange={(e) => setCreateGeo((s) => ({ ...s, lat: e.target.value.replace(",", ".") }))}
+  />
+  <input
+    className="input"
+    style={{ flex: 1, minWidth: 140 }}
+    placeholder="lon (например 37.618423)"
+    value={createGeo.lon}
+    onChange={(e) => setCreateGeo((s) => ({ ...s, lon: e.target.value.replace(",", ".") }))}
+  />
+</div>
 
-      </div>
+<div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+  <button className="btn secondary" onClick={() => setGeoPickOpen(true)}>
+    🗺️ Выбрать на карте
+  </button>
 
-      <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
-        Можно оставить пустым — тогда кнопки “Маршрут” в игре не будет.
-      </div>
+  <button
+    className="btn secondary"
+    onClick={() => setCreateGeo({ lat: "", lon: "", address: "" })}
+  >
+    🗑 Убрать точку
+  </button>
 
-      <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+  {createGeo.lat && createGeo.lon ? (
+    <span className="badge">✅ {Number(createGeo.lat).toFixed(6)}, {Number(createGeo.lon).toFixed(6)}</span>
+  ) : (
+    <span className="badge">—</span>
+  )}
+</div>
 
-      <button
-        className="btn secondary"
-        onClick={() => setGeoPickOpen(true)}
-      >
-        🗺️ Выбрать на карте
-      </button>
-
-      <button
-        className="btn secondary"
-        onClick={() => {
-          setCreateGeoLat("");
-          setCreateGeoLon("");
-        }}
-        disabled={!createGeoLat && !createGeoLon}
-      >
-        🗑 Убрать точку
-      </button>
-
-      {gameDraft?.geo_lat && gameDraft?.geo_lon ? (
-        <span className="badge">📍 {gameDraft.geo_lat}, {gameDraft.geo_lon}</span>
-      ) : (
-        <span className="small" style={{ opacity: 0.8 }}>Геоточка не выбрана</span>
-      )}
-    </div>
 
 
       <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
@@ -2011,21 +2003,23 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           </div>
         </Sheet>
       )}
-      <MapPickModal
-        open={geoPickOpen}
-        initial={{
-          lat: createGeoLat ? Number(createGeoLat) : null,
-          lon: createGeoLon ? Number(createGeoLon) : null,
-        }}
-        onClose={() => setGeoPickOpen(false)}
-        onPick={({ lat, lon, address }) => {
-          setCreateGeoLat(String(lat));
-          setCreateGeoLon(String(lon));
-          // если хочешь — можешь сразу подставить адрес в location:
-          // if (address && !location) setLocation(address);
-          setGeoPickOpen(false);
-        }}
-      />
+        <MapPickModal
+          open={geoPickOpen}
+          initial={{
+            lat: createGeo.lat ? Number(createGeo.lat) : null,
+            lon: createGeo.lon ? Number(createGeo.lon) : null,
+          }}
+          onClose={() => setGeoPickOpen(false)}
+          onPick={(v) => {
+            setCreateGeo({
+              lat: String(v.lat ?? ""),
+              lon: String(v.lon ?? ""),
+              address: v.address || "",
+            });
+            setGeoPickOpen(false);
+          }}
+        />
+
 
     </div>
   );
