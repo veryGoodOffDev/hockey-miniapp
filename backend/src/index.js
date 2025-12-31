@@ -1609,20 +1609,21 @@ app.post("/api/games", async (req, res) => {
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const { starts_at, location, video_url, geo_lat, geo_lon } = req.body || {};
+
   const d = new Date(starts_at);
   if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
 
   const vu = cleanUrl(video_url);
   if (video_url && !vu) return res.status(400).json({ ok: false, reason: "bad_video_url" });
 
-  const lat = geo_lat === "" || geo_lat == null ? null : Number(geo_lat);
-  const lon = geo_lon === "" || geo_lon == null ? null : Number(geo_lon);
+  const lat = geo_lat === null || geo_lat === "" ? null : Number(geo_lat);
+  const lon = geo_lon === null || geo_lon === "" ? null : Number(geo_lon);
 
   if ((lat !== null && !Number.isFinite(lat)) || (lon !== null && !Number.isFinite(lon))) {
     return res.status(400).json({ ok: false, reason: "bad_geo" });
   }
   if ((lat === null) !== (lon === null)) {
-    return res.status(400).json({ ok: false, reason: "geo_pair_required" });
+    return res.status(400).json({ ok: false, reason: "bad_geo_pair" });
   }
 
   const ir = await q(
@@ -1634,6 +1635,7 @@ app.post("/api/games", async (req, res) => {
 
   res.json({ ok: true, game: ir.rows[0] });
 });
+
 
 
 
