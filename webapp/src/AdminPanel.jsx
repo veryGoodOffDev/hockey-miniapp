@@ -1,4 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
+
 
 function toLocal(starts_at) {
   const d = new Date(starts_at);
@@ -86,6 +102,190 @@ function Sheet({ title, onClose, children }) {
   );
 }
 
+function MapPickModal({ open, initial, onClose, onPick }) {
+  const [pos, setPos] = React.useState(() => {
+    if (initial?.lat != null && initial?.lon != null) return { lat: initial.lat, lon: initial.lon };
+    // дефолт: центр (Москва) — поменяй если хочешь
+    return { lat: 55.751244, lon: 37.618423 };
+  });
+
+  const [picked, setPicked] = React.useState(() => ({
+    lat: initial?.lat ?? null,
+    lon: initial?.lon ?? null,
+    address: "",
+  }));
+
+  const [q, setQ] = React.useState("");
+  const [list, setList] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+  const [addr, setAddr] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) return;
+    setPicked({
+      lat: initial?.lat ?? null,
+      lon: initial?.lon ?? null,
+      address: "",
+    });
+    setAddr("");
+    setQ("");
+    setList([]);
+  }, [open, initial?.lat, initial?.lon]);
+
+  async function reverseGeocode(lat, lon) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+      const r = await fetch(url, {
+        headers: { "Accept": "application/json" },
+      });
+      const j = await r.json();
+      const text = j?.display_name || "";
+      setAddr(text);
+      return text;
+    } catch {
+      return "";
+    }
+  }
+
+  async function doSearch() {
+    const s = q.trim();
+    if (!s) return setList([]);
+    setBusy(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(s)}&limit=6`;
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      const j = await r.json();
+      setList(Array.isArray(j) ? j : []);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function ClickToPick() {
+    useMapEvents({
+      click: async (e) => {
+        const lat = Number(e.latlng.lat);
+        const lon = Number(e.latlng.lng);
+        setPicked({ lat, lon, address: "" });
+        const a = await reverseGeocode(lat, lon);
+        setPicked({ lat, lon, address: a });
+      },
+    });
+    return picked.lat != null && picked.lon != null ? (
+      <Marker position={[picked.lat, picked.lon]} />
+    ) : null;
+  }
+
+  if (!open) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.55)",
+        zIndex: 9999,
+        display: "grid",
+        placeItems: "center",
+        padding: 14,
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{
+          width: "min(920px, 100%)",
+          maxHeight: "90vh",
+          overflow: "hidden",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ margin: 0 }}>📍 Выберите точку на карте</h3>
+          <button className="btn secondary" onClick={onClose}>✖</button>
+        </div>
+
+        <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <input
+            className="input"
+            style={{ flex: 1, minWidth: 220 }}
+            placeholder="Поиск адреса/арены…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") doSearch();
+            }}
+          />
+          <button className="btn secondary" disabled={busy} onClick={doSearch}>
+            {busy ? "..." : "Найти"}
+          </button>
+        </div>
+
+        {!!list.length && (
+          <div className="card" style={{ marginTop: 10, maxHeight: 160, overflow: "auto" }}>
+            {list.map((x) => (
+              <div
+                key={x.place_id}
+                className="row"
+                style={{ justifyContent: "space-between", cursor: "pointer", padding: "8px 6px" }}
+                onClick={async () => {
+                  const lat = Number(x.lat);
+                  const lon = Number(x.lon);
+                  setPos({ lat, lon });
+                  setPicked({ lat, lon, address: x.display_name || "" });
+                  setAddr(x.display_name || "");
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{x.display_name}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 10, height: "52vh", minHeight: 320, borderRadius: 14, overflow: "hidden" }}>
+          <MapContainer
+            center={[pos.lat, pos.lon]}
+            zoom={15}
+            style={{ height: "100%", width: "100%" }}
+            scrollWheelZoom={true}
+          >
+            <TileLayer
+              attribution='&copy; OpenStreetMap'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <ClickToPick />
+          </MapContainer>
+        </div>
+
+        <div className="row" style={{ marginTop: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <div className="small" style={{ opacity: 0.9 }}>
+            {picked.lat != null && picked.lon != null ? (
+              <>
+                Координаты: <b>{picked.lat.toFixed(6)}, {picked.lon.toFixed(6)}</b>
+                {addr ? <div style={{ marginTop: 6 }}>Адрес: {addr}</div> : null}
+              </>
+            ) : (
+              "Кликни по карте, чтобы поставить метку"
+            )}
+          </div>
+
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn secondary" onClick={onClose}>Отмена</button>
+
+            <button
+              className="btn"
+              disabled={picked.lat == null || picked.lon == null}
+              onClick={() => onPick?.({ lat: picked.lat, lon: picked.lon, address: addr || picked.address || "" })}
+            >
+              ✅ Выбрать
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
   const [section, setSection] = useState("games"); // games | players | reminders
@@ -135,6 +335,8 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [tokenUrl, setTokenUrl] = useState("");
   const [tokenValue, setTokenValue] = useState(""); // сам токен, чтобы можно было отозвать
   const [tokenForId, setTokenForId] = useState(null); // tg_id игрока, для которого показана ссылка
+  const [geoPickOpen, setGeoPickOpen] = useState(false);
+
 
   const [op, setOp] = useState({ busy: false, text: "", tone: "info" });
 const opTimerRef = useRef(null);
@@ -1083,6 +1285,30 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         Можно оставить пустым — тогда кнопки “Маршрут” в игре не будет.
       </div>
 
+      <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+
+      <button
+        className="btn secondary"
+        onClick={() => setGeoPickOpen(true)}
+        disabled={!gameDraft}
+      >
+        🗺️ Выбрать на карте
+      </button>
+
+      <button
+        className="btn secondary"
+        onClick={() => setGameDraft((d) => ({ ...d, geo_lat: "", geo_lon: "" }))}
+        disabled={!gameDraft}
+      >
+        🗑 Убрать точку
+      </button>
+
+      {gameDraft?.geo_lat && gameDraft?.geo_lon ? (
+        <span className="badge">📍 {gameDraft.geo_lat}, {gameDraft.geo_lon}</span>
+      ) : (
+        <span className="small" style={{ opacity: 0.8 }}>Геоточка не выбрана</span>
+      )}
+    </div>
 
 
       <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
@@ -1267,6 +1493,30 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
               value={gameDraft.location}
               onChange={(e) => setGameDraft((d) => ({ ...d, location: e.target.value }))}
             />
+            <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="btn secondary"
+              onClick={() => setGeoPickOpen(true)}
+              disabled={!gameDraft}
+            >
+              🗺️ Выбрать на карте
+            </button>
+
+            <button
+              className="btn secondary"
+              onClick={() => setGameDraft((d) => ({ ...d, geo_lat: "", geo_lon: "" }))}
+              disabled={!gameDraft}
+            >
+              🗑 Убрать точку
+            </button>
+
+            {gameDraft?.geo_lat && gameDraft?.geo_lon ? (
+              <span className="badge">📍 {gameDraft.geo_lat}, {gameDraft.geo_lon}</span>
+            ) : (
+              <span className="small" style={{ opacity: 0.8 }}>Геоточка не выбрана</span>
+            )}
+          </div>
+
 
             <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
               <button className="btn" onClick={saveGame} disabled={opBusy}> {opBusy ? "…" : "Сохранить"} </button>
@@ -1700,6 +1950,25 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           </div>
         </Sheet>
       )}
+      <MapPickModal
+        open={geoPickOpen}
+        initial={{
+          lat: gameDraft?.geo_lat ? Number(gameDraft.geo_lat) : null,
+          lon: gameDraft?.geo_lon ? Number(gameDraft.geo_lon) : null,
+        }}
+        onClose={() => setGeoPickOpen(false)}
+        onPick={({ lat, lon, address }) => {
+          setGeoPickOpen(false);
+
+          setGameDraft((d) => ({
+            ...d,
+            geo_lat: String(lat),
+            geo_lon: String(lon),
+            // опционально: если поле "Арена" пустое — подставим адрес
+            location: (d.location || "").trim() ? d.location : (address || ""),
+          }));
+        }}
+      />
     </div>
   );
 }
