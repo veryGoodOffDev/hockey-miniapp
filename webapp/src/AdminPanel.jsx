@@ -637,15 +637,19 @@ async function createOne() {
       return;
     }
 
-    const r = await apiPost("/api/games", { starts_at, location, geo_lat, geo_lon });
+    const payload = { starts_at, location, geo_lat, geo_lon };
+    console.log("CREATE payload:", payload, "createGeo:", createGeo);
 
-    console.log("CREATED GAME:", r?.game); // 👈 проверка
+    const r = await apiPost("/api/games", payload);
+    console.log("CREATE response:", r);
+
     await load({ silent: true });
-
     await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
+
     setCreateGeo({ lat: "", lon: "", address: "" });
   }, { successText: "✅ Игра создана" });
 }
+
 
 
 

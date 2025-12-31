@@ -11,7 +11,6 @@ async function request(path, { method = "GET", body } = {}) {
 
   const headers = {};
   if (initData) headers["x-telegram-init-data"] = initData;
-
   if (body !== undefined) headers["content-type"] = "application/json";
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -21,12 +20,14 @@ async function request(path, { method = "GET", body } = {}) {
   });
 
   const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { ok: false, error: "non_json_response", status: res.status, text };
-  }
+  let data;
+  try { data = JSON.parse(text); }
+  catch { data = { ok: false, error: "non_json_response", status: res.status, text }; }
+
+  if (!res.ok) throw data;          // ✅ главное
+  return data;
 }
+
 
 export async function apiUpload(path, formData) {
   const initData = getInitData();

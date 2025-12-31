@@ -1632,7 +1632,8 @@ app.post("/api/games", async (req, res) => {
      RETURNING *`,
     [d.toISOString(), String(location || "").trim(), vu, lat, lon]
   );
-
+  console.log("POST /api/games body:", req.body);
+  console.log("parsed:", { lat, lon });
   res.json({ ok: true, game: ir.rows[0] });
 });
 
