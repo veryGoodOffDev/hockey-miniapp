@@ -10,6 +10,7 @@ import bg3 from "./bg3.webp";
 import bg4 from "./bg4.webp";
 import bg5 from "./bg5.webp";
 import bg6 from "./bg6.webp";
+import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
 
 const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
@@ -1645,17 +1646,20 @@ function openYandexRoute(lat, lon) {
                       <div className="row">
                         <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
                         <span className="badge">📍 {game.location || "—"}</span>
-                        {game.geo_lat != null && game.geo_lon != null ? (
-                          <button
-                            className="btn secondary"
-                            onClick={() => openYandexRoute(game.geo_lat, game.geo_lon)}
-                            title="Построить маршрут в Яндекс"
-                          >
-                            🧭 Маршрут
-                          </button>
-                        ) : null}
-
                         <span className="badge">{uiStatus(game)}</span>
+
+                    {game.geo_lat != null && game.geo_lon != null ? (
+                      <button
+                        className="btn secondary yandexRouteBtn"
+                        onClick={() => openYandexRoute(game.geo_lat, game.geo_lon)}
+                        title="Построить маршрут в Яндекс"
+                      >
+                        <img className="yandexNavIcon" src={yandexNavIcon} alt="" aria-hidden="true" />
+                        Маршрут до места
+                      </button>
+                    ) : null}
+
+                        
                         
                         {game.video_url ? (
                           <button
