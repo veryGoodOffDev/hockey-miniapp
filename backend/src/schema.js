@@ -8,7 +8,9 @@ export async function ensureSchema(q) {
       status TEXT NOT NULL DEFAULT 'scheduled',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      video_url TEXT
+      video_url TEXT,
+      geo_lat DOUBLE PRECISION,
+      geo_lon DOUBLE PRECISION
     );
   `);
 
@@ -26,6 +28,25 @@ export async function ensureSchema(q) {
 
   await q(`CREATE INDEX IF NOT EXISTS idx_games_starts_at ON games(starts_at);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS geo_lat DOUBLE PRECISION;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS geo_lon DOUBLE PRECISION;`);
+
+  await q(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'games_geo_pair_chk'
+    ) THEN
+      ALTER TABLE games
+        ADD CONSTRAINT games_geo_pair_chk
+        CHECK (
+          (geo_lat IS NULL AND geo_lon IS NULL)
+          OR
+          (geo_lat IS NOT NULL AND geo_lon IS NOT NULL)
+        );
+    END IF;
+  END$$;
+`);
 
   /** ===================== PLAYERS ===================== */
   await q(`
