@@ -1627,6 +1627,37 @@ async function handleDonateJoke() {
                       <div className="row">
                         <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
                         <span className="badge">📍 {game.location || "—"}</span>
+                        {game.geo_lat != null && game.geo_lon != null ? (
+                          <button
+                            className="btn secondary"
+                            onClick={() => {
+                              const tg = window.Telegram?.WebApp;
+
+                              const lat = Number(game.geo_lat);
+                              const lon = Number(game.geo_lon);
+
+                              // пробуем открыть Яндекс Навигатор (deep link)
+                              const appUrl = `yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lon}`;
+
+                              // fallback: Яндекс Карты (веб)
+                              const webUrl = `https://yandex.ru/maps/?pt=${lon},${lat}&z=16&l=map`;
+
+                              // 1) откроем app deep link
+                              if (tg?.openLink) tg.openLink(appUrl);
+                              else window.location.href = appUrl;
+
+                              // 2) fallback через 700мс
+                              setTimeout(() => {
+                                if (tg?.openLink) tg.openLink(webUrl);
+                                else window.open(webUrl, "_blank");
+                              }, 700);
+                            }}
+                            title="Построить маршрут в Яндекс"
+                          >
+                            🧭 Маршрут
+                          </button>
+                        ) : null}
+
                         <span className="badge">{uiStatus(game)}</span>
                         
                         {game.video_url ? (

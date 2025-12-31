@@ -418,8 +418,14 @@ async function createRsvpLink(tg_id) {
       date: dt.date,
       time: dt.time,
       video_url: g.video_url || "",
+
+      // ✅ подтягиваем сохранённые координаты игры
+      geo_lat: g.geo_lat ?? null,
+      geo_lon: g.geo_lon ?? null,
+
       raw: g,
     });
+
 
     loadGuestsForGame(g.id);
     loadAttendanceForGame(g.id);
@@ -446,7 +452,12 @@ async function saveGame() {
       location: gameDraft.location,
       status: gameDraft.status,
       video_url: gameDraft.video_url || "",
+
+      // ✅ geo
+      geo_lat: gameDraft.geo_lat === "" ? null : gameDraft.geo_lat ?? null,
+      geo_lon: gameDraft.geo_lon === "" ? null : gameDraft.geo_lon ?? null,
     });
+
 
     await load({ silent: true });
     await onChanged?.({ label: "✅ Игра сохранена — обновляю приложение…", gameId: gameDraft.id });
@@ -1019,6 +1030,69 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         onChange={(e) => setLocation(e.target.value)}
         placeholder="Например: Ледовая арена"
       />
+      <label>Гео-точка (для навигатора)</label>
+
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            className="input"
+            placeholder="lat (55.751244)"
+            value={gameDraft.geo_lat ?? ""}
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              setGameDraft((d) => ({ ...d, geo_lat: v === "" ? null : v }));
+            }}
+          />
+          <input
+            className="input"
+            placeholder="lon (37.618423)"
+            value={gameDraft.geo_lon ?? ""}
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              setGameDraft((d) => ({ ...d, geo_lon: v === "" ? null : v }));
+            }}
+          />
+        </div>
+
+        <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+          <button
+            className="btn secondary"
+            onClick={() => {
+              const tg = window.Telegram?.WebApp;
+              tg?.HapticFeedback?.impactOccurred?.("light");
+
+              if (!navigator.geolocation) {
+                alert("Геолокация недоступна на этом устройстве");
+                return;
+              }
+
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  const { latitude, longitude } = pos.coords;
+                  setGameDraft((d) => ({ ...d, geo_lat: latitude, geo_lon: longitude }));
+                },
+                (err) => {
+                  console.log("geo error", err);
+                  alert("Не удалось получить геолокацию (проверь доступ)");
+                },
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+              );
+            }}
+          >
+            📡 Взять мою геолокацию
+          </button>
+
+          <button
+            className="btn secondary"
+            onClick={() => setGameDraft((d) => ({ ...d, geo_lat: null, geo_lon: null }))}
+          >
+            ✖️ Сбросить точку
+          </button>
+        </div>
+
+        <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
+          Обычно координаты вводят именно арены (а не твоей). Кнопка “моя гео” — просто быстрый способ.
+        </div>
+
 
       <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
         <button className="btn" onClick={createOne}>
