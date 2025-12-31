@@ -1677,3 +1677,71 @@ html[data-theme="light"] .btn.outline.active{
   border-radius: 12px;
   background: rgba(0,0,0,0.08);
 }
+
+/* Контейнер выбора гео внутри Sheet/модалки */
+.geoPickerWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  /* ВАЖНО: чтобы все влезало в экран миниаппа */
+  max-height: calc(100dvh - 160px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+
+  /* запас под липкую кнопку снизу */
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+/* Список подсказок адреса — не растягиваем на весь экран */
+.geoSuggest {
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 12px;
+}
+
+/* Нижняя панель с названием точки + кнопкой */
+.geoFooter {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+
+  background: rgba(15, 15, 15, .85);
+  backdrop-filter: blur(10px);
+
+  border-top: 1px solid rgba(255,255,255,.10);
+  padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+}
+/* Map modal layout */
+.mapPickModal__card {
+  width: min(920px, 100%);
+  max-height: 90dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mapPickModal__body {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+}
+
+.mapPickModal__suggest {
+  max-height: 160px;
+  overflow: auto;
+}
+
+.mapPickModal__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+
+  border-top: 1px solid rgba(255,255,255,.10);
+  background: rgba(12,12,12,.75);
+  backdrop-filter: blur(10px);
+
+  padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+}

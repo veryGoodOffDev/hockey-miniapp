@@ -1130,7 +1130,25 @@ async function handleDonateJoke() {
   }
 }
 
+function openYandexRoute(lat, lon) {
+  const tg = window.Telegram?.WebApp;
 
+  const la = Number(lat);
+  const lo = Number(lon);
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return;
+
+  // Вариант 1: сразу открыть режим маршрута (часто старт = "мое местоположение")
+  const urlRoute = `https://yandex.ru/maps/?rtext=~${la},${lo}&rtt=auto`;
+
+  // Вариант 2 (fallback): просто точка на карте
+  const urlPin = `https://yandex.ru/maps/?pt=${lo},${la}&z=16&l=map`;
+
+  try {
+    tg?.openLink ? tg.openLink(urlRoute) : window.open(urlRoute, "_blank");
+  } catch (e) {
+    tg?.openLink ? tg.openLink(urlPin) : window.open(urlPin, "_blank");
+  }
+}
 
 
 
@@ -1630,28 +1648,7 @@ async function handleDonateJoke() {
                         {game.geo_lat != null && game.geo_lon != null ? (
                           <button
                             className="btn secondary"
-                            onClick={() => {
-                              const tg = window.Telegram?.WebApp;
-
-                              const lat = Number(game.geo_lat);
-                              const lon = Number(game.geo_lon);
-
-                              // пробуем открыть Яндекс Навигатор (deep link)
-                              const appUrl = `yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lon}`;
-
-                              // fallback: Яндекс Карты (веб)
-                              const webUrl = `https://yandex.ru/maps/?pt=${lon},${lat}&z=16&l=map`;
-
-                              // 1) откроем app deep link
-                              if (tg?.openLink) tg.openLink(appUrl);
-                              else window.location.href = appUrl;
-
-                              // 2) fallback через 700мс
-                              setTimeout(() => {
-                                if (tg?.openLink) tg.openLink(webUrl);
-                                else window.open(webUrl, "_blank");
-                              }, 700);
-                            }}
+                            onClick={() => openYandexRoute(game.geo_lat, game.geo_lon)}
                             title="Построить маршрут в Яндекс"
                           >
                             🧭 Маршрут

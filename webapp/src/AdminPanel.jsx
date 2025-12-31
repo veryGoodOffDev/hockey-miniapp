@@ -103,30 +103,34 @@ function Sheet({ title, onClose, children }) {
 }
 
 function MapPickModal({ open, initial, onClose, onPick }) {
-  const [pos, setPos] =  useState(() => {
+  const [pos, setPos] = useState(() => {
     if (initial?.lat != null && initial?.lon != null) return { lat: initial.lat, lon: initial.lon };
-    // дефолт: центр (Москва) — поменяй если хочешь
-    return { lat: 55.751244, lon: 37.618423 };
+    return { lat: 55.751244, lon: 37.618423 }; // Москва
   });
 
-  const [picked, setPicked] =  useState(() => ({
+  const [picked, setPicked] = useState(() => ({
     lat: initial?.lat ?? null,
     lon: initial?.lon ?? null,
     address: "",
   }));
 
-  const [q, setQ] =  useState("");
-  const [list, setList] =  useState([]);
-  const [busy, setBusy] =  useState(false);
-  const [addr, setAddr] =  useState("");
+  const [q, setQ] = useState("");
+  const [list, setList] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [addr, setAddr] = useState("");
 
-   useEffect(() => {
+  useEffect(() => {
     if (!open) return;
-    setPicked({
-      lat: initial?.lat ?? null,
-      lon: initial?.lon ?? null,
-      address: "",
+
+    const lat = initial?.lat ?? null;
+    const lon = initial?.lon ?? null;
+
+    setPos(() => {
+      if (lat != null && lon != null) return { lat, lon };
+      return { lat: 55.751244, lon: 37.618423 };
     });
+
+    setPicked({ lat, lon, address: "" });
     setAddr("");
     setQ("");
     setList([]);
@@ -135,9 +139,7 @@ function MapPickModal({ open, initial, onClose, onPick }) {
   async function reverseGeocode(lat, lon) {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
-      const r = await fetch(url, {
-        headers: { "Accept": "application/json" },
-      });
+      const r = await fetch(url, { headers: { Accept: "application/json" } });
       const j = await r.json();
       const text = j?.display_name || "";
       setAddr(text);
@@ -153,7 +155,7 @@ function MapPickModal({ open, initial, onClose, onPick }) {
     setBusy(true);
     try {
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(s)}&limit=6`;
-      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      const r = await fetch(url, { headers: { Accept: "application/json" } });
       const j = await r.json();
       setList(Array.isArray(j) ? j : []);
     } finally {
@@ -161,19 +163,29 @@ function MapPickModal({ open, initial, onClose, onPick }) {
     }
   }
 
+  function Recenter({ lat, lon }) {
+    const map = useMap();
+    useEffect(() => {
+      if (lat == null || lon == null) return;
+      map.setView([lat, lon], Math.max(map.getZoom(), 15), { animate: true });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lat, lon]);
+    return null;
+  }
+
   function ClickToPick() {
     useMapEvents({
       click: async (e) => {
         const lat = Number(e.latlng.lat);
         const lon = Number(e.latlng.lng);
+
         setPicked({ lat, lon, address: "" });
         const a = await reverseGeocode(lat, lon);
         setPicked({ lat, lon, address: a });
       },
     });
-    return picked.lat != null && picked.lon != null ? (
-      <Marker position={[picked.lat, picked.lon]} />
-    ) : null;
+
+    return picked.lat != null && picked.lon != null ? <Marker position={[picked.lat, picked.lon]} /> : null;
   }
 
   if (!open) return null;
@@ -191,100 +203,123 @@ function MapPickModal({ open, initial, onClose, onPick }) {
       }}
       onClick={onClose}
     >
-      <div
-        className="card"
-        style={{
-          width: "min(920px, 100%)",
-          maxHeight: "90vh",
-          overflow: "hidden",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className={"card mapPickModal__card"} onClick={(e) => e.stopPropagation()}>
+        {/* HEADER */}
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <h3 style={{ margin: 0 }}>📍 Выберите точку на карте</h3>
           <button className="btn secondary" onClick={onClose}>✖</button>
         </div>
 
-        <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          <input
-            className="input"
-            style={{ flex: 1, minWidth: 220 }}
-            placeholder="Поиск адреса/арены…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") doSearch();
+        {/* BODY (SCROLL) */}
+        <div className="mapPickModal__body">
+          <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <input
+              className="input"
+              style={{ flex: 1, minWidth: 220 }}
+              placeholder="Поиск адреса/арены…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") doSearch();
+              }}
+            />
+            <button className="btn secondary" disabled={busy} onClick={doSearch}>
+              {busy ? "..." : "Найти"}
+            </button>
+          </div>
+
+          {!!list.length && (
+            <div className="card mapPickModal__suggest" style={{ marginTop: 10 }}>
+              {list.map((x) => (
+                <div
+                  key={x.place_id}
+                  className="row"
+                  style={{ justifyContent: "space-between", cursor: "pointer", padding: "8px 6px" }}
+                  onClick={async () => {
+                    const lat = Number(x.lat);
+                    const lon = Number(x.lon);
+
+                    setPos({ lat, lon });
+                    setPicked({ lat, lon, address: x.display_name || "" });
+                    setAddr(x.display_name || "");
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{x.display_name}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: 10,
+              height: "clamp(260px, 44dvh, 520px)",
+              borderRadius: 14,
+              overflow: "hidden",
             }}
-          />
-          <button className="btn secondary" disabled={busy} onClick={doSearch}>
-            {busy ? "..." : "Найти"}
-          </button>
+          >
+            <MapContainer
+              center={[pos.lat, pos.lon]}
+              zoom={15}
+              style={{ height: "100%", width: "100%" }}
+              scrollWheelZoom={true}
+              attributionControl={false}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <Recenter lat={pos.lat} lon={pos.lon} />
+              <ClickToPick />
+            </MapContainer>
+          </div>
+
+          {/* легальная атрибуция (прячем дефолтный блок, показываем текстом ниже) */}
+          <div className="small" style={{ opacity: 0.7, marginTop: 6 }}>
+            © OpenStreetMap contributors · Leaflet
+          </div>
         </div>
 
-        {!!list.length && (
-          <div className="card" style={{ marginTop: 10, maxHeight: 160, overflow: "auto" }}>
-            {list.map((x) => (
-              <div
-                key={x.place_id}
-                className="row"
-                style={{ justifyContent: "space-between", cursor: "pointer", padding: "8px 6px" }}
-                onClick={async () => {
-                  const lat = Number(x.lat);
-                  const lon = Number(x.lon);
-                  setPos({ lat, lon });
-                  setPicked({ lat, lon, address: x.display_name || "" });
-                  setAddr(x.display_name || "");
+        {/* FOOTER (STICKY) */}
+        <div className="mapPickModal__footer">
+          <div
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <div className="small" style={{ opacity: 0.9 }}>
+              {picked.lat != null && picked.lon != null ? (
+                <>
+                  Координаты: <b>{picked.lat.toFixed(6)}, {picked.lon.toFixed(6)}</b>
+                  {addr ? <div style={{ marginTop: 6 }}>Адрес: {addr}</div> : null}
+                </>
+              ) : (
+                "Кликни по карте, чтобы поставить метку"
+              )}
+            </div>
+
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn secondary" onClick={onClose}>Отмена</button>
+
+              <button
+                className="btn"
+                disabled={picked.lat == null || picked.lon == null}
+                onClick={() => {
+                  onPick?.({ lat: picked.lat, lon: picked.lon, address: addr || picked.address || "" });
+                  onClose?.();
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{x.display_name}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ marginTop: 10, height: "52vh", minHeight: 320, borderRadius: 14, overflow: "hidden" }}>
-          <MapContainer
-            center={[pos.lat, pos.lon]}
-            zoom={15}
-            style={{ height: "100%", width: "100%" }}
-            scrollWheelZoom={true}
-          >
-            <TileLayer
-              attribution='&copy; OpenStreetMap'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <ClickToPick />
-          </MapContainer>
-        </div>
-
-        <div className="row" style={{ marginTop: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          <div className="small" style={{ opacity: 0.9 }}>
-            {picked.lat != null && picked.lon != null ? (
-              <>
-                Координаты: <b>{picked.lat.toFixed(6)}, {picked.lon.toFixed(6)}</b>
-                {addr ? <div style={{ marginTop: 6 }}>Адрес: {addr}</div> : null}
-              </>
-            ) : (
-              "Кликни по карте, чтобы поставить метку"
-            )}
-          </div>
-
-          <div className="row" style={{ gap: 8 }}>
-            <button className="btn secondary" onClick={onClose}>Отмена</button>
-
-            <button
-              className="btn"
-              disabled={picked.lat == null || picked.lon == null}
-              onClick={() => onPick?.({ lat: picked.lat, lon: picked.lon, address: addr || picked.address || "" })}
-            >
-              ✅ Выбрать
-            </button>
+                ✅ Выбрать
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
