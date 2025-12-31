@@ -622,23 +622,31 @@ async function createOne() {
   await runAdminOp("Создаю игру…", async () => {
     const starts_at = toIsoFromLocal(date, time);
 
-    const geo_lat = createGeo.lat.trim() ? Number(createGeo.lat) : null;
-    const geo_lon = createGeo.lon.trim() ? Number(createGeo.lon) : null;
+    const latStr = String(createGeo.lat ?? "").replace(",", ".").trim();
+    const lonStr = String(createGeo.lon ?? "").replace(",", ".").trim();
 
-    await apiPost("/api/games", {
-      starts_at,
-      location,
-      geo_lat,
-      geo_lon,
-    });
+    const geo_lat = latStr === "" ? null : Number(latStr);
+    const geo_lon = lonStr === "" ? null : Number(lonStr);
 
+    if ((geo_lat !== null && !Number.isFinite(geo_lat)) || (geo_lon !== null && !Number.isFinite(geo_lon))) {
+      alert("❌ Геоточка: lat/lon должны быть числами (или пусто)");
+      return;
+    }
+    if ((geo_lat === null) !== (geo_lon === null)) {
+      alert("❌ Геоточка: нужно заполнить и lat, и lon (или оставить оба пустыми)");
+      return;
+    }
+
+    const r = await apiPost("/api/games", { starts_at, location, geo_lat, geo_lon });
+
+    console.log("CREATED GAME:", r?.game); // 👈 проверка
     await load({ silent: true });
-    await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
 
-    // можно очистить после создания
+    await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
     setCreateGeo({ lat: "", lon: "", address: "" });
   }, { successText: "✅ Игра создана" });
 }
+
 
 
   
