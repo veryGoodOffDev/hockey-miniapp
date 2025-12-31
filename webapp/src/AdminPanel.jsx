@@ -370,10 +370,10 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [tokenUrl, setTokenUrl] = useState("");
   const [tokenValue, setTokenValue] = useState(""); // сам токен, чтобы можно было отозвать
   const [tokenForId, setTokenForId] = useState(null); // tg_id игрока, для которого показана ссылка
-  const [createGeoLat, setCreateGeoLat] = useState("");
-  const [createGeoLon, setCreateGeoLon] = useState("");
   const [geoPickOpen, setGeoPickOpen] = useState(false);
   const [createGeo, setCreateGeo] = useState({ lat: "", lon: "", address: "" });
+  const [geoPickTarget, setGeoPickTarget] = useState("create"); // 'create' | 'edit'
+
 
 
 
@@ -695,8 +695,9 @@ function openGameSheet(g) {
     video_url: g.video_url || "",
 
   // ✅ ДОБАВЬ ЭТО
-  geo_lat: g.geo_lat ?? null,
-  geo_lon: g.geo_lon ?? null,
+geo_lat: g.geo_lat == null ? "" : String(g.geo_lat),
+geo_lon: g.geo_lon == null ? "" : String(g.geo_lon),
+
   geo_address: g.geo_address || "",
 
   raw: g,
@@ -1344,7 +1345,13 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 </div>
 
 <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-  <button className="btn secondary" onClick={() => setGeoPickOpen(true)}>
+  <button
+  className="btn secondary"
+  onClick={() => {
+    setGeoPickTarget("create");
+    setGeoPickOpen(true);
+  }}
+>
     🗺️ Выбрать на карте
   </button>
 
@@ -1549,7 +1556,10 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
             <button
               className="btn secondary"
-              onClick={() => setGeoPickOpen(true)}
+              onClick={() => {
+                setGeoPickTarget("edit");
+                setGeoPickOpen(true);
+              }}
               disabled={!gameDraft}
             >
               🗺️ Выбрать на карте
@@ -2005,20 +2015,32 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       )}
         <MapPickModal
           open={geoPickOpen}
-          initial={{
-            lat: createGeo.lat ? Number(createGeo.lat) : null,
-            lon: createGeo.lon ? Number(createGeo.lon) : null,
-          }}
+          initial={
+            geoPickTarget === "edit"
+              ? {
+                  lat: gameDraft?.geo_lat ? Number(String(gameDraft.geo_lat).replace(",", ".")) : null,
+                  lon: gameDraft?.geo_lon ? Number(String(gameDraft.geo_lon).replace(",", ".")) : null,
+                }
+              : {
+                  lat: createGeo.lat ? Number(String(createGeo.lat).replace(",", ".")) : null,
+                  lon: createGeo.lon ? Number(String(createGeo.lon).replace(",", ".")) : null,
+                }
+          }
           onClose={() => setGeoPickOpen(false)}
           onPick={(v) => {
-            setCreateGeo({
-              lat: String(v.lat ?? ""),
-              lon: String(v.lon ?? ""),
-              address: v.address || "",
-            });
+            const lat = v?.lat == null ? "" : String(v.lat);
+            const lon = v?.lon == null ? "" : String(v.lon);
+
+            if (geoPickTarget === "edit") {
+              setGameDraft((d) => ({ ...d, geo_lat: lat, geo_lon: lon }));
+            } else {
+              setCreateGeo({ lat, lon, address: v?.address || "" });
+            }
+
             setGeoPickOpen(false);
           }}
         />
+
 
 
     </div>
