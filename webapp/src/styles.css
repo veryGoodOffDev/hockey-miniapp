@@ -1887,3 +1887,16 @@ html[data-theme="light"] .btn.outline.active{
   .hkOrbit{ animation: none; }
   .hkDots2 span{ animation: none; }
 }
+
+.yandexRouteBtn{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yandexNavIcon{
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
