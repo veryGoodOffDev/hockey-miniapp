@@ -1608,22 +1608,65 @@ app.post("/api/games", async (req, res) => {
   if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
-  const { starts_at, location, video_url } = req.body || {};
+  const b = req.body || {};
+  const { starts_at, location, video_url } = b;
+
   const d = new Date(starts_at);
   if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
 
   const vu = cleanUrl(video_url);
   if (video_url && !vu) return res.status(400).json({ ok: false, reason: "bad_video_url" });
 
+  // ===== GEO =====
+  const hasLat = Object.prototype.hasOwnProperty.call(b, "geo_lat");
+  const hasLon = Object.prototype.hasOwnProperty.call(b, "geo_lon");
+
+  let geo_lat = null;
+  let geo_lon = null;
+
+  if (hasLat || hasLon) {
+    if (!(hasLat && hasLon)) {
+      return res.status(400).json({ ok: false, reason: "geo_pair_required" }); // пришло только одно поле
+    }
+
+    const latRaw = b.geo_lat;
+    const lonRaw = b.geo_lon;
+
+    geo_lat = latRaw === null || latRaw === "" ? null : Number(latRaw);
+    geo_lon = lonRaw === null || lonRaw === "" ? null : Number(lonRaw);
+
+    if (geo_lat !== null && !Number.isFinite(geo_lat)) {
+      return res.status(400).json({ ok: false, reason: "bad_geo_lat" });
+    }
+    if (geo_lon !== null && !Number.isFinite(geo_lon)) {
+      return res.status(400).json({ ok: false, reason: "bad_geo_lon" });
+    }
+
+    // необязательно, но полезно:
+    if (geo_lat !== null && (geo_lat < -90 || geo_lat > 90)) {
+      return res.status(400).json({ ok: false, reason: "geo_lat_out_of_range" });
+    }
+    if (geo_lon !== null && (geo_lon < -180 || geo_lon > 180)) {
+      return res.status(400).json({ ok: false, reason: "geo_lon_out_of_range" });
+    }
+  }
+
   const ir = await q(
-    `INSERT INTO games(starts_at, location, status, video_url)
-     VALUES($1,$2,'scheduled',$3)
+    `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon)
+     VALUES($1,$2,'scheduled',$3,$4,$5)
      RETURNING *`,
-    [d.toISOString(), String(location || "").trim(), vu]
+    [
+      d.toISOString(),
+      String(location || "").trim(),
+      vu,
+      geo_lat,
+      geo_lon,
+    ]
   );
 
   res.json({ ok: true, game: ir.rows[0] });
 });
+
 
 app.patch("/api/games/:id", async (req, res) => {
   const user = requireWebAppAuth(req, res);

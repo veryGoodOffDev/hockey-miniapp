@@ -370,7 +370,10 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [tokenUrl, setTokenUrl] = useState("");
   const [tokenValue, setTokenValue] = useState(""); // сам токен, чтобы можно было отозвать
   const [tokenForId, setTokenForId] = useState(null); // tg_id игрока, для которого показана ссылка
+  const [createGeoLat, setCreateGeoLat] = useState("");
+  const [createGeoLon, setCreateGeoLon] = useState("");
   const [geoPickOpen, setGeoPickOpen] = useState(false);
+
 
 
   const [op, setOp] = useState({ busy: false, text: "", tone: "info" });
@@ -612,32 +615,56 @@ async function createRsvpLink(tg_id) {
     });
   }
 
-  async function createOne() {
-    if (!date || !time) return;
+async function createOne() {
+  if (!date || !time) return;
+
+  await runAdminOp("Создаю игру…", async () => {
+    const starts_at = toIsoFromLocal(date, time);
+
+    const geo_lat = createGeoLat.trim() ? Number(createGeoLat) : null;
+    const geo_lon = createGeoLon.trim() ? Number(createGeoLon) : null;
+
+    await apiPost("/api/games", {
+      starts_at,
+      location,
+      geo_lat,
+      geo_lon,
+    });
+
+    await load({ silent: true });
+    await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
+
+    // по желанию: очищаем гео после создания
+    // setCreateGeoLat("");
+    // setCreateGeoLon("");
+  }, { successText: "✅ Игра создана" });
+}
+
   
-    await runAdminOp("Создаю игру…", async () => {
-      const starts_at = toIsoFromLocal(date, time);
-      await apiPost("/api/games", { starts_at, location });
-  
-      await load({ silent: true });
-      await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
-    }, { successText: "✅ Игра создана" });
-  }
-  
-  async function createSeries() {
-    if (!date || !time || weeks < 1) return;
-  
-    await runAdminOp(`Создаю расписание (${weeks} нед.)…`, async () => {
-      for (let i = 0; i < weeks; i++) {
-        const base = new Date(`${date}T${time}`);
-        base.setDate(base.getDate() + i * 7);
-        await apiPost("/api/games", { starts_at: base.toISOString(), location });
-      }
-  
-      await load({ silent: true });
-      await onChanged?.({ label: "✅ Расписание создано — обновляю приложение…", refreshPlayers: false });
-    }, { successText: "✅ Расписание создано" });
-  }
+async function createSeries() {
+  if (!date || !time || weeks < 1) return;
+
+  await runAdminOp(`Создаю расписание (${weeks} нед.)…`, async () => {
+    const geo_lat = createGeoLat.trim() ? Number(createGeoLat) : null;
+    const geo_lon = createGeoLon.trim() ? Number(createGeoLon) : null;
+
+    for (let i = 0; i < weeks; i++) {
+      const base = new Date(`${date}T${time}`);
+      base.setDate(base.getDate() + i * 7);
+
+      await apiPost("/api/games", {
+        starts_at: base.toISOString(),
+        location,
+        geo_lat,
+        geo_lon,
+      });
+    }
+
+    await load({ silent: true });
+    await onChanged?.({ label: "✅ Расписание создано — обновляю приложение…", refreshPlayers: false });
+  }, { successText: "✅ Расписание создано" });
+}
+
 
 
 function openGameSheet(g) {
@@ -663,11 +690,12 @@ function openGameSheet(g) {
     time: dt.time,
     video_url: g.video_url || "",
 
-    // ✅ geo: храним в драфте строкой, чтобы инпуты были controlled
-    geo_lat: g.geo_lat == null ? "" : String(g.geo_lat),
-    geo_lon: g.geo_lon == null ? "" : String(g.geo_lon),
+  // ✅ ДОБАВЬ ЭТО
+  geo_lat: g.geo_lat ?? null,
+  geo_lon: g.geo_lon ?? null,
+  geo_address: g.geo_address || "",
 
-    raw: g,
+  raw: g,
   });
 
   loadGuestsForGame(g.id);
@@ -1294,26 +1322,22 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       />
       <label>Геоточка (необязательно)</label>
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-        <input
-          className="input"
-          style={{ flex: 1, minWidth: 140 }}
-          placeholder="lat (например 55.751244)"
-          value={gameDraft?.geo_lat ?? ""}
-          onChange={(e) => {
-            const v = e.target.value.replace(",", "."); // удобно для RU ввода
-            setGameDraft((d) => ({ ...d, geo_lat: v }));
-          }}
-        />
-        <input
-          className="input"
-          style={{ flex: 1, minWidth: 140 }}
-          placeholder="lon (например 37.618423)"
-          value={gameDraft?.geo_lon ?? ""}
-          onChange={(e) => {
-            const v = e.target.value.replace(",", ".");
-            setGameDraft((d) => ({ ...d, geo_lon: v }));
-          }}
-        />
+      <input
+        className="input"
+        style={{ flex: 1, minWidth: 140 }}
+        placeholder="lat (например 55.751244)"
+        value={createGeoLat}
+        onChange={(e) => setCreateGeoLat(e.target.value.replace(",", "."))}
+      />
+
+      <input
+        className="input"
+        style={{ flex: 1, minWidth: 140 }}
+        placeholder="lat (например 55.751244)"
+        value={createGeoLat}
+        onChange={(e) => setCreateGeoLat(e.target.value.replace(",", "."))}
+      />
+
       </div>
 
       <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
@@ -1325,15 +1349,17 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       <button
         className="btn secondary"
         onClick={() => setGeoPickOpen(true)}
-        disabled={!gameDraft}
       >
         🗺️ Выбрать на карте
       </button>
 
       <button
         className="btn secondary"
-        onClick={() => setGameDraft((d) => ({ ...d, geo_lat: "", geo_lon: "" }))}
-        disabled={!gameDraft}
+        onClick={() => {
+          setCreateGeoLat("");
+          setCreateGeoLon("");
+        }}
+        disabled={!createGeoLat && !createGeoLon}
       >
         🗑 Убрать точку
       </button>
@@ -1988,22 +2014,19 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       <MapPickModal
         open={geoPickOpen}
         initial={{
-          lat: gameDraft?.geo_lat ? Number(gameDraft.geo_lat) : null,
-          lon: gameDraft?.geo_lon ? Number(gameDraft.geo_lon) : null,
+          lat: createGeoLat ? Number(createGeoLat) : null,
+          lon: createGeoLon ? Number(createGeoLon) : null,
         }}
         onClose={() => setGeoPickOpen(false)}
         onPick={({ lat, lon, address }) => {
+          setCreateGeoLat(String(lat));
+          setCreateGeoLon(String(lon));
+          // если хочешь — можешь сразу подставить адрес в location:
+          // if (address && !location) setLocation(address);
           setGeoPickOpen(false);
-
-          setGameDraft((d) => ({
-            ...d,
-            geo_lat: String(lat),
-            geo_lon: String(lon),
-            // опционально: если поле "Арена" пустое — подставим адрес
-            location: (d.location || "").trim() ? d.location : (address || ""),
-          }));
         }}
       />
+
     </div>
   );
 }
