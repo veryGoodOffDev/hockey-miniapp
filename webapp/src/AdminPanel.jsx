@@ -1,4 +1,4 @@
-import {React, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -103,24 +103,24 @@ function Sheet({ title, onClose, children }) {
 }
 
 function MapPickModal({ open, initial, onClose, onPick }) {
-  const [pos, setPos] = React.useState(() => {
+  const [pos, setPos] =  useState(() => {
     if (initial?.lat != null && initial?.lon != null) return { lat: initial.lat, lon: initial.lon };
     // дефолт: центр (Москва) — поменяй если хочешь
     return { lat: 55.751244, lon: 37.618423 };
   });
 
-  const [picked, setPicked] = React.useState(() => ({
+  const [picked, setPicked] =  useState(() => ({
     lat: initial?.lat ?? null,
     lon: initial?.lon ?? null,
     address: "",
   }));
 
-  const [q, setQ] = React.useState("");
-  const [list, setList] = React.useState([]);
-  const [busy, setBusy] = React.useState(false);
-  const [addr, setAddr] = React.useState("");
+  const [q, setQ] =  useState("");
+  const [list, setList] =  useState([]);
+  const [busy, setBusy] =  useState(false);
+  const [addr, setAddr] =  useState("");
 
-  React.useEffect(() => {
+   useEffect(() => {
     if (!open) return;
     setPicked({
       lat: initial?.lat ?? null,
