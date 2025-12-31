@@ -48,6 +48,7 @@ r.get("/api/me", async (req, res) => {
        ORDER BY starts_at ASC`,
       [days]
     );
+    console.log('я все перезатираю аллллоооооо')
     res.json({ ok: true, games: gr.rows });
   });
 
