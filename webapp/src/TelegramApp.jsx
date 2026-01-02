@@ -226,26 +226,30 @@ async function refreshGameOnly(gameId = selectedGameId) {
  * - refreshPlayers: обновить справочник игроков (вкладка players)
  * - refreshPast: если показываем прошедшие - перезагрузить pastPage
  */
-async function syncAfterMutation(opts = {}) {
-  const {
-    gameId = selectedGameId,
-    refreshGames = true,
-    refreshGame = true,
-    refreshPlayers = false,
-    refreshPast = showPast,
-  } = opts;
-
+async function syncAfterMutation(sync = {}) {
   const tasks = [];
-  if (refreshGames) tasks.push(refreshUpcomingGamesOnly());
-  if (refreshGame && gameId) tasks.push(refreshGameOnly(gameId));
-  if (refreshPlayers) tasks.push(refreshPlayersDirOnly());
-  await Promise.all(tasks);
 
-  if (refreshPast) {
-    setPastOffset(0);
-    await loadPast(true);
+  if (sync.refreshMe) tasks.push(refreshMeOnly());
+  if (sync.refreshPlayers) tasks.push(refreshPlayersDirOnly());
+  if (sync.refreshGames) tasks.push(refreshUpcomingGamesOnly());
+
+  if (sync.refreshGame) {
+    const gid = sync.gameId ?? selectedGameId;
+    if (gid) tasks.push(refreshGameOnly(gid));
   }
+
+  if (!tasks.length) return;
+
+  const t0 = performance.now();
+  const results = await Promise.allSettled(tasks);
+  console.log("syncAfterMutation ms:", Math.round(performance.now() - t0));
+
+  // опционально: лог ошибок
+  results.forEach((r) => {
+    if (r.status === "rejected") console.warn("sync task failed:", r.reason);
+  });
 }
+
 
 
   function normalizeTeams(t) {
@@ -307,95 +311,123 @@ async function loadAttendance(opts = {}) {
 }
 
 
-  async function refreshAll(forceGameId) {
-    try {
-      setGamesError(null);
+async function refreshAll(forceGameId) {
+  try {
+    setGamesError(null);
 
-      const m = await apiGet("/api/me");
+    const m = await apiGet("/api/me");
 
-      // доступ закрыт
-      if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
-        setMe(null);
-        setIsAdmin(false);
-        setGames([]);
-        setSelectedGameId(null);
-        setGame(null);
-        setRsvps([]);
-        setTeams(null);
-        setAccessReason(m.reason);
-        return;
-      }
-
-      // invalid init data / no user
-      if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
-        setMe(null);
-        setIsAdmin(false);
-        setGames([]);
-        setSelectedGameId(null);
-        setGame(null);
-        setRsvps([]);
-        setTeams(null);
-        setAccessReason(null);
-        return;
-      }
-
-      // профиль
-      if (m?.player) {
-        setMe(m.player);
-      } else if (tgUser?.id) {
-        setMe({
-          tg_id: tgUser.id,
-          first_name: tgUser.first_name || "",
-          username: tgUser.username || "",
-          position: "F",
-          skill: 5,
-          skating: 5,
-          iq: 5,
-          stamina: 5,
-          passing: 5,
-          shooting: 5,
-          notes: "",
-        });
-      }
-
-      setIsAdmin(!!m?.is_admin);
-      setAccessReason(null);
-
-      // игры (предстоящие)
-      const gl = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
-      setGames(gl.games || []);
-      setTalismanHolder(gl.talisman_holder || null);
-
-      if (gl?.ok === false) {
-        setGamesError(gl);
-        setGames([]);
-        setGame(null);
-        setRsvps([]);
-        setTeams(null);
-        return;
-      }
-
-      const list = gl.games || [];
-      setGames(list);
-
-      const safeNext =
-        list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
-        list.find((g) => !isPastGame(g))?.id ??
-        list[0]?.id ??
-        null;
-
-      const nextId = forceGameId ?? selectedGameId ?? safeNext;
-      if (nextId) setSelectedGameId(nextId);
-
-      const gg = await apiGet(nextId ? `/api/game?game_id=${nextId}` : "/api/game");
-      setGame(gg.game);
-      setRsvps(gg.rsvps || []);
-      setTeams(normalizeTeams(gg.teams));
-    } catch (e) {
-      console.error("refreshAll failed", e);
-      setGamesError({ ok: false, error: "network_or_unknown" });
+    // доступ закрыт
+    if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
+      setMe(null);
+      setIsAdmin(false);
+      setGames([]);
+      setSelectedGameId(null);
+      setGame(null);
+      setRsvps([]);
+      setTeams(null);
+      setAccessReason(m.reason);
+      return;
     }
+
+    // invalid init data / no user
+    if (m?.ok === false && (m?.error === "invalid_init_data" || m?.error === "no_user")) {
+      setMe(null);
+      setIsAdmin(false);
+      setGames([]);
+      setSelectedGameId(null);
+      setGame(null);
+      setRsvps([]);
+      setTeams(null);
+      setAccessReason(null);
+      return;
+    }
+
+    // профиль
+    if (m?.player) {
+      setMe(m.player);
+    } else if (tgUser?.id) {
+      setMe({
+        tg_id: tgUser.id,
+        first_name: tgUser.first_name || "",
+        username: tgUser.username || "",
+        position: "F",
+        skill: 5,
+        skating: 5,
+        iq: 5,
+        stamina: 5,
+        passing: 5,
+        shooting: 5,
+        notes: "",
+      });
+    }
+
+    setIsAdmin(!!m?.is_admin);
+    setAccessReason(null);
+
+    const gamesUrl = "/api/games?scope=upcoming&limit=365&offset=0";
+
+    // если уже знаем игру (почти всегда да после первой загрузки) — можно грузить деталку параллельно
+    const optimisticId = forceGameId ?? selectedGameId ?? null;
+    const gameUrl = optimisticId ? `/api/game?game_id=${encodeURIComponent(optimisticId)}` : null;
+
+    let gl;
+    let ggOptimistic = null;
+
+    if (gameUrl) {
+      // ✅ параллельные запросы
+      const [glRes, ggRes] = await Promise.allSettled([apiGet(gamesUrl), apiGet(gameUrl)]);
+
+      if (glRes.status === "rejected") throw glRes.reason;
+      gl = glRes.value;
+
+      if (ggRes.status === "fulfilled") ggOptimistic = ggRes.value;
+      // если gg упал — просто догрузим позже, не валим весь refreshAll
+    } else {
+      gl = await apiGet(gamesUrl);
+    }
+
+    if (gl?.ok === false) {
+      setGamesError(gl);
+      setGames([]);
+      setTalismanHolder(null);
+      setGame(null);
+      setRsvps([]);
+      setTeams(null);
+      return;
+    }
+
+    const list = gl.games || [];
+    setGames(list);
+    setTalismanHolder(gl.talisman_holder || null);
+
+    const safeNext =
+      list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
+      list.find((g) => !isPastGame(g))?.id ??
+      list[0]?.id ??
+      null;
+
+    const nextId = forceGameId ?? selectedGameId ?? safeNext;
+    if (nextId) setSelectedGameId(nextId);
+
+    // если параллельно грузили не ту игру — догружаем нужную
+    let gg;
+    if (ggOptimistic && String(nextId) === String(optimisticId)) {
+      gg = ggOptimistic;
+    } else {
+      gg = await apiGet(nextId ? `/api/game?game_id=${encodeURIComponent(nextId)}` : "/api/game");
+    }
+
+    setGame(gg.game);
+    setRsvps(gg.rsvps || []);
+    setTeams(normalizeTeams(gg.teams));
+  } catch (e) {
+    console.error("refreshAll failed", e);
+    setGamesError({ ok: false, error: "network_or_unknown" });
   }
+}
+
+
 
   async function loadGame(gameId) {
   const gid = gameId ?? selectedGameId;
@@ -1509,19 +1541,27 @@ function openYandexRoute(lat, lon) {
                             backgroundPosition: "center",
                             backgroundRepeat: "no-repeat",
                           }}
-                          onClick={() => {
-                            const id = g.id;
+                            onClick={() => {
+                              const id = g.id;
 
-                            setSelectedGameId(id);
-                            setGameView("detail");
+                              setSelectedGameId(id);
+                              setGameView("detail");
 
-                            setGame(null);
-                            setRsvps([]);
-                            setTeams(null);
+                              // Сброс "хвостов" прежней деталки (чтобы не мигало старым)
+                              setGame(null);
+                              setRsvps([]);
+                              setTeams(null);
 
-                            setDetailLoading(true);
-                            loadGame(id).finally(() => setDetailLoading(false));
-                          }}
+                              setDetailLoading(true);
+
+                              Promise.all([
+                                refreshGameOnly(id),          // детальная инфа
+                                // refreshUpcomingGamesOnly(), // опционально, если хочешь сразу обновить talisman/best-player в списке
+                              ])
+                                .catch(console.error)
+                                .finally(() => setDetailLoading(false));
+                            }}
+
                         >
                           {/* TOP BAR */}
                           <div className="gameCard__topbar">
