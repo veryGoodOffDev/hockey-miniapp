@@ -467,15 +467,21 @@ async function setSetting(key, value) {
 }
 
 async function getSetting(key, def = null) {
-  const r = await getSettingCached(key)
-    // поддержим оба формата: q() -> { rows: [...] } или q() -> [...]
-    if (!Array.isArray(r?.rows)) {
-  console.log("[getSetting] unexpected result shape:", r);
-}
-  const rows = Array.isArray(r) ? r : r?.rows;
+  const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
 
-  return rows?.[0]?.value ?? def;
+  // диагностика: r обязан быть объектом, r.rows — массив
+  if (!r || !Array.isArray(r.rows)) {
+    console.log("[getSetting] BAD RESULT", {
+      key,
+      type: typeof r,
+      r,
+    });
+    return def;
+  }
+
+  return r.rows[0]?.value ?? def;
 }
+
 
 function makeToken() {
   // 32 байта => длинный безопасный токен
@@ -942,35 +948,47 @@ async function getSettingCached(key) {
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== ME ====== */
+/** ====== ME ====== */
 app.get("/api/me", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
-  if (!(await requireGroupMember(req, res, user))) return;
 
-  const player = await ensurePlayer(user);
-  const admin = await isAdminId(user.id); // оставляем как у тебя (вдруг там логика не только player.is_admin)
+  // 1) сначала выясняем админа
+  const admin = await isAdminId(user.id);
+
+  // 2) членство проверяем только если НЕ админ
+  if (!admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  await ensurePlayer(user);
+
+  const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
+  const player = pr.rows?.[0] ?? null;
 
   res.json({ ok: true, player, is_admin: admin });
-
 });
 
 app.post("/api/me", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
-  if (!(await requireGroupMember(req, res, user))) return;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
 
   await ensurePlayer(user);
   const b = req.body || {};
 
-  const pr = await q(
+  await q(
     `UPDATE players SET
       display_name=$2,
       jersey_number=$3,
       position=$4, skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10, notes=$11,
       photo_url=$12,
       updated_at=NOW()
-     WHERE tg_id=$1
-     RETURNING *`,
+     WHERE tg_id=$1`,
     [
       user.id,
       (b.display_name || "").trim().slice(0, 40) || null,
@@ -987,9 +1005,10 @@ app.post("/api/me", async (req, res) => {
     ]
   );
 
-  res.json({ ok: true, player: pr.rows[0] });
-
+  const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
+  res.json({ ok: true, player: pr.rows?.[0] ?? null, is_admin: admin });
 });
+
 
       /** ====== FUN (profile jokes) ====== */
 app.get("/api/fun/status", async (req, res) => {
