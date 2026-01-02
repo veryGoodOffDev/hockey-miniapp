@@ -467,7 +467,7 @@ async function setSetting(key, value) {
 }
 
 async function getSetting(key, def = null) {
-  const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
+  const r = await getSettingCached(key)
   return r.rows[0]?.value ?? def;
 }
 
@@ -742,25 +742,26 @@ async function getTeamChatId(q) {
 
 
 async function ensurePlayer(user) {
-  const rootAdmin = envAdminSet().has(String(user.id));
-
-  // ✅ player_kind для tg-игрока фиксируем как tg (но не ломаем старые записи)
-  await q(
+  const r = await q(
     `INSERT INTO players(tg_id, first_name, last_name, username, is_admin, player_kind, is_guest)
-     VALUES($1,$2,$3,$4,$5,'tg', FALSE)
+     VALUES($1,$2,$3,$4, FALSE, 'tg', FALSE)
      ON CONFLICT(tg_id) DO UPDATE SET
-       first_name=EXCLUDED.first_name,
-       last_name=EXCLUDED.last_name,
-       username=EXCLUDED.username,
-       is_admin = players.is_admin OR EXCLUDED.is_admin,
-       player_kind = CASE
-         WHEN players.player_kind IS NULL OR BTRIM(players.player_kind) = '' THEN 'tg'
-         ELSE players.player_kind
-       END,
-       updated_at=NOW()`,
-    [user.id, user.first_name || "", user.last_name || "", user.username || "", rootAdmin]
+       first_name = EXCLUDED.first_name,
+       last_name  = EXCLUDED.last_name,
+       username   = EXCLUDED.username,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      user.id,
+      (user.first_name || "").slice(0, 80),
+      (user.last_name || "").slice(0, 80),
+      (user.username || "").slice(0, 80),
+    ]
   );
+
+  return r.rows[0];
 }
+
 
     function sqlPlayerName(alias = "p") {
       return `
@@ -912,6 +913,22 @@ async function upsertPinnedFunStats() {
   await setSetting(key, String(sent.message_id));
 }
 
+const settingsCache = new Map();
+const SETTINGS_TTL_MS = 60_000;
+
+async function getSettingCached(key) {
+  const now = Date.now();
+  const hit = settingsCache.get(key);
+  if (hit && now - hit.at < SETTINGS_TTL_MS) return hit.value;
+
+  const r = await q(`SELECT value FROM settings WHERE key=$1`, [key]);
+  const value = r.rows[0]?.value ?? null;
+
+  settingsCache.set(key, { value, at: now });
+  return value;
+}
+
+
 
 
 /** ===================== ROUTES ===================== */
@@ -924,13 +941,11 @@ app.get("/api/me", async (req, res) => {
   if (!user) return;
   if (!(await requireGroupMember(req, res, user))) return;
 
-  await ensurePlayer(user);
-
-  const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
-  const player = pr.rows[0];
-  const admin = await isAdminId(user.id);
+  const player = await ensurePlayer(user);
+  const admin = await isAdminId(user.id); // оставляем как у тебя (вдруг там логика не только player.is_admin)
 
   res.json({ ok: true, player, is_admin: admin });
+
 });
 
 app.post("/api/me", async (req, res) => {
@@ -941,14 +956,15 @@ app.post("/api/me", async (req, res) => {
   await ensurePlayer(user);
   const b = req.body || {};
 
-  await q(
+  const pr = await q(
     `UPDATE players SET
       display_name=$2,
       jersey_number=$3,
       position=$4, skill=$5, skating=$6, iq=$7, stamina=$8, passing=$9, shooting=$10, notes=$11,
       photo_url=$12,
       updated_at=NOW()
-     WHERE tg_id=$1`,
+     WHERE tg_id=$1
+     RETURNING *`,
     [
       user.id,
       (b.display_name || "").trim().slice(0, 40) || null,
@@ -965,8 +981,8 @@ app.post("/api/me", async (req, res) => {
     ]
   );
 
-  const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
   res.json({ ok: true, player: pr.rows[0] });
+
 });
 
       /** ====== FUN (profile jokes) ====== */
@@ -1216,22 +1232,23 @@ app.get("/api/games", async (req, res) => {
     ORDER BY p.starts_at ${order};
   `;
 
-  const r = await q(sql, [scope, from, to, search, limit, offset, user.id, daysInt]);
-
-  const holderR = await q(`
-  SELECT
-    g.id AS game_id,
-    g.starts_at,
-    g.best_player_tg_id AS tg_id,
-    ${sqlPlayerName("p")} AS name
-  FROM games g
-  LEFT JOIN players p ON p.tg_id = g.best_player_tg_id
-  WHERE g.status <> 'cancelled'
-    AND g.best_player_tg_id IS NOT NULL
-    AND g.starts_at < (NOW() - INTERVAL '3 hours')
-  ORDER BY g.starts_at DESC
-  LIMIT 1
-`);
+const [r, holderR] = await Promise.all([
+  q(sql, [scope, from, to, search, limit, offset, user.id, daysInt]),
+  q(`
+    SELECT
+      g.id AS game_id,
+      g.starts_at,
+      g.best_player_tg_id AS tg_id,
+      ${sqlPlayerName("p")} AS name
+    FROM games g
+    LEFT JOIN players p ON p.tg_id = g.best_player_tg_id
+    WHERE g.status <> 'cancelled'
+      AND g.best_player_tg_id IS NOT NULL
+      AND g.starts_at < (NOW() - INTERVAL '3 hours')
+    ORDER BY g.starts_at DESC
+    LIMIT 1
+  `),
+]);
 
 const talisman_holder = holderR.rows[0] || null;
 
@@ -1258,28 +1275,28 @@ app.get("/api/game", async (req, res) => {
   let game = null;
 
   if (gameId) {
-    const gr = await q(`SELECT * FROM games WHERE id=$1`, [gameId]);
+    const gr = await q(
+      `SELECT g.*, ${sqlPlayerName("bp")} AS best_player_name
+       FROM games g
+       LEFT JOIN players bp ON bp.tg_id = g.best_player_tg_id
+       WHERE g.id=$1`,
+      [gameId]
+    );
     game = gr.rows[0] || null;
   } else {
     const gr = await q(
-      `SELECT * FROM games
-       WHERE status='scheduled' AND starts_at >= NOW() - INTERVAL '6 hours'
-       ORDER BY starts_at ASC
+      `SELECT g.*, ${sqlPlayerName("bp")} AS best_player_name
+       FROM games g
+       LEFT JOIN players bp ON bp.tg_id = g.best_player_tg_id
+       WHERE g.status='scheduled' AND g.starts_at >= NOW() - INTERVAL '6 hours'
+       ORDER BY g.starts_at ASC
        LIMIT 1`
     );
     game = gr.rows[0] || null;
   }
 
   if (!game) return res.json({ ok: true, game: null, rsvps: [], teams: null });
-  
-  let best_player_name = null;
-  if (game?.best_player_tg_id) {
-    const br = await q(
-      `SELECT ${sqlPlayerName("p")} AS name FROM players p WHERE p.tg_id=$1`,
-      [game.best_player_tg_id]
-    );
-    best_player_name = br.rows[0]?.name || null;
-  }
+
 
   // ===== Окно голосования (пример: 36 часов после начала игры) =====
 const VOTE_HOURS = 36;
@@ -1289,83 +1306,78 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
 
   
   // ✅ ВАЖНО: показываем roster (tg+manual) + гостей, которые реально отмечены на ЭТУ игру
-  let rr;
-  if (is_admin) {
-    rr = await q(
-      `SELECT
-        COALESCE(r.status, 'maybe') AS status,
-        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
-      
-        p.position AS profile_position,
-        r.pos_override,
-        CASE
-          WHEN COALESCE(r.status,'maybe') = 'yes'
-            THEN COALESCE(r.pos_override, p.position)
-          ELSE p.position
-        END AS position,
-      
-        p.skill,
-        p.player_kind
-      FROM players p
-      LEFT JOIN rsvps r
-        ON r.game_id=$1 AND r.tg_id=p.tg_id
-       WHERE p.disabled=FALSE
-         AND (
-           p.player_kind IN ('tg','manual')
-           OR r.game_id IS NOT NULL
-         )
-       ORDER BY
-         CASE COALESCE(r.status,'maybe')
-           WHEN 'yes' THEN 1
-           WHEN 'maybe' THEN 2
-           WHEN 'no' THEN 3
-           ELSE 9
-         END,
-         p.skill DESC,
-         COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
-      [game.id]
-    );
-  } else {
-    rr = await q(
-      `SELECT
-        COALESCE(r.status, 'maybe') AS status,
-        p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
-      
-        p.position AS profile_position,
-        r.pos_override,
-        CASE
-          WHEN COALESCE(r.status,'maybe') = 'yes'
-            THEN COALESCE(r.pos_override, p.position)
-          ELSE p.position
-        END AS position,
-      
-        p.player_kind
-      FROM players p
-      LEFT JOIN rsvps r
-        ON r.game_id=$1 AND r.tg_id=p.tg_id
-       WHERE p.disabled=FALSE
-         AND (
-           p.player_kind IN ('tg','manual')
-           OR r.game_id IS NOT NULL
-         )
-       ORDER BY
-         CASE COALESCE(r.status,'maybe')
-           WHEN 'yes' THEN 1
-           WHEN 'maybe' THEN 2
-           WHEN 'no' THEN 3
-           ELSE 9
-         END,
-         COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
-      [game.id]
-    );
-  }
+  const rrPromise = is_admin
+    ? q(
+        `SELECT
+          COALESCE(r.status, 'maybe') AS status,
+          p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
+          p.position AS profile_position,
+          r.pos_override,
+          CASE
+            WHEN COALESCE(r.status,'maybe') = 'yes'
+              THEN COALESCE(r.pos_override, p.position)
+            ELSE p.position
+          END AS position,
+          p.skill,
+          p.player_kind
+        FROM players p
+        LEFT JOIN rsvps r
+          ON r.game_id=$1 AND r.tg_id=p.tg_id
+        WHERE p.disabled=FALSE
+          AND (
+            p.player_kind IN ('tg','manual')
+            OR r.game_id IS NOT NULL
+          )
+        ORDER BY
+          CASE COALESCE(r.status,'maybe')
+            WHEN 'yes' THEN 1
+            WHEN 'maybe' THEN 2
+            WHEN 'no' THEN 3
+            ELSE 9
+          END,
+          p.skill DESC,
+          COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
+        [game.id]
+      )
+    : q(
+        `SELECT
+          COALESCE(r.status, 'maybe') AS status,
+          p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
+          p.position AS profile_position,
+          r.pos_override,
+          CASE
+            WHEN COALESCE(r.status,'maybe') = 'yes'
+              THEN COALESCE(r.pos_override, p.position)
+            ELSE p.position
+          END AS position,
+          p.player_kind
+        FROM players p
+        LEFT JOIN rsvps r
+          ON r.game_id=$1 AND r.tg_id=p.tg_id
+        WHERE p.disabled=FALSE
+          AND (
+            p.player_kind IN ('tg','manual')
+            OR r.game_id IS NOT NULL
+          )
+        ORDER BY
+          CASE COALESCE(r.status,'maybe')
+            WHEN 'yes' THEN 1
+            WHEN 'maybe' THEN 2
+            WHEN 'no' THEN 3
+            ELSE 9
+          END,
+          COALESCE(p.display_name, p.first_name, p.username, p.tg_id::text) ASC`,
+        [game.id]
+      );
 
-
-  const tr = await q(
+  const teamsPromise = q(
     `SELECT team_a, team_b, meta, generated_at FROM teams WHERE game_id=$1`,
     [game.id]
   );
-const teams = tr.rows[0] || null;
+
+  const [rr, tr] = await Promise.all([rrPromise, teamsPromise]);
+  const teams = tr.rows[0] || null;
+
 
 // ===== Мой голос (анонимно: не показываем другим, но храним чтобы 1 человек = 1 голос) =====
 let my_vote = null;
@@ -1373,48 +1385,46 @@ let vote_results = [];
 let vote_winner = null;
 
 try {
-  const mv = await q(
-    `SELECT candidate_tg_id
-     FROM best_player_votes
-     WHERE game_id=$1 AND voter_tg_id=$2`,
-    [game.id, user.id]
-  );
+  const [mv, vr] = await Promise.all([
+    q(
+      `SELECT candidate_tg_id
+       FROM best_player_votes
+       WHERE game_id=$1 AND voter_tg_id=$2`,
+      [game.id, user.id]
+    ),
+    q(
+      `
+      SELECT
+        v.candidate_tg_id,
+        COUNT(*)::int AS votes,
+        COALESCE(
+          NULLIF(BTRIM(p.display_name), ''),
+          NULLIF(BTRIM(p.first_name), ''),
+          CASE WHEN BTRIM(p.username) <> '' THEN '@' || BTRIM(p.username) ELSE NULL END,
+          p.tg_id::text
+        ) AS name
+      FROM best_player_votes v
+      JOIN players p ON p.tg_id = v.candidate_tg_id
+      WHERE v.game_id=$1
+      GROUP BY v.candidate_tg_id, p.display_name, p.first_name, p.username, p.tg_id
+      ORDER BY votes DESC, name ASC
+      `,
+      [game.id]
+    ),
+  ]);
+
   my_vote = mv.rows[0]?.candidate_tg_id ?? null;
-
-  const vr = await q(
-    `
-    SELECT
-      v.candidate_tg_id,
-      COUNT(*)::int AS votes,
-      COALESCE(
-        NULLIF(BTRIM(p.display_name), ''),
-        NULLIF(BTRIM(p.first_name), ''),
-        CASE WHEN BTRIM(p.username) <> '' THEN '@' || BTRIM(p.username) ELSE NULL END,
-        p.tg_id::text
-      ) AS name
-    FROM best_player_votes v
-    JOIN players p ON p.tg_id = v.candidate_tg_id
-    WHERE v.game_id=$1
-    GROUP BY v.candidate_tg_id, p.display_name, p.first_name, p.username, p.tg_id
-    ORDER BY votes DESC, name ASC
-    `,
-    [game.id]
-  );
-
   vote_results = vr.rows || [];
   vote_winner = vote_results[0] || null;
 } catch (e) {
-  // если миграции ещё не применились/таблица не создана — не валим /api/game
   console.error("best_player votes query failed:", e?.message || e);
 }
+
 
 // отдаём расширенный game
 res.json({
   ok: true,
-  game: {
-    ...game,
-    best_player_name,
-  },
+  game,
   rsvps: rr.rows,
   teams,
   vote_open,
@@ -1422,6 +1432,7 @@ res.json({
   vote_results,
   vote_winner,
 });
+
 
 });
 
