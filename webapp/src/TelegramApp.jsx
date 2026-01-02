@@ -525,7 +525,17 @@ function clipText(s, max = 70) {
     // если у тебя есть teamsBack и ты хочешь норм "назад"
     setTeamsBack?.({ tab: "game", gameView: "detail" });
   
-    refreshAll(gid);
+    (async () => {
+  setDetailLoading(true);
+  try {
+    await Promise.all([
+      refreshUpcomingGamesOnly(), // чтобы talisman_holder и статусы в списке были свежие
+      refreshGameOnly(gid),       // чтобы составы/отметки для teams были свежие
+    ]);
+  } finally {
+    setDetailLoading(false);
+  }
+})();
   }, []);
 
   useEffect(() => {
@@ -548,9 +558,9 @@ function clipText(s, max = 70) {
   }, [tab]);
 
   useEffect(() => {
-  if (!game) return;
+    if (!game) return;
     setBestPick(game.best_player_tg_id ? String(game.best_player_tg_id) : "");
-  }, [game?.id]);
+  }, [game?.id, game?.best_player_tg_id]);
 
 useEffect(() => {
   if (tab === "profile" && profileView === "thanks") loadFunStatus();
@@ -853,6 +863,11 @@ function sortByMetricDesc(list, key) {
         .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)),
     [games]
   );
+  const nextUpcomingId = useMemo(() => {
+  // upcomingGames уже отсортирован ASC и отфильтрован от прошедших
+  const next = (upcomingGames || []).find((g) => g.status === "scheduled");
+  return next?.id ?? null;
+}, [upcomingGames]);
 const teamsStaleInfo = useMemo(() => {
   if (!teams?.ok) return { stale: false, current: 0, inTeams: 0, removed: 0, added: 0 };
 
@@ -1468,7 +1483,8 @@ function openYandexRoute(lat, lon) {
                       const when = formatWhen(g.starts_at);
                       const status = g.my_status || "maybe";
                       const tone = cardToneByMyStatus(status);
-                      const isNext = !showPast && idx === 0;
+                      const isNext = !showPast && nextUpcomingId != null && g.id === nextUpcomingId;
+
                     
                       const bgUrl = GAME_BGS[idx % GAME_BGS.length];
                     
@@ -1495,16 +1511,16 @@ function openYandexRoute(lat, lon) {
                           }}
                           onClick={() => {
                             const id = g.id;
-                    
+
                             setSelectedGameId(id);
                             setGameView("detail");
-                    
+
                             setGame(null);
                             setRsvps([]);
                             setTeams(null);
-                    
+
                             setDetailLoading(true);
-                            refreshAll(id).finally(() => setDetailLoading(false));
+                            loadGame(id).finally(() => setDetailLoading(false));
                           }}
                         >
                           {/* TOP BAR */}

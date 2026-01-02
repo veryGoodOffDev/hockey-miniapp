@@ -30,6 +30,10 @@ export async function ensureSchema(q) {
   await q(`CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS geo_lat DOUBLE PRECISION;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS geo_lon DOUBLE PRECISION;`);
+  // ✅ НОВОЕ: текстовые блоки информации по игре
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS info_text TEXT;`);    // длинный текст "Важная информация"
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS notice_text TEXT;`);  // короткий "Важно!"
+
 
   await q(`
   DO $$

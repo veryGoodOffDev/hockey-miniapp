@@ -1608,7 +1608,8 @@ app.post("/api/games", async (req, res) => {
   if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
-  const { starts_at, location, video_url, geo_lat, geo_lon } = req.body || {};
+ const { starts_at, location, video_url, geo_lat, geo_lon, info_text, notice_text } = req.body || {};
+
 
   const d = new Date(starts_at);
   if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
@@ -1626,14 +1627,24 @@ app.post("/api/games", async (req, res) => {
     return res.status(400).json({ ok: false, reason: "bad_geo_pair" });
   }
 
+  const it = String(info_text ?? "").replace(/\r\n/g, "\n").trim();
+const nt = String(notice_text ?? "").replace(/\r\n/g, "\n").trim();
+
+const infoVal = it ? it : null;
+const noticeVal = nt ? nt : null;
+
+if (noticeVal && noticeVal.length > 240) {
+  return res.status(400).json({ ok: false, reason: "notice_too_long" });
+}
 
 
-  const ir = await q(
-    `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon)
-     VALUES($1,$2,'scheduled',$3,$4,$5)
-     RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon`,
-    [d.toISOString(), String(location || "").trim(), vu, lat, lon]
-  );
+
+const ir = await q(
+  `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text)
+   VALUES($1,$2,'scheduled',$3,$4,$5,$6,$7)
+   RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text`,
+  [d.toISOString(), String(location || "").trim(), vu, lat, lon, infoVal, noticeVal]
+);
 
  
 
@@ -1678,6 +1689,26 @@ app.patch("/api/games/:id", async (req, res) => {
     if (b.video_url && !vu) return res.status(400).json({ ok: false, reason: "bad_video_url" });
     sets.push(`video_url=$${i++}`);
     vals.push(vu);
+  }
+    // ✅ info_text (длинный блок)
+  if (b.info_text !== undefined) {
+    const t = String(b.info_text ?? "").replace(/\r\n/g, "\n");
+    const v = t.trim();
+    sets.push(`info_text=$${i++}`);
+    vals.push(v ? v : null); // пустое -> null (очистка)
+  }
+
+  // ✅ notice_text (короткий блок "Важно!")
+  if (b.notice_text !== undefined) {
+    const t = String(b.notice_text ?? "").replace(/\r\n/g, "\n");
+    const v = t.trim();
+
+    if (v && v.length > 240) {
+      return res.status(400).json({ ok: false, reason: "notice_too_long" });
+    }
+
+    sets.push(`notice_text=$${i++}`);
+    vals.push(v ? v : null); // пустое -> null (очистка)
   }
 
   // ✅ geo pair
