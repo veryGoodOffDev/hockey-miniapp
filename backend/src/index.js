@@ -468,7 +468,13 @@ async function setSetting(key, value) {
 
 async function getSetting(key, def = null) {
   const r = await getSettingCached(key)
-  return r.rows[0]?.value ?? def;
+    // поддержим оба формата: q() -> { rows: [...] } или q() -> [...]
+    if (!Array.isArray(r?.rows)) {
+  console.log("[getSetting] unexpected result shape:", r);
+}
+  const rows = Array.isArray(r) ? r : r?.rows;
+
+  return rows?.[0]?.value ?? def;
 }
 
 function makeToken() {
