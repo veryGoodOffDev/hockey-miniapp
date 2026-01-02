@@ -8,10 +8,26 @@ import { verifyTelegramWebApp } from "./tgAuth.js";
 import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
 import { InlineKeyboard } from "grammy";
+import { performance } from "node:perf_hooks";
 import crypto from "crypto";
 
 const app = express();
 app.use(express.json());
+
+
+const LOG_HTTP = process.env.LOG_HTTP === "1";
+
+if (LOG_HTTP) {
+  app.use((req, res, next) => {
+    const t0 = performance.now();
+    res.on("finish", () => {
+      const ms = performance.now() - t0;
+      console.log(`[HTTP] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${ms.toFixed(1)}ms`);
+    });
+    next();
+  });
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { files: 5, fileSize: 10 * 1024 * 1024 }, // 5 файлов по 10MB

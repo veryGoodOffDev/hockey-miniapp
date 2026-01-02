@@ -312,6 +312,7 @@ async function loadAttendance(opts = {}) {
 
 
 async function refreshAll(forceGameId) {
+  
   try {
     setGamesError(null);
 
