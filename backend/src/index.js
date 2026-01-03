@@ -2907,5 +2907,6 @@ app.post("/api/admin/games/:id/best-player", async (req, res) => {
 
 const port = process.env.PORT || 10000;
 console.log(`[BOOT] hockey-backend starting... ${new Date().toISOString()} commit=${process.env.GIT_COMMIT || "n/a"}`);
+console.log('куку все ок играем в хоккей')
 
 app.listen(port, () => console.log("Backend listening on", port));
