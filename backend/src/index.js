@@ -16,6 +16,12 @@ app.use(express.json());
 
 
 const LOG_HTTP = process.env.LOG_HTTP === "1";
+const TEAM_TZ = process.env.TEAM_TZ || "UTC";
+const REMINDER_HOUR = Number(process.env.REMINDER_HOUR ?? 15);
+const REMINDER_MINUTE = Number(process.env.REMINDER_MINUTE ?? 0);
+
+const INTERNAL_CRON_TOKEN = process.env.INTERNAL_CRON_TOKEN || "";
+
 
 if (LOG_HTTP) {
   app.use((req, res, next) => {
@@ -537,6 +543,61 @@ function replyMarkupToJson(markup) {
     return null;
   }
 }
+
+function isLocalRequest(req) {
+  const ra = req.socket?.remoteAddress || "";
+  return ra === "127.0.0.1" || ra === "::1" || ra.endsWith("127.0.0.1");
+}
+
+function fmtDtRu(dt) {
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: TEAM_TZ,
+      weekday: "short",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(dt));
+  } catch {
+    return new Date(dt).toISOString();
+  }
+}
+
+async function computeDefaultRemindAt(starts_at) {
+  // Пн 15:00 недели игры (для воскресенья — это понедельник ДО воскресенья)
+  const r = await q(
+    `
+    SELECT (
+      (date_trunc('week', $1::timestamptz AT TIME ZONE $2)
+        + ($3::int || ' hours')::interval
+        + ($4::int || ' minutes')::interval
+      ) AT TIME ZONE $2
+    ) AS remind_at
+    `,
+    [starts_at, TEAM_TZ, REMINDER_HOUR, REMINDER_MINUTE]
+  );
+  return r.rows?.[0]?.remind_at ?? null;
+}
+
+function buildReminderText(g) {
+  const when = fmtDtRu(g.starts_at);
+  let text = `🏒 Ближайшая игра: ${when}\n📍 ${g.location || "—"}`;
+
+  if (process.env.WEB_APP_URL) {
+    text += `\n\nОтметься в мини-приложении: ${process.env.WEB_APP_URL}`;
+  }
+
+  if (g.geo_lat && g.geo_lon) {
+    text += `\n🗺️ Яндекс.Карты: https://yandex.ru/maps/?pt=${g.geo_lon},${g.geo_lat}&z=16&l=map`;
+  }
+
+  if (g.notice_text) text += `\n\n⚠️ ${String(g.notice_text).slice(0, 800)}`;
+  if (g.info_text) text += `\n\nℹ️ ${String(g.info_text).slice(0, 2000)}`;
+
+  return text;
+}
+
 
 async function logBotMessage({
   chat_id,
@@ -2316,6 +2377,85 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
   res.json({ ok: true, checked, missing });
 });
 
+app.post("/api/internal/reminders/run", async (req, res) => {
+  try {
+    if (!isLocalRequest(req)) {
+      return res.status(403).json({ ok: false, reason: "not_local" });
+    }
+
+    const token = String(req.get("x-cron-token") || "");
+    if (!INTERNAL_CRON_TOKEN || token !== INTERNAL_CRON_TOKEN) {
+      return res.status(403).json({ ok: false, reason: "bad_token" });
+    }
+
+    // защита от параллельных запусков (если таймер дернет второй раз)
+    const lk = await q(`SELECT pg_try_advisory_lock(987654321) AS ok`);
+    if (!lk.rows?.[0]?.ok) return res.json({ ok: true, skipped: true });
+
+    let checked = 0;
+    let sentCount = 0;
+
+    try {
+      const chatIdRaw = await getSetting("notify_chat_id", null);
+      if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+      const chat_id = Number(chatIdRaw);
+
+      // берем игры, которым пора
+      const due = await q(`
+        SELECT id, starts_at, location, geo_lat, geo_lon, info_text, notice_text, remind_at
+        FROM games
+        WHERE status='scheduled'
+          AND remind_enabled=TRUE
+          AND remind_at IS NOT NULL
+          AND remind_sent_at IS NULL
+          AND remind_at <= NOW()
+        ORDER BY remind_at ASC
+        LIMIT 5
+      `);
+
+      checked = due.rowCount || 0;
+
+      for (const g of due.rows) {
+        try {
+          const text = buildReminderText(g);
+
+          const msg = await bot.api.sendMessage(chat_id, text, {
+            disable_web_page_preview: true,
+          });
+
+          // закрепляем "тихо" (без пуша)
+          try {
+            await bot.api.pinChatMessage(chat_id, msg.message_id, { disable_notification: true });
+          } catch (e) {
+            console.error("pin failed:", e?.message || e);
+          }
+
+          // помечаем как отправленное (важно: идемпотентно)
+          const upd = await q(
+            `UPDATE games
+             SET remind_sent_at=NOW(), remind_message_id=$2
+             WHERE id=$1 AND remind_sent_at IS NULL`,
+            [g.id, msg.message_id]
+          );
+
+          if ((upd.rowCount || 0) > 0) sentCount++;
+        } catch (e) {
+          console.error("reminder send failed:", e?.message || e);
+        }
+      }
+
+      res.json({ ok: true, checked, sent: sentCount });
+    } finally {
+      await q(`SELECT pg_advisory_unlock(987654321)`);
+    }
+  } catch (e) {
+    console.error("internal reminders failed:", e?.message || e);
+    res.status(500).json({ ok: false, reason: "internal_error" });
+  }
+});
+
+
 app.get("/api/stats/attendance", async (req, res) => {
   try {
     const isoDateOrNull = (v) => {
@@ -2831,6 +2971,54 @@ app.post("/api/admin/teams/send", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
+/** ====== ADMIN: SET GAME REMINDER ====== */
+app.patch("/api/admin/games/reminder", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) return res.status(403).json({ ok: false, reason: "not_admin" });
+
+  const game_id = Number(req.body?.game_id);
+  if (!Number.isFinite(game_id)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const remind_enabled = !!req.body?.remind_enabled;
+
+  // ожидаем ISO строку или null/пусто
+  const remind_at_raw = req.body?.remind_at;
+  let remind_at = null;
+
+  if (remind_at_raw) {
+    const d = new Date(String(remind_at_raw));
+    if (Number.isNaN(d.getTime())) {
+      return res.status(400).json({ ok: false, reason: "bad_remind_at" });
+    }
+    remind_at = d.toISOString(); // нормализуем
+  }
+
+  // если включили, но время не задано — ошибка
+  if (remind_enabled && !remind_at) {
+    return res.status(400).json({ ok: false, reason: "remind_at_required" });
+  }
+
+  await q(
+    `UPDATE games SET
+      remind_enabled=$2,
+      remind_at=$3,
+      remind_sent_at=NULL,
+      remind_last_error=NULL,
+      updated_at=NOW()
+     WHERE id=$1`,
+    [game_id, remind_enabled, remind_at]
+  );
+
+  const gr = await q(`SELECT * FROM games WHERE id=$1`, [game_id]);
+  const game = gr.rows?.[0] ?? null;
+
+  res.json({ ok: true, game });
+});
+
 
 app.post("/api/best-player/vote", async (req, res) => {
   const user = requireWebAppAuth(req, res);

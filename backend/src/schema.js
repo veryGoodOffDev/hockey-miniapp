@@ -33,6 +33,19 @@ export async function ensureSchema(q) {
   // ✅ НОВОЕ: текстовые блоки информации по игре
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS info_text TEXT;`);    // длинный текст "Важная информация"
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS notice_text TEXT;`);  // короткий "Важно!"
+    // ✅ REMINDERS (авто-напоминания по игре)
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_enabled BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_sent_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_last_error TEXT;`);
+
+  // индекс для быстрых выборок "что пора отправить"
+  await q(`
+    CREATE INDEX IF NOT EXISTS idx_games_reminders_due
+    ON games(remind_enabled, remind_at)
+    WHERE remind_enabled = TRUE AND remind_at IS NOT NULL AND remind_sent_at IS NULL;
+  `);
+
 
 
   await q(`
