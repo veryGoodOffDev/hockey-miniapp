@@ -2377,82 +2377,157 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
   res.json({ ok: true, checked, missing });
 });
 
+app.patch("/api/admin/games/:id/reminder", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) return res.status(403).json({ ok: false, reason: "not_admin" });
+
+  const gameId = Number(req.params.id);
+  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const b = req.body || {};
+
+  const enabled = !!b.reminder_enabled;
+  const pin = b.reminder_pin === undefined ? true : !!b.reminder_pin;
+
+  // reminder_at можно прислать как ISO строку
+  let reminderAt = null;
+  if (b.reminder_at) {
+    const d = new Date(String(b.reminder_at));
+    if (!Number.isFinite(d.getTime())) {
+      return res.status(400).json({ ok: false, reason: "bad_reminder_at" });
+    }
+    reminderAt = d.toISOString();
+  }
+
+  if (enabled && !reminderAt) {
+    return res.status(400).json({ ok: false, reason: "reminder_at_required" });
+  }
+
+  // ВАЖНО: если ты меняешь время — можно сбросить sent_at, чтобы напоминание снова отправилось
+  // (иначе ты включишь и поставишь время, но оно “уже отправлено” и не отправится)
+  const resetSent = b.reset_sent === true;
+
+  await q(
+    `
+    UPDATE games SET
+      reminder_enabled=$2,
+      reminder_at=$3,
+      reminder_pin=$4,
+      reminder_sent_at = CASE WHEN $5::bool THEN NULL ELSE reminder_sent_at END,
+      reminder_message_id = CASE WHEN $5::bool THEN NULL ELSE reminder_message_id END,
+      updated_at=NOW()
+    WHERE id=$1
+    `,
+    [gameId, enabled, reminderAt, pin, resetSent]
+  );
+
+  const gr = await q(`SELECT * FROM games WHERE id=$1`, [gameId]);
+  res.json({ ok: true, game: gr.rows?.[0] ?? null });
+});
+
+
 app.post("/api/internal/reminders/run", async (req, res) => {
+function checkInternalToken(req) {
+  const need = process.env.INTERNAL_REMINDERS_TOKEN || "";
+  if (!need) return false;
+
+  const h = String(req.headers["authorization"] || "");
+  if (h.startsWith("Bearer ")) {
+    return h.slice(7).trim() === need;
+  }
+
+  const x = String(req.headers["x-internal-token"] || "");
+  if (x) return x === need;
+
+  const qtok = String(req.query?.token || "");
+  if (qtok) return qtok === need;
+
+  return false;
+}
+
+function fmtGameLine(g) {
+  const when = g?.starts_at ? new Date(g.starts_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }) : "—";
+  const loc = g?.location || "—";
+  return `🏒 Игра: ${when}\n📍 ${loc}`;
+}
+
+app.post("/api/internal/reminders/run", async (req, res) => {
+  if (!checkInternalToken(req)) return res.status(401).json({ ok: false, reason: "bad_token" });
+
   try {
-    if (!isLocalRequest(req)) {
-      return res.status(403).json({ ok: false, reason: "not_local" });
-    }
+    const chatIdRaw = await getSetting("notify_chat_id", null);
+    if (!chatIdRaw) return res.json({ ok: true, sent: 0, reason: "notify_chat_id_not_set" });
 
-    const token = String(req.get("x-cron-token") || "");
-    if (!INTERNAL_CRON_TOKEN || token !== INTERNAL_CRON_TOKEN) {
-      return res.status(403).json({ ok: false, reason: "bad_token" });
-    }
+    const chat_id = Number(chatIdRaw);
 
-    // защита от параллельных запусков (если таймер дернет второй раз)
-    const lk = await q(`SELECT pg_try_advisory_lock(987654321) AS ok`);
-    if (!lk.rows?.[0]?.ok) return res.json({ ok: true, skipped: true });
+    // Берём все игры, которые “пора”, но ещё не отправляли
+    const due = await q(
+      `
+      SELECT *
+      FROM games
+      WHERE status <> 'cancelled'
+        AND reminder_enabled = TRUE
+        AND reminder_at IS NOT NULL
+        AND reminder_at <= NOW()
+        AND reminder_sent_at IS NULL
+      ORDER BY reminder_at ASC
+      LIMIT 3
+      `
+    );
 
-    let checked = 0;
     let sentCount = 0;
 
-    try {
-      const chatIdRaw = await getSetting("notify_chat_id", null);
-      if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+    for (const g of (due.rows || [])) {
+      const text =
+        `⏰ Напоминание!\n` +
+        `${fmtGameLine(g)}\n\n` +
+        `Открой мини-приложение и отметься ✅/❌`;
 
-      const chat_id = Number(chatIdRaw);
+      const sent = await bot.api.sendMessage(chat_id, text, { disable_web_page_preview: true });
 
-      // берем игры, которым пора
-      const due = await q(`
-        SELECT id, starts_at, location, geo_lat, geo_lon, info_text, notice_text, remind_at
-        FROM games
-        WHERE status='scheduled'
-          AND remind_enabled=TRUE
-          AND remind_at IS NOT NULL
-          AND remind_sent_at IS NULL
-          AND remind_at <= NOW()
-        ORDER BY remind_at ASC
-        LIMIT 5
-      `);
+      // логируем в историю (если у тебя есть logBotMessage — лучше использовать её)
+      try {
+        await logBotMessage({
+          chat_id,
+          message_id: sent.message_id,
+          kind: "reminder",
+          text,
+          disable_web_page_preview: true,
+          meta: { type: "scheduled_reminder", game_id: g.id },
+          sent_by_tg_id: null,
+        });
+      } catch {}
 
-      checked = due.rowCount || 0;
-
-      for (const g of due.rows) {
+      // закрепляем, если включено
+      if (g.reminder_pin) {
         try {
-          const text = buildReminderText(g);
-
-          const msg = await bot.api.sendMessage(chat_id, text, {
-            disable_web_page_preview: true,
-          });
-
-          // закрепляем "тихо" (без пуша)
-          try {
-            await bot.api.pinChatMessage(chat_id, msg.message_id, { disable_notification: true });
-          } catch (e) {
-            console.error("pin failed:", e?.message || e);
-          }
-
-          // помечаем как отправленное (важно: идемпотентно)
-          const upd = await q(
-            `UPDATE games
-             SET remind_sent_at=NOW(), remind_message_id=$2
-             WHERE id=$1 AND remind_sent_at IS NULL`,
-            [g.id, msg.message_id]
-          );
-
-          if ((upd.rowCount || 0) > 0) sentCount++;
+          await bot.api.pinChatMessage(chat_id, sent.message_id, { disable_notification: true });
         } catch (e) {
-          console.error("reminder send failed:", e?.message || e);
+          console.log("[reminder] pin failed:", tgErrText(e));
         }
       }
 
-      res.json({ ok: true, checked, sent: sentCount });
-    } finally {
-      await q(`SELECT pg_advisory_unlock(987654321)`);
+      // помечаем “уже отправлено”
+      await q(
+        `UPDATE games
+         SET reminder_sent_at=NOW(), reminder_message_id=$2, updated_at=NOW()
+         WHERE id=$1`,
+        [g.id, sent.message_id]
+      );
+
+      sentCount += 1;
     }
+
+    return res.json({ ok: true, sent: sentCount });
   } catch (e) {
-    console.error("internal reminders failed:", e?.message || e);
-    res.status(500).json({ ok: false, reason: "internal_error" });
+    console.error("reminders.run failed:", e);
+    return res.status(500).json({ ok: false, reason: "internal_error" });
   }
+});
+
 });
 
 

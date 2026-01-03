@@ -33,19 +33,19 @@ export async function ensureSchema(q) {
   // ✅ НОВОЕ: текстовые блоки информации по игре
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS info_text TEXT;`);    // длинный текст "Важная информация"
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS notice_text TEXT;`);  // короткий "Важно!"
-    // ✅ REMINDERS (авто-напоминания по игре)
-  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_enabled BOOLEAN NOT NULL DEFAULT FALSE;`);
-  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_at TIMESTAMPTZ;`);
-  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_sent_at TIMESTAMPTZ;`);
-  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS remind_last_error TEXT;`);
+  // ✅ Напоминания по игре
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_message_id BIGINT;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_pin BOOLEAN NOT NULL DEFAULT TRUE;`);
 
-  // индекс для быстрых выборок "что пора отправить"
+  // полезный индекс: быстро искать “к отправке”
   await q(`
-    CREATE INDEX IF NOT EXISTS idx_games_reminders_due
-    ON games(remind_enabled, remind_at)
-    WHERE remind_enabled = TRUE AND remind_at IS NOT NULL AND remind_sent_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_games_reminder_due
+    ON games(reminder_enabled, reminder_at)
+    WHERE reminder_enabled = TRUE AND reminder_at IS NOT NULL;
   `);
-
 
 
   await q(`

@@ -93,6 +93,12 @@ export default function TelegramApp() {
   // ===== players photo modal =====
 const [photoModal, setPhotoModal] = useState({ open: false, src: "", title: "" });
 
+const [remEnabled, setRemEnabled] = useState(false);
+const [remAt, setRemAt] = useState(""); // datetime-local string
+const [remPin, setRemPin] = useState(true);
+const [remSaving, setRemSaving] = useState(false);
+
+
 function getAvatarSrc(p) {
   // подстрой под своё поле, если оно другое
   return (
@@ -599,6 +605,25 @@ useEffect(() => {
   if (tab === "profile" && profileView === "thanks") loadFunStatus();
 }, [tab, profileView]);
 
+useEffect(() => {
+  if (!game) return;
+  setRemEnabled(!!game.reminder_enabled);
+  setRemPin(game.reminder_pin !== false);
+
+  // reminder_at (timestamptz) -> datetime-local
+  if (game.reminder_at) {
+    const d = new Date(game.reminder_at);
+    const pad = (n) => String(n).padStart(2, "0");
+    const local =
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    setRemAt(local);
+  } else {
+    setRemAt("");
+  }
+}, [game?.id]);
+
+
 
 async function rsvp(status) {
   if (!selectedGameId) return;
@@ -719,6 +744,28 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
     setTeamsSendMsg("✅ Составы отправлены в чат");
   } finally {
     setTeamsSendBusy(false);
+  }
+}
+
+async function saveReminderSettings() {
+  if (!game?.id) return;
+
+  setRemSaving(true);
+  try {
+    const reminder_at = remAt ? new Date(remAt).toISOString() : null;
+
+    const r = await apiPatch(`/api/admin/games/${game.id}/reminder`, {
+      reminder_enabled: remEnabled,
+      reminder_at,
+      reminder_pin: remPin,
+      reset_sent: true, // важно: чтобы при изменении расписания отправилось заново
+    });
+
+    if (r?.ok) {
+      await refreshAll(game.id);
+    }
+  } finally {
+    setRemSaving(false);
   }
 }
 
@@ -1775,6 +1822,51 @@ function openYandexRoute(lat, lon) {
                       )}*/}
 
                       <hr />
+                      {isAdmin && game ? (
+  <div className="card" style={{ marginTop: 12 }}>
+    <h3 style={{ margin: 0 }}>⏰ Напоминание по этой игре</h3>
+
+    <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <label className="row" style={{ gap: 8, alignItems: "center" }}>
+        <input
+          type="checkbox"
+          checked={remEnabled}
+          onChange={(e) => setRemEnabled(e.target.checked)}
+        />
+        <span>Включено</span>
+      </label>
+
+      <input
+        className="input"
+        type="datetime-local"
+        value={remAt}
+        onChange={(e) => setRemAt(e.target.value)}
+        style={{ minWidth: 220 }}
+        disabled={!remEnabled}
+      />
+
+      <label className="row" style={{ gap: 8, alignItems: "center" }}>
+        <input
+          type="checkbox"
+          checked={remPin}
+          onChange={(e) => setRemPin(e.target.checked)}
+          disabled={!remEnabled}
+        />
+        <span>Закрепить</span>
+      </label>
+
+      <button className="btn" onClick={saveReminderSettings} disabled={remSaving}>
+        {remSaving ? "…" : "Сохранить"}
+      </button>
+    </div>
+
+    {game.reminder_sent_at ? (
+      <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+        Уже отправлено: <b>{formatWhen(game.reminder_sent_at)}</b>
+      </div>
+    ) : null}
+  </div>
+) : null}
 
                       {game.status === "cancelled" ? (
                         <div className="small">Эта игра отменена.</div>
