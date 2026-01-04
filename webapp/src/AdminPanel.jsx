@@ -1453,7 +1453,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 <div className="gameTitle">{head}</div>
                 <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{g.status}</span>
               </div>
-
+              <b>{g.id}</b>
               <div className="gameArena">{g.location || "—"}</div>
 
               {g.video_url ? (
