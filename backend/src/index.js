@@ -1002,7 +1002,6 @@ async function getSettingCached(key) {
 }
 
 function checkInternalToken(req) {
-  // Разрешаем оба варианта, чтобы не путаться
   const need =
     process.env.INTERNAL_CRON_TOKEN ||
     process.env.INTERNAL_REMINDERS_TOKEN ||
@@ -1017,14 +1016,22 @@ function checkInternalToken(req) {
   if (xin) return xin === need;
 
   const h = String(req.headers["authorization"] || "");
-  if (h.startsWith("Bearer ")) {
-    return h.slice(7).trim() === need;
-  }
+  if (h.startsWith("Bearer ")) return h.slice(7).trim() === need;
 
   const qtok = String(req.query?.token || "");
   if (qtok) return qtok === need;
 
   return false;
+}
+
+function formatWhenForGame(starts_at) {
+  const tz = process.env.TZ_NAME || "Europe/Moscow";
+  if (!starts_at) return "—";
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: tz,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(starts_at));
 }
 
 function fmtGameLine(g) {
@@ -2467,16 +2474,31 @@ app.post("/api/internal/reminders/run", async (req, res) => {
     return res.status(401).json({ ok: false, reason: "bad_token" });
   }
 
+  let locked = false;
+
   try {
+    // ✅ анти-дубли: не даём двум запускам отправлять одновременно
+    const lockRes = await q(`SELECT pg_try_advisory_lock($1) AS got`, [777001]);
+    locked = !!lockRes.rows?.[0]?.got;
+    if (!locked) {
+      return res.json({ ok: true, checked: 0, sent: 0, reason: "already_running" });
+    }
+
     const chatIdRaw = await getSetting("notify_chat_id", null);
-    if (!chatIdRaw) return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set" });
+    if (!chatIdRaw) {
+      return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set" });
+    }
 
     const chat_id = Number(chatIdRaw);
+    if (!Number.isFinite(chat_id)) {
+      return res.json({ ok: false, reason: "notify_chat_id_bad" });
+    }
 
-    const due = await q(`
+    // ✅ берём всё, что “пора”
+    const dueRes = await q(`
       SELECT *
       FROM games
-      WHERE status IS DISTINCT FROM 'cancelled'   -- безопаснее чем <>
+      WHERE status IS DISTINCT FROM 'cancelled'
         AND reminder_enabled = TRUE
         AND reminder_at IS NOT NULL
         AND reminder_at <= NOW()
@@ -2485,36 +2507,56 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       LIMIT 3
     `);
 
-    const checked = due.rows?.length || 0;
+    const due = dueRes.rows || [];
+    const checked = due.length;
+
+    if (!checked) {
+      return res.json({ ok: true, checked: 0, sent: 0 });
+    }
+
+    const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
     let sentCount = 0;
 
-    for (const g of (due.rows || [])) {
-      const text =
-        `⏰ Напоминание!\n` +
-        `${fmtGameLine(g)}\n\n` +
-        `Открой мини-приложение и отметься ✅/❌`;
+    for (const g of due) {
+      const when = formatWhenForGame(g.starts_at);
 
-      // Если Telegram упадёт — лучше залогировать и не помечать как sent
+      const text = `🏒 Напоминание: отметься на игру!
+
+📅 ${when}
+📍 ${g.location || "—"}
+
+Открыть мини-приложение для отметок:`;
+
+      const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(g.id))}`;
+      const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
+
       let sent;
       try {
-        sent = await bot.api.sendMessage(chat_id, text, { disable_web_page_preview: true });
+        sent = await bot.api.sendMessage(chat_id, text, {
+          reply_markup: kb,
+          disable_web_page_preview: true,
+        });
       } catch (e) {
         console.log("[reminder] send failed:", tgErrText?.(e) || e);
-        continue;
+        continue; // не помечаем как отправленное
       }
 
+      // логируем
       try {
         await logBotMessage({
           chat_id,
           message_id: sent.message_id,
           kind: "reminder",
           text,
+          parse_mode: null,
           disable_web_page_preview: true,
-          meta: { type: "scheduled_reminder", game_id: g.id },
+          reply_markup: typeof replyMarkupToJson === "function" ? replyMarkupToJson(kb) : null,
+          meta: { game_id: g.id, type: "scheduled_reminder" },
           sent_by_tg_id: null,
         });
       } catch {}
 
+      // закрепляем при включённом флаге
       if (g.reminder_pin) {
         try {
           await bot.api.pinChatMessage(chat_id, sent.message_id, { disable_notification: true });
@@ -2523,6 +2565,7 @@ app.post("/api/internal/reminders/run", async (req, res) => {
         }
       }
 
+      // помечаем как отправленное
       await q(
         `UPDATE games
          SET reminder_sent_at=NOW(), reminder_message_id=$2, updated_at=NOW()
@@ -2533,10 +2576,21 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       sentCount += 1;
     }
 
-    return res.json({ ok: true, checked, sent: sentCount, due_ids: (due.rows || []).map(x => x.id) });
+    return res.json({
+      ok: true,
+      checked,
+      sent: sentCount,
+      due_ids: due.map((x) => x.id),
+    });
   } catch (e) {
     console.error("reminders.run failed:", e);
     return res.status(500).json({ ok: false, reason: "internal_error" });
+  } finally {
+    if (locked) {
+      try {
+        await q(`SELECT pg_advisory_unlock($1)`, [777001]);
+      } catch {}
+    }
   }
 });
 
