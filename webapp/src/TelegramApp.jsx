@@ -105,6 +105,31 @@ const [gameSheetGame, setGameSheetGame] = useState(null);
 const [adminGameOpen, setAdminGameOpen] = useState(false);
 const [adminGame, setAdminGame] = useState(null);
 
+
+const onChanged = async ({ label, gameId } = {}) => {
+  // 1) показать сообщение (как ты делаешь тосты — подставь свою функцию)
+  if (label) {
+    // пример:
+    // showToast(label);
+    console.log(label);
+  }
+
+  // 2) закрыть шит (чтобы UX был как ты хочешь)
+  closeGameSheet?.();
+
+  // 3) обновить данные
+  // если у тебя есть refreshAll — это лучший вариант
+  if (gameId) {
+    await refreshAll?.(gameId);
+  } else if (gameSheetGame?.id) {
+    await refreshAll?.(gameSheetGame.id);
+  } else {
+    // запасной вариант
+    await load?.({ silent: true });
+  }
+};
+
+
 function openGameSheet(g) {
   if (!g) return;
   setAdminGame(g);
