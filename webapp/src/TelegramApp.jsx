@@ -2738,23 +2738,8 @@ function openYandexRoute(lat, lon) {
                     console.warn("onReload failed:", e);
                   }
                 }}
+                onChanged={onChanged}
               />
-
-<GameAdminSheet
-  open={adminGameOpen}
-  game={adminGame}
-  onClose={closeGameSheet}
-  apiGet={apiGet}
-  apiPost={apiPost}
-  apiPatch={apiPatch}
-  apiDelete={apiDelete}
-  onSaved={async (gameId) => {
-    // обновить детальную игру и список (что у тебя есть)
-    await refreshAll?.(gameId);
-  }}
-  onChanged={onChanged}
-/>
-
 
       <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </div>
