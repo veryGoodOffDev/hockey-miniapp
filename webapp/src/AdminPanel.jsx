@@ -6,6 +6,10 @@ import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
+import GameSheet from "./admin/GameSheet.jsx";
+import PlayerSheet from "./admin/PlayerSheet.jsx";
+import MapPickModal from "./admin/MapPickModal.jsx";
+import { toLocal, showName, showNum, posHuman } from "./admin/adminUtils.js";
 
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -374,6 +378,16 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [createGeo, setCreateGeo] = useState({ lat: "", lon: "", address: "" });
   const [geoPickTarget, setGeoPickTarget] = useState("create"); // 'create' | 'edit'
 
+  const [gameSheetOpen, setGameSheetOpen] = useState(false);
+const [sheetGame, setSheetGame] = useState(null);
+
+const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
+const [sheetPlayer, setSheetPlayer] = useState(null);
+
+const [createGeoPickOpen, setCreateGeoPickOpen] = useState(false);
+
+
+
 
 
 
@@ -547,6 +561,25 @@ async function createRsvpLink(tg_id) {
   }
 }
 
+function openGameSheet(g) {
+  if (!g) return;
+  setSheetGame(g);
+  setGameSheetOpen(true);
+}
+function closeGameSheet() {
+  setGameSheetOpen(false);
+  setSheetGame(null);
+}
+
+function openPlayerSheet(p) {
+  if (!p) return;
+  setSheetPlayer(p);
+  setPlayerSheetOpen(true);
+}
+function closePlayerSheet() {
+  setPlayerSheetOpen(false);
+  setSheetPlayer(null);
+}
 
   async function revokeToken() {
   if (!tokenValue) return;
@@ -1351,15 +1384,10 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 </div>
 
 <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-  <button
-  className="btn secondary"
-  onClick={() => {
-    setGeoPickTarget("create");
-    setGeoPickOpen(true);
-  }}
->
-    🗺️ Выбрать на карте
-  </button>
+<button className="btn secondary" onClick={() => setCreateGeoPickOpen(true)}>
+  🗺️ Выбрать на карте
+</button>
+
 
   <button
     className="btn secondary"
@@ -2020,44 +2048,43 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </Sheet>
       )}
         <MapPickModal
-  open={geoPickOpen}
-  initial={
-    geoPickTarget === "edit"
-      ? {
-          lat: gameDraft?.geo_lat ? Number(gameDraft.geo_lat) : null,
-          lon: gameDraft?.geo_lon ? Number(gameDraft.geo_lon) : null,
-        }
-      : {
-          lat: createGeo.lat ? Number(createGeo.lat) : null,
-          lon: createGeo.lon ? Number(createGeo.lon) : null,
-        }
-  }
-  onClose={() => setGeoPickOpen(false)}
-  onPick={(v) => {
-    const lat = v.lat != null ? String(v.lat) : "";
-    const lon = v.lon != null ? String(v.lon) : "";
-
-    if (geoPickTarget === "edit") {
-      setGameDraft((d) =>
-        d
-          ? {
-              ...d,
-              geo_lat: lat,
-              geo_lon: lon,
-              geo_address: v.address || "",
-            }
-          : d
-      );
-    } else {
-      setCreateGeo({
-        lat,
-        lon,
-        address: v.address || "",
-      });
-    }
-
-    setGeoPickOpen(false);
+  open={createGeoPickOpen}
+  initial={{
+    lat: createGeo.lat ? Number(createGeo.lat) : null,
+    lon: createGeo.lon ? Number(createGeo.lon) : null,
   }}
+  onClose={() => setCreateGeoPickOpen(false)}
+  onPick={(v) => {
+    setCreateGeo({
+      lat: v.lat != null ? String(v.lat) : "",
+      lon: v.lon != null ? String(v.lon) : "",
+      address: v.address || "",
+    });
+    setCreateGeoPickOpen(false);
+  }}
+/>
+
+<GameSheet
+  open={gameSheetOpen}
+  game={sheetGame}
+  onClose={closeGameSheet}
+  apiGet={apiGet}
+  apiPost={apiPost}
+  apiPatch={apiPatch}
+  apiDelete={apiDelete}
+  onReload={() => load({ silent: true })}
+  onChanged={onChanged}
+/>
+
+<PlayerSheet
+  open={playerSheetOpen}
+  player={sheetPlayer}
+  isSuperAdmin={isSuperAdmin}
+  onClose={closePlayerSheet}
+  apiPatch={apiPatch}
+  apiPost={apiPost}
+  onReload={() => load({ silent: true })}
+  onChanged={onChanged}
 />
 
     </div>

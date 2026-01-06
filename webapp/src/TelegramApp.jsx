@@ -3,6 +3,8 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
+import GameSheet from "./admin/GameSheet.jsx"; 
+
 import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
 import bg1 from "./bg1.webp";
 import bg2 from "./bg2.webp";
@@ -97,6 +99,20 @@ const [remEnabled, setRemEnabled] = useState(false);
 const [remAt, setRemAt] = useState(""); // datetime-local string
 const [remPin, setRemPin] = useState(true);
 const [remSaving, setRemSaving] = useState(false);
+const [gameSheetOpen, setGameSheetOpen] = useState(false);
+const [gameSheetGame, setGameSheetGame] = useState(null);
+
+function openGameSheet(game) {
+  if (!game) return;
+  setGameSheetGame(game);
+  setGameSheetOpen(true);
+}
+
+function closeGameSheet() {
+  setGameSheetOpen(false);
+  setGameSheetGame(null);
+}
+
 
 
 function getAvatarSrc(p) {
@@ -1751,6 +1767,16 @@ function openYandexRoute(lat, lon) {
                         <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
                         <span className="badge">📍 {game.location || "—"}</span>
                         <span className="badge">{uiStatus(game)}</span>
+                                {isAdmin ? (
+                                    <button
+                                      className="iconBtn"
+                                      type="button"
+                                      title="Редактировать игру"
+                                      onClick={() => openGameSheet(game)}
+                                    >
+                                      ⚙️
+                                    </button>
+                                  ) : null}
 
                     {game.geo_lat != null && game.geo_lon != null ? (
                       <button
@@ -2632,6 +2658,22 @@ function openYandexRoute(lat, lon) {
                 </div>
               )}
 
+      <GameSheet
+  open={gameSheetOpen}
+  game={gameSheetGame}
+  onClose={closeGameSheet}
+  apiGet={apiGet}
+  apiPost={apiPost}
+  apiPatch={apiPatch}
+  apiDelete={apiDelete}
+  onReload={() => {
+    // 1) обновить список игр (если есть)
+    load?.({ silent: true });        // если у тебя есть load()
+    // 2) обновить текущую деталку (если есть отдельная загрузка)
+    loadGameDetail?.(gameSheetGame?.id); // если у тебя есть такая функция
+  }}
+  onChanged={onChanged}
+/>
 
       <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </div>

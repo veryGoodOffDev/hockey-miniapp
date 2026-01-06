@@ -1900,3 +1900,13 @@ html[data-theme="light"] .btn.outline.active{
   display: inline-block;
   flex: 0 0 auto;
 }
+
+.iconBtn{
+  border:1px solid var(--border);
+  background: transparent;
+  border-radius:10px;
+  padding:6px 8px;
+  cursor:pointer;
+  line-height:1;
+}
+.iconBtn:active{ transform: translateY(1px); }
