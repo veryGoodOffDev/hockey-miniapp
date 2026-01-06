@@ -4,7 +4,6 @@ import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import GameSheet from "./admin/GameSheet.jsx"; 
-import GameAdminSheet from "./GameAdminSheet.jsx"; // путь поправь под себя
 
 import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
 import bg1 from "./bg1.webp";
@@ -25,6 +24,7 @@ export default function TelegramApp() {
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
+  const tgPopupBusyRef = useRef(false);
 
 
   const [tab, setTab] = useState("game"); // game | players | teams | stats | profile | admin
@@ -102,32 +102,36 @@ const [remPin, setRemPin] = useState(true);
 const [remSaving, setRemSaving] = useState(false);
 const [gameSheetOpen, setGameSheetOpen] = useState(false);
 const [gameSheetGame, setGameSheetGame] = useState(null);
-const [adminGameOpen, setAdminGameOpen] = useState(false);
-const [adminGame, setAdminGame] = useState(null);
+function tgSafeAlert(text) {
+  if (!tg?.showAlert) {
+    window.alert(text);
+    return Promise.resolve();
+  }
+  if (tgPopupBusyRef.current) return Promise.resolve(); // игнорим второй алерт
 
+  tgPopupBusyRef.current = true;
 
+  return new Promise((resolve) => {
+    try {
+      tg.showAlert(String(text || ""), () => {
+        tgPopupBusyRef.current = false;
+        resolve();
+      });
+    } catch (e) {
+      tgPopupBusyRef.current = false;
+      resolve();
+    }
+  });
+}
 const onChanged = async ({ label, gameId } = {}) => {
-  // 1) показать сообщение (как ты делаешь тосты — подставь свою функцию)
-  if (label) {
-    // пример:
-    // showToast(label);
-    console.log(label);
-  }
+  if (label) console.log(label); // или flashOp(...) если хочешь
 
-  // 2) закрыть шит (чтобы UX был как ты хочешь)
-  closeGameSheet?.();
+  closeGameSheet();
 
-  // 3) обновить данные
-  // если у тебя есть refreshAll — это лучший вариант
-  if (gameId) {
-    await refreshAll?.(gameId);
-  } else if (gameSheetGame?.id) {
-    await refreshAll?.(gameSheetGame.id);
-  } else {
-    // запасной вариант
-    await load?.({ silent: true });
-  }
+  // один источник правды — refreshAll у тебя есть
+  await refreshAll(gameId ?? gameSheetGame?.id);
 };
+
 
 
 function openGameSheet(g) {
@@ -186,18 +190,34 @@ const [funBusy, setFunBusy] = useState(false);
 
 function tgPopup({ title, message, buttons }) {
   return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+
+    // fallback вне телеги
     if (!tg?.showPopup) {
-      // fallback
       if (buttons?.length === 1) {
         alert(message);
-        return resolve({ id: "ok" });
+        return resolve({ id: buttons[0]?.id || "ok" });
       }
       const ok = confirm(message);
       return resolve({ id: ok ? "yes" : "no" });
     }
-    tg.showPopup({ title, message, buttons }, (id) => resolve({ id }));
+
+    // ✅ защита от "Popup is already opened"
+    if (tgPopupBusyRef.current) return resolve({ id: "cancel" });
+    tgPopupBusyRef.current = true;
+
+    try {
+      tg.showPopup({ title, message, buttons }, (id) => {
+        tgPopupBusyRef.current = false;
+        resolve({ id: id || "" });
+      });
+    } catch (e) {
+      tgPopupBusyRef.current = false;
+      resolve({ id: "cancel" });
+    }
   });
 }
+
 
 async function loadFunStatus() {
   try {
@@ -2698,22 +2718,27 @@ function openYandexRoute(lat, lon) {
                 </div>
               )}
 
-      <GameSheet
-  open={gameSheetOpen}
-  game={gameSheetGame}
-  onClose={closeGameSheet}
-  apiGet={apiGet}
-  apiPost={apiPost}
-  apiPatch={apiPatch}
-  apiDelete={apiDelete}
-  onReload={() => {
-    // 1) обновить список игр (если есть)
-    load?.({ silent: true });        // если у тебя есть load()
-    // 2) обновить текущую деталку (если есть отдельная загрузка)
-    loadGameDetail?.(gameSheetGame?.id); // если у тебя есть такая функция
-  }}
-  onChanged={onChanged}
-/>
+              <GameSheet
+                open={gameSheetOpen}
+                game={gameSheetGame}
+                onClose={closeGameSheet}
+                apiGet={apiGet}
+                apiPost={apiPost}
+                apiPatch={apiPatch}
+                apiDelete={apiDelete}
+                onReload={async (gameId) => {
+                  try {
+                    // самый надежный вариант: один общий рефреш
+                    await refreshAll?.(gameId ?? gameSheetGame?.id);
+
+                    // если refreshAll нет — оставь только то, что у тебя реально есть:
+                    // await loadGameDetail?.(gameId ?? gameSheetGame?.id);
+                    // await loadGamesList?.();  // если есть функция загрузки списка
+                  } catch (e) {
+                    console.warn("onReload failed:", e);
+                  }
+                }}
+              />
 
 <GameAdminSheet
   open={adminGameOpen}
@@ -2727,6 +2752,7 @@ function openYandexRoute(lat, lon) {
     // обновить детальную игру и список (что у тебя есть)
     await refreshAll?.(gameId);
   }}
+  onChanged={onChanged}
 />
 
 
