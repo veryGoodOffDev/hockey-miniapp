@@ -4,6 +4,7 @@ import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import GameSheet from "./admin/GameSheet.jsx"; 
+import GameAdminSheet from "./GameAdminSheet.jsx"; // путь поправь под себя
 
 import { SupportForm, AboutBlock } from "./ProfileExtras.jsx";
 import bg1 from "./bg1.webp";
@@ -101,6 +102,20 @@ const [remPin, setRemPin] = useState(true);
 const [remSaving, setRemSaving] = useState(false);
 const [gameSheetOpen, setGameSheetOpen] = useState(false);
 const [gameSheetGame, setGameSheetGame] = useState(null);
+const [adminGameOpen, setAdminGameOpen] = useState(false);
+const [adminGame, setAdminGame] = useState(null);
+
+function openGameSheet(g) {
+  if (!g) return;
+  setAdminGame(g);
+  setAdminGameOpen(true);
+}
+
+function closeGameSheet() {
+  setAdminGameOpen(false);
+  setAdminGame(null);
+}
+
 
 function openGameSheet(game) {
   if (!game) return;
@@ -1848,7 +1863,7 @@ function openYandexRoute(lat, lon) {
                       )}*/}
 
                       <hr />
-                      {isAdmin && game ? (
+                      {/* {isAdmin && game ? (
   <div className="card" style={{ marginTop: 12 }}>
     <h3 style={{ margin: 0 }}>⏰ Напоминание по этой игре</h3>
 
@@ -1892,7 +1907,7 @@ function openYandexRoute(lat, lon) {
       </div>
     ) : null}
   </div>
-) : null}
+) : null} */}
 
                       {game.status === "cancelled" ? (
                         <div className="small">Эта игра отменена.</div>
@@ -2674,6 +2689,21 @@ function openYandexRoute(lat, lon) {
   }}
   onChanged={onChanged}
 />
+
+<GameAdminSheet
+  open={adminGameOpen}
+  game={adminGame}
+  onClose={closeGameSheet}
+  apiGet={apiGet}
+  apiPost={apiPost}
+  apiPatch={apiPatch}
+  apiDelete={apiDelete}
+  onSaved={async (gameId) => {
+    // обновить детальную игру и список (что у тебя есть)
+    await refreshAll?.(gameId);
+  }}
+/>
+
 
       <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </div>
