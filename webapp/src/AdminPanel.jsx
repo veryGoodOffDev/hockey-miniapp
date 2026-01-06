@@ -8,8 +8,8 @@ import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import GameSheet from "./admin/GameSheet.jsx";
 import PlayerSheet from "./admin/PlayerSheet.jsx";
-import MapPickModal from "./admin/MapPickModal.jsx";
-import { toLocal, showName, showNum, posHuman } from "./admin/adminUtils.js";
+// import MapPickModal from "./admin/MapPickModal.jsx";
+// import { toLocal, showName, showNum, posHuman } from "./admin/adminUtils.js";
 
 
 delete L.Icon.Default.prototype._getIconUrl;
