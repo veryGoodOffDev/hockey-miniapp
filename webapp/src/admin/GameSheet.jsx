@@ -17,6 +17,13 @@ export default function GameSheet({
 }) {
   const [gameDraft, setGameDraft] = useState(null);
 
+  // reminder
+const [remEnabled, setRemEnabled] = useState(false);
+const [remAt, setRemAt] = useState("");
+const [remPin, setRemPin] = useState(true);
+const [remSaving, setRemSaving] = useState(false);
+
+
   // guests
   const [guestsState, setGuestsState] = useState({ loading: false, list: [] });
   const [guestFormOpen, setGuestFormOpen] = useState(false);
@@ -104,6 +111,85 @@ export default function GameSheet({
     loadAttendanceForGame(game.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, game?.id]);
+
+  useEffect(() => {
+  if (!isOpen || !game) return;
+
+  setRemEnabled(!!game.reminder_enabled);
+  setRemPin(game.reminder_pin !== false);
+
+  // reminder_at (timestamptz) -> datetime-local
+  if (game.reminder_at) {
+    const d = new Date(game.reminder_at);
+    const pad = (n) => String(n).padStart(2, "0");
+    const local =
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    setRemAt(local);
+  } else {
+    setRemAt("");
+  }
+}, [
+  isOpen,
+  game?.id,
+  game?.reminder_enabled,
+  game?.reminder_pin,
+  game?.reminder_at,
+]);
+
+function formatWhen(starts_at) {
+  const s = new Date(starts_at).toLocaleString("ru-RU", {
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const cleaned = String(s).replace(/\s+/g, " ").trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+async function saveReminderSettings() {
+  if (!gameDraft?.id) return;
+
+  // если включено — обязателен remAt
+  if (remEnabled && !remAt) {
+    alert("Укажи дату/время напоминания");
+    return;
+  }
+
+  // datetime-local -> ISO через твою утилиту toIsoFromLocal
+  let reminder_at = null;
+  if (remEnabled && remAt) {
+    const [d, t] = remAt.split("T");
+    if (!d || !t) {
+      alert("Некорректная дата/время напоминания");
+      return;
+    }
+    reminder_at = toIsoFromLocal(d, t);
+  }
+
+  setRemSaving(true);
+  try {
+    const ok = await runOp("save reminder", async () => {
+      await apiPatch(`/api/games/${gameDraft.id}`, {
+        reminder_enabled: remEnabled,
+        reminder_pin: remPin,
+        reminder_at,
+      });
+
+      await onReload?.(); // чтобы game обновился и пришёл reminder_sent_at и т.п.
+      await onChanged?.({ label: "✅ Напоминание сохранено — обновляю приложение…", gameId: gameDraft.id });
+    });
+
+    if (ok) notify("✅ Напоминание сохранено");
+  } finally {
+    setRemSaving(false);
+  }
+}
+
 
   function close() {
     setGameDraft(null);
@@ -537,6 +623,50 @@ export default function GameSheet({
 
       <Sheet title={title} onClose={close}>
         <div className="card">
+  <div className="card" style={{ marginTop: 12 }}>
+    <h3 style={{ margin: 0 }}>⏰ Напоминание по этой игре</h3>
+
+    <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <label className="row" style={{ gap: 8, alignItems: "center" }}>
+        <input
+          type="checkbox"
+          checked={remEnabled}
+          onChange={(e) => setRemEnabled(e.target.checked)}
+        />
+        <span>Включено</span>
+      </label>
+
+      <input
+        className="input"
+        type="datetime-local"
+        value={remAt}
+        onChange={(e) => setRemAt(e.target.value)}
+        style={{ minWidth: 220 }}
+        disabled={!remEnabled}
+      />
+
+      <label className="row" style={{ gap: 8, alignItems: "center" }}>
+        <input
+          type="checkbox"
+          checked={remPin}
+          onChange={(e) => setRemPin(e.target.checked)}
+          disabled={!remEnabled}
+        />
+        <span>Закрепить</span>
+      </label>
+
+      <button className="btn" onClick={saveReminderSettings} disabled={remSaving}>
+        {remSaving ? "…" : "Сохранить"}
+      </button>
+    </div>
+
+    {game.reminder_sent_at ? (
+      <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+        Уже отправлено: <b>{formatWhen(game.reminder_sent_at)}</b>
+      </div>
+    ) : null}
+  </div>
+
           <div className="rowBetween">
             <div className="small" style={{ opacity: 0.9 }}>
               Статус: <b>{gameDraft.status}</b>
