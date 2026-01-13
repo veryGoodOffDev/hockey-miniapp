@@ -2323,19 +2323,6 @@ function presentPlayer(p, baseUrl) {
 }
 
 
-function presentPlayer(p) {
-  if (!p) return p;
-  const out = { ...p };
-  out.photo_url = photoUrlForPlayerRow(p);
-
-  // не отдаём клиенту служебные поля
-  delete out.avatar_file_id;
-  delete out.updated_at;
-
-  return out;
-}
-
-
 /** ====== ADMIN: reminder ====== */
 app.post("/api/admin/reminder/sendNow", async (req, res) => {
   const user = requireWebAppAuth(req, res);
