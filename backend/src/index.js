@@ -2270,7 +2270,9 @@ app.get("/api/players/:tg_id/avatar", async (req, res) => {
 
     // ✅ ВОТ ТУТ КЛЮЧ: не берём octet-stream от Telegram
     res.setHeader("Content-Type", mimeFromFilePath(filePath));
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    // res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Cache-Control", "no-store");
+
 
     const buf = Buffer.from(await resp.arrayBuffer());
     res.end(buf);
@@ -2281,13 +2283,13 @@ app.get("/api/players/:tg_id/avatar", async (req, res) => {
 
 
 function photoUrlForPlayerRow(p) {
-  // приоритет: TG-аватар из бота
   if (p.avatar_file_id) {
     const v = p.updated_at ? `?v=${encodeURIComponent(new Date(p.updated_at).getTime())}` : "";
     return `/api/players/${p.tg_id}/avatar${v}`;
   }
   return (p.photo_url || "").trim();
 }
+
 
 function presentPlayer(p) {
   if (!p) return p;
