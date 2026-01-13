@@ -66,6 +66,21 @@ await ensureSchema(q);
 // Telegram bot (polling)
 const bot = createBot();
 await bot.init();
+
+// ✅ чтобы ошибки бота были видны в systemd логах
+bot.catch((err) => console.error("[bot] error:", err));
+
+// ✅ не запускаем polling во время smoke теста
+const isSmoke = process.env.SMOKE === "1";
+if (!isSmoke) {
+  bot.start({ drop_pending_updates: true }).catch((e) => {
+    console.error("[bot] start failed:", e);
+  });
+  console.log("[bot] polling started");
+} else {
+  console.log("[bot] polling disabled (SMOKE=1)");
+}
+
 bot.catch((err) => console.error("[bot] error:", err));
 
 // чтобы не висели старые апдейты
