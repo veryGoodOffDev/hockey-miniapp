@@ -2225,39 +2225,45 @@ const r = await q(sql, [tgId]);
 res.json({ ok: true, player: r.rows[0] ? presentPlayer(r.rows[0]) : null });
 });
 
-import { Readable } from "node:stream";
+// import { Readable } from "node:stream";
 
 // GET /api/players/:tg_id/avatar
+function mimeFromFilePath(filePath = "") {
+  const ext = (filePath.split(".").pop() || "").toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+  return "image/jpeg"; // safe default для Telegram photo
+}
+
 app.get("/api/players/:tg_id/avatar", async (req, res) => {
   const tgId = Number(req.params.tg_id);
   if (!Number.isFinite(tgId)) return res.status(400).end();
 
-  const r = await q(`SELECT avatar_file_id, updated_at FROM players WHERE tg_id=$1`, [tgId]);
-  const row = r.rows?.[0];
-  const fileId = row?.avatar_file_id;
+  const r = await q(`SELECT avatar_file_id FROM players WHERE tg_id=$1`, [tgId]);
+  const fileId = r.rows?.[0]?.avatar_file_id;
   if (!fileId) return res.status(404).end();
 
   try {
-    // bot должен быть тем же инстансом, который ты используешь в reminder-сервисе
     const file = await bot.api.getFile(fileId);
-    const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+    const filePath = file?.file_path;
+    if (!filePath) return res.status(502).end();
 
+    const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`;
     const resp = await fetch(url);
     if (!resp.ok) return res.status(502).end();
 
-    res.setHeader("Content-Type", resp.headers.get("content-type") || "image/jpeg");
+    // ✅ ВОТ ТУТ КЛЮЧ: не берём octet-stream от Telegram
+    res.setHeader("Content-Type", mimeFromFilePath(filePath));
     res.setHeader("Cache-Control", "public, max-age=3600");
 
-    if (resp.body && Readable.fromWeb) {
-      Readable.fromWeb(resp.body).pipe(res);
-    } else {
-      const buf = Buffer.from(await resp.arrayBuffer());
-      res.end(buf);
-    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    res.end(buf);
   } catch (e) {
     res.status(500).end();
   }
 });
+
 
 function photoUrlForPlayerRow(p) {
   // приоритет: TG-аватар из бота
