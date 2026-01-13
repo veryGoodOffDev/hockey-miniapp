@@ -106,6 +106,19 @@ export async function ensureSchema(q) {
   // guest  = разовый гость (не в общем списке игроков)
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS player_kind TEXT;`);
 
+    // ✅ BOT PROFILE: чтобы понимать, что человек реально нажал Start в личке
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_last_seen TIMESTAMPTZ;`);
+
+  // ✅ BOT AVATAR: хранить file_id телеги (НЕ url)
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_file_id TEXT;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_last_seen TIMESTAMPTZ;`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_players_pm_started ON players(pm_started);`);
+
+
   // миграция/нормализация значений
   // 1) кто был гостем раньше -> guest
   await q(`

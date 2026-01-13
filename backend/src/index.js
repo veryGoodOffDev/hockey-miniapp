@@ -2178,24 +2178,26 @@ app.get("/api/players", async (req, res) => {
   const is_admin = await isAdminId(user.id);
 
   // ✅ показываем только постоянных: tg + manual
-  const sql = is_admin
-    ? `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
-              photo_url, notes, skill, skating, iq, stamina, passing, shooting, is_admin, disabled,
-              player_kind
-       FROM players
-       WHERE disabled=FALSE
-         AND player_kind IN ('tg','manual')
-       ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
-    : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
-              photo_url, notes,
-              player_kind
-       FROM players
-       WHERE disabled=FALSE
-         AND player_kind IN ('tg','manual')
-       ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`;
+const sql = is_admin
+  ? `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
+            photo_url, avatar_file_id, updated_at,
+            notes, skill, skating, iq, stamina, passing, shooting, is_admin, disabled,
+            player_kind
+     FROM players
+     WHERE disabled=FALSE
+       AND player_kind IN ('tg','manual')
+     ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
+  : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
+            photo_url, avatar_file_id, updated_at,
+            notes,
+            player_kind
+     FROM players
+     WHERE disabled=FALSE
+       AND player_kind IN ('tg','manual')
+     ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`;
 
-  const r = await q(sql);
-  res.json({ ok: true, players: r.rows });
+const r = await q(sql);
+res.json({ ok: true, players: r.rows.map(presentPlayer) });
 });
 
 app.get("/api/players/:tg_id", async (req, res) => {
@@ -2206,14 +2208,72 @@ app.get("/api/players/:tg_id", async (req, res) => {
   const tgId = Number(req.params.tg_id);
   const is_admin = await isAdminId(user.id);
 
-  const sql = is_admin
-    ? `SELECT * FROM players WHERE tg_id=$1`
-    : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position, photo_url, notes, player_kind
-       FROM players WHERE tg_id=$1`;
+const sql = is_admin
+  ? `SELECT * FROM players WHERE tg_id=$1`
+  : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
+            photo_url, avatar_file_id, updated_at,
+            notes, player_kind
+     FROM players WHERE tg_id=$1`;
 
-  const r = await q(sql, [tgId]);
-  res.json({ ok: true, player: r.rows[0] || null });
+const r = await q(sql, [tgId]);
+res.json({ ok: true, player: r.rows[0] ? presentPlayer(r.rows[0]) : null });
 });
+
+import { Readable } from "node:stream";
+
+// GET /api/players/:tg_id/avatar
+app.get("/api/players/:tg_id/avatar", async (req, res) => {
+  const tgId = Number(req.params.tg_id);
+  if (!Number.isFinite(tgId)) return res.status(400).end();
+
+  const r = await q(`SELECT avatar_file_id, updated_at FROM players WHERE tg_id=$1`, [tgId]);
+  const row = r.rows?.[0];
+  const fileId = row?.avatar_file_id;
+  if (!fileId) return res.status(404).end();
+
+  try {
+    // bot должен быть тем же инстансом, который ты используешь в reminder-сервисе
+    const file = await bot.api.getFile(fileId);
+    const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) return res.status(502).end();
+
+    res.setHeader("Content-Type", resp.headers.get("content-type") || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+
+    if (resp.body && Readable.fromWeb) {
+      Readable.fromWeb(resp.body).pipe(res);
+    } else {
+      const buf = Buffer.from(await resp.arrayBuffer());
+      res.end(buf);
+    }
+  } catch (e) {
+    res.status(500).end();
+  }
+});
+
+function photoUrlForPlayerRow(p) {
+  // приоритет: TG-аватар из бота
+  if (p.avatar_file_id) {
+    const v = p.updated_at ? `?v=${encodeURIComponent(new Date(p.updated_at).getTime())}` : "";
+    return `/api/players/${p.tg_id}/avatar${v}`;
+  }
+  return (p.photo_url || "").trim();
+}
+
+function presentPlayer(p) {
+  if (!p) return p;
+  const out = { ...p };
+  out.photo_url = photoUrlForPlayerRow(p);
+
+  // не отдаём клиенту служебные поля
+  delete out.avatar_file_id;
+  delete out.updated_at;
+
+  return out;
+}
+
 
 /** ====== ADMIN: reminder ====== */
 app.post("/api/admin/reminder/sendNow", async (req, res) => {
@@ -3110,6 +3170,53 @@ app.post("/api/admin/teams/send", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
+
+// POST /api/admin/announce/bot-profile
+app.post("/api/admin/announce/bot-profile", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  // ВАЖНО: чтобы другие админы не могли — делаем DEV-only
+  const devIds = (process.env.DEV_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (!devIds.includes(String(user.id))) {
+    return res.status(403).json({ ok: false, reason: "not_dev" });
+  }
+
+  const r = await q(`SELECT value FROM settings WHERE key='notify_chat_id' LIMIT 1`);
+  const chatIdStr = r.rows?.[0]?.value;
+  if (!chatIdStr) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  const chat_id = Number(chatIdStr);
+  if (!Number.isFinite(chat_id)) return res.status(400).json({ ok: false, reason: "bad_chat_id" });
+
+  // username бота
+  const me = await bot.api.getMe();
+  const botUsername = me.username;
+
+  const text =
+    `🔥 Обновление!\n\n` +
+    `Теперь профиль можно менять через бота:\n` +
+    `• 📸 установить/удалить аватар\n` +
+    `• ✏️ изменить отображаемое имя\n\n` +
+    `Нажми кнопку ниже и нажми Start 👇`;
+
+  const botLink = `https://t.me/${botUsername}?start=profile`;
+  const appLink = `https://t.me/${botUsername}?startapp=home`;
+
+  const kb = new InlineKeyboard()
+    .url("👤 Открыть бота (Start)", botLink)
+    .row()
+    .url("🏒 Открыть мини-приложение", appLink);
+
+  try {
+    await bot.api.sendMessage(chat_id, text, { reply_markup: kb, disable_web_page_preview: true });
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(400).json({ ok: false, reason: "send_failed", details: e?.description || String(e) });
+  }
+});
+
 
 /** ====== ADMIN: SET GAME REMINDER ====== */
 app.patch("/api/admin/games/reminder", async (req, res) => {
