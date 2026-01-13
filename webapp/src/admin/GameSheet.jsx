@@ -154,13 +154,11 @@ function formatWhen(starts_at) {
 async function saveReminderSettings() {
   if (!gameDraft?.id) return;
 
-  // если включено — обязателен remAt
   if (remEnabled && !remAt) {
     alert("Укажи дату/время напоминания");
     return;
   }
 
-  // datetime-local -> ISO через твою утилиту toIsoFromLocal
   let reminder_at = null;
   if (remEnabled && remAt) {
     const [d, t] = remAt.split("T");
@@ -174,17 +172,23 @@ async function saveReminderSettings() {
   setRemSaving(true);
   try {
     const ok = await runOp("save reminder", async () => {
-      await apiPatch(`/api/games/${gameDraft.id}`, {
+      const r = await apiPatch(`/api/admin/games/${gameDraft.id}/reminder`, {
         reminder_enabled: remEnabled,
-        reminder_pin: remPin,
         reminder_at,
+        reminder_pin: remPin,
+        reset_sent: true, // чтобы отправилось заново при изменении времени
       });
 
-      await onReload?.(); // чтобы game обновился и пришёл reminder_sent_at и т.п.
-      await onChanged?.({ label: "✅ Напоминание сохранено — обновляю приложение…", gameId: gameDraft.id });
+      // ВАЖНО: иначе можно "успешно" сохранить в никуда и не заметить
+      if (!r?.ok) throw new Error(r?.reason || r?.error || "reminder_save_failed");
     });
 
-    if (ok) notify("✅ Напоминание сохранено");
+    if (!ok) return;
+
+    await onReload?.(gameDraft.id); // <-- передай id, у тебя onReload умеет его принять
+    await onChanged?.({ label: "✅ Напоминание сохранено — обновляю приложение…", gameId: gameDraft.id });
+
+    notify("✅ Напоминание сохранено");
   } finally {
     setRemSaving(false);
   }

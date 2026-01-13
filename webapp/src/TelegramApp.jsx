@@ -123,27 +123,32 @@ function tgSafeAlert(text) {
     }
   });
 }
-const onChanged = async ({ label, gameId } = {}) => {
-  if (label) console.log(label); // или flashOp(...) если хочешь
+const onChanged = async ({ label, gameId, action } = {}) => {
+  if (label) console.log(label);
 
   closeGameSheet();
 
-  // один источник правды — refreshAll у тебя есть
-  await refreshAll(gameId ?? gameSheetGame?.id);
+  if (gameId) {
+    setSelectedGameId(gameId);
+    setGameView("detail"); // сразу в деталку
+  }
+
+  await refreshAll(gameId ?? selectedGameId);
 };
 
 
 
-function openGameSheet(g) {
-  if (!g) return;
-  setAdminGame(g);
-  setAdminGameOpen(true);
-}
 
-function closeGameSheet() {
-  setAdminGameOpen(false);
-  setAdminGame(null);
-}
+// function openGameSheet(g) {
+//   if (!g) return;
+//   setAdminGame(g);
+//   setAdminGameOpen(true);
+// }
+
+// function closeGameSheet() {
+//   setAdminGameOpen(false);
+//   setAdminGame(null);
+// }
 
 
 function openGameSheet(game) {
@@ -157,6 +162,25 @@ function closeGameSheet() {
   setGameSheetGame(null);
 }
 
+const NEW_GAME_TEMPLATE = {
+  id: null,               // важный признак "создание"
+  starts_at: new Date().toISOString(),
+  location: "",
+  status: "scheduled",
+  video_url: "",
+  geo_lat: null,
+  geo_lon: null,
+
+  // если ты переносишь напоминание в шит — пусть поля будут сразу
+  reminder_enabled: false,
+  reminder_at: null,
+  reminder_pin: true,
+};
+
+function openCreateGameSheet() {
+  setGameSheetGame(NEW_GAME_TEMPLATE);
+  setGameSheetOpen(true);
+}
 
 
 function getAvatarSrc(p) {
@@ -1473,7 +1497,24 @@ function openYandexRoute(lat, lon) {
         <div className="card">
           {gameView === "list" ? (
             <>
-              <h2>Игры</h2>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <h2 style={{ margin: 0 }}>Игры</h2>
+
+                {isAdmin ? (
+                  <button
+                    className="iconBtn"
+                    type="button"
+                    title="Создать игру"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openCreateGameSheet();
+                    }}
+                  >
+                    ➕
+                  </button>
+                ) : null}
+              </div>
 
               <div
                 className="row"
