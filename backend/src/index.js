@@ -2218,7 +2218,9 @@ const sql = is_admin
      ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`;
 
 const r = await q(sql);
-res.json({ ok: true, players: r.rows.map(presentPlayer) });
+const baseUrl = getPublicBaseUrl(req);
+res.json({ ok: true, players: r.rows.map((p) => presentPlayer(p, baseUrl)) });
+
 });
 
 app.get("/api/players/:tg_id", async (req, res) => {
@@ -2237,7 +2239,9 @@ const sql = is_admin
      FROM players WHERE tg_id=$1`;
 
 const r = await q(sql, [tgId]);
-res.json({ ok: true, player: r.rows[0] ? presentPlayer(r.rows[0]) : null });
+const baseUrl = getPublicBaseUrl(req);
+res.json({ ok: true, player: r.rows[0] ? presentPlayer(r.rows[0], baseUrl) : null });
+
 });
 
 // import { Readable } from "node:stream";
@@ -2282,12 +2286,40 @@ app.get("/api/players/:tg_id/avatar", async (req, res) => {
 });
 
 
-function photoUrlForPlayerRow(p) {
+function getPublicBaseUrl(req) {
+  const envBase = (process.env.PUBLIC_API_URL || "").trim().replace(/\/+$/, "");
+  if (envBase) return envBase;
+
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https")
+    .split(",")[0]
+    .trim();
+  const host = String(req.headers["x-forwarded-host"] || req.get("host") || "")
+    .split(",")[0]
+    .trim();
+
+  return `${proto}://${host}`;
+}
+ 
+function photoUrlForPlayerRow(p, baseUrl) {
   if (p.avatar_file_id) {
     const v = p.updated_at ? `?v=${encodeURIComponent(new Date(p.updated_at).getTime())}` : "";
-    return `/api/players/${p.tg_id}/avatar${v}`;
+    return `${baseUrl}/api/players/${p.tg_id}/avatar${v}`;
   }
-  return (p.photo_url || "").trim();
+
+  const u = (p.photo_url || "").trim();
+  if (!u) return "";
+
+  // если вдруг там относительная ссылка — тоже сделаем абсолютной
+  if (u.startsWith("/")) return `${baseUrl}${u}`;
+  return u;
+}
+
+function presentPlayer(p, baseUrl) {
+  const out = { ...p };
+  out.photo_url = photoUrlForPlayerRow(p, baseUrl);
+  delete out.avatar_file_id;
+  delete out.updated_at;
+  return out;
 }
 
 
