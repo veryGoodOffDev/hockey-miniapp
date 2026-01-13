@@ -63,9 +63,15 @@ app.options("*", cors());
 await initDb();
 await ensureSchema(q);
 
-// Telegram bot webhook
+// Telegram bot (polling)
 const bot = createBot();
 await bot.init();
+bot.catch((err) => console.error("[bot] error:", err));
+
+// чтобы не висели старые апдейты
+bot.start({ drop_pending_updates: true });
+
+console.log("[bot] polling started");
 
 app.post("/bot", async (req, res) => {
   try {
