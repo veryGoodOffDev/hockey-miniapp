@@ -26,6 +26,10 @@ export default function TelegramApp() {
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
   const tgPopupBusyRef = useRef(false);
 
+  const OWNER_TG_ID = Number(import.meta.env.VITE_OWNER_TG_ID || 0);
+  const myTgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  const isOwner = OWNER_TG_ID && String(myTgId) === String(OWNER_TG_ID);
+
 
   const [tab, setTab] = useState("game"); // game | players | teams | stats | profile | admin
   const [loading, setLoading] = useState(true);
@@ -2684,6 +2688,9 @@ function openYandexRoute(lat, lon) {
                       </div>
                     </>
                   )}
+                  {isOwner && Number(selectedPlayer.tg_id) > 0 && (
+                    <PmBox player={selectedPlayer} />
+                  )}
                 </div>
               )}
             </>
@@ -2997,6 +3004,129 @@ function Avatar({ p, big = false, onClick }) {
       title={clickable ? "Открыть фото" : ""}
     >
       {letter}
+    </div>
+  );
+}
+
+function PmBox({ player }) {
+  const [text, setText] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [status, setStatus] = React.useState("");
+  const [lastMsgId, setLastMsgId] = React.useState(null);
+
+  // чтобы “удалить последнее” переживало переключение игроков
+  React.useEffect(() => {
+    try {
+      const key = `pm_last_${player.tg_id}`;
+      const saved = localStorage.getItem(key);
+      setLastMsgId(saved ? Number(saved) : null);
+    } catch {
+      setLastMsgId(null);
+    }
+  }, [player.tg_id]);
+
+  const saveLast = (mid) => {
+    setLastMsgId(mid);
+    try {
+      localStorage.setItem(`pm_last_${player.tg_id}`, String(mid || ""));
+    } catch {}
+  };
+
+  const canSend = !!text.trim() && !sending;
+  const canDelete = !!lastMsgId && !sending;
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <div style={{ fontWeight: 900, fontSize: 16 }}>✉️ Сообщение в личку</div>
+
+      <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
+        Получатель: <b>{showName(player)}</b> · tg_id: {player.tg_id}
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <textarea
+          className="input"
+          rows={4}
+          placeholder="Напиши сообщение…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </div>
+
+      <div className="row" style={{ gap: 10, marginTop: 10 }}>
+        <button
+          className="btn"
+          disabled={!canSend}
+          onClick={async () => {
+            const msg = text.trim();
+            if (!msg) return;
+
+            setSending(true);
+            setStatus("");
+            try {
+              const r = await apiPost("/api/admin/pm", {
+                tg_id: player.tg_id,
+                text: msg,
+              });
+
+              if (r?.ok) {
+                saveLast(r.message_id);
+                setText("");
+                setStatus(`✅ Отправлено (id: ${r.message_id})`);
+              } else {
+                setStatus(`❌ Не отправилось: ${r?.reason || "unknown"}`);
+              }
+            } catch (e) {
+              setStatus("❌ Ошибка отправки (смотри backend log)");
+            } finally {
+              setSending(false);
+            }
+          }}
+        >
+          {sending ? "Отправляем…" : "Отправить"}
+        </button>
+
+        <button
+          className="btn secondary"
+          disabled={!canDelete}
+          onClick={async () => {
+            if (!lastMsgId) return;
+            setSending(true);
+            setStatus("");
+            try {
+              const r = await apiPost("/api/admin/pm/delete", {
+                tg_id: player.tg_id,
+                message_id: lastMsgId,
+              });
+
+              if (r?.ok) {
+                setStatus(`🗑 Удалено (id: ${lastMsgId})`);
+                saveLast(null);
+              } else {
+                setStatus(`❌ Не удалилось: ${r?.reason || "unknown"}`);
+              }
+            } catch (e) {
+              setStatus("❌ Ошибка удаления (возможно прошло слишком много времени)");
+            } finally {
+              setSending(false);
+            }
+          }}
+        >
+          Удалить последнее
+        </button>
+      </div>
+
+      {!!status && (
+        <div className="small" style={{ marginTop: 10, opacity: 0.9 }}>
+          {status}
+        </div>
+      )}
+
+      {!!lastMsgId && (
+        <div className="small" style={{ marginTop: 6, opacity: 0.65 }}>
+          Последнее отправленное message_id: {lastMsgId}
+        </div>
+      )}
     </div>
   );
 }

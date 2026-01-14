@@ -23,6 +23,8 @@ const REMINDER_MINUTE = Number(process.env.REMINDER_MINUTE ?? 0);
 const INTERNAL_CRON_TOKEN = process.env.INTERNAL_CRON_TOKEN || "";
 
 
+
+
 if (LOG_HTTP) {
   app.use((req, res, next) => {
     const t0 = performance.now();
@@ -570,6 +572,16 @@ function fmtDtRu(dt) {
     return new Date(dt).toISOString();
   }
 }
+
+function requireOwner(req, res, user) {
+  const owner = String(process.env.OWNER_TG_ID || "");
+  if (!owner || String(user.id) !== owner) {
+    res.status(403).json({ ok: false, reason: "not_owner" });
+    return false;
+  }
+  return true;
+}
+
 
 async function computeDefaultRemindAt(starts_at) {
   // Пн 15:00 недели игры (для воскресенья — это понедельник ДО воскресенья)
@@ -2172,6 +2184,81 @@ app.delete("/api/admin/players/:tg_id", async (req, res) => {
 
   await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]);
   res.json({ ok: true });
+});
+
+/** ====== PLAYERS (admin messages) ====== */
+
+app.post("/api/admin/pm", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!requireOwner(req, res, user)) return;
+
+  const b = req.body || {};
+  const toId = Number(b.tg_id);
+  const text = String(b.text || "").trim();
+
+  if (!Number.isFinite(toId) || toId <= 0 || !text) {
+    return res.status(400).json({ ok: false, reason: "bad_payload" });
+  }
+
+  // проверка: человек нажимал Start у бота
+  const r = await q(`SELECT pm_started FROM players WHERE tg_id=$1`, [toId]);
+  if (!r.rows?.[0]?.pm_started) {
+    return res.status(400).json({ ok: false, reason: "user_not_started_bot" });
+  }
+
+  const bot = req.app.locals.bot;
+  if (!bot) return res.status(500).json({ ok: false, reason: "bot_not_ready" });
+
+  try {
+    const sent = await bot.api.sendMessage(toId, text, { disable_web_page_preview: true });
+
+    // опционально: лог в bot_messages (у тебя таблица уже есть)
+    await q(
+      `INSERT INTO bot_messages(chat_id, message_id, kind, text, sent_by_tg_id, meta)
+       VALUES($1,$2,'pm',$3,$4,$5)`,
+      [toId, sent.message_id, text, user.id, JSON.stringify({ to_tg_id: toId, type: "pm" })]
+    ).catch(() => {});
+
+    return res.json({ ok: true, message_id: sent.message_id });
+  } catch (e) {
+    return res.status(502).json({ ok: false, reason: "tg_send_failed" });
+  }
+});
+
+app.post("/api/admin/pm/delete", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!requireOwner(req, res, user)) return;
+
+  const b = req.body || {};
+  const toId = Number(b.tg_id);
+  const messageId = Number(b.message_id);
+
+  if (!Number.isFinite(toId) || toId <= 0 || !Number.isFinite(messageId)) {
+    return res.status(400).json({ ok: false, reason: "bad_payload" });
+  }
+
+  const bot = req.app.locals.bot;
+  if (!bot) return res.status(500).json({ ok: false, reason: "bot_not_ready" });
+
+  try {
+    // лимит 48 часов — Telegram сам вернёт ошибку, если поздно :contentReference[oaicite:1]{index=1}
+    await bot.api.deleteMessage(toId, messageId);
+
+    await q(
+      `UPDATE bot_messages
+       SET deleted_at=NOW(), delete_reason='admin_pm_delete'
+       WHERE chat_id=$1 AND message_id=$2`,
+      [toId, messageId]
+    ).catch(() => {});
+
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(502).json({ ok: false, reason: "tg_delete_failed" });
+  }
 });
 
 /** ====== PLAYERS (roster) ====== */
