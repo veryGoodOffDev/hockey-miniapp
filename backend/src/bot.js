@@ -16,7 +16,7 @@ export function createBot() {
   const webAppUrl = process.env.WEB_APP_URL;
 
   // режим ожидания: await_avatar | await_name | null
-  bot.use(session({ initial: () => ({ mode: null }) }));
+  bot.use(session({ initial: () => ({ mode: null, owner_reply_to: null }) }));
 
   // ---------------- DB helpers ----------------
   async function markPmStarted(from) {
@@ -453,6 +453,97 @@ bot.command("pm", async (ctx) => {
 });
 
   // ---------------- message handlers ----------------
+// ===== relay: user -> owner, owner -> user (must be BEFORE other message handlers)
+bot.on("message", async (ctx, next) => {
+  if (ctx.chat?.type !== "private") return next();
+
+  // --- пользователь пишет админу ---
+  if (ctx.session.mode === "await_owner_msg") {
+    ctx.session.mode = null;
+
+    if (!OWNER_ID) {
+      return showScreen(ctx, {
+        text: "⚠️ OWNER_TG_ID не задан. Админ не настроен.",
+        kb: new InlineKeyboard().text("⬅️ Меню", "m:home"),
+      });
+    }
+
+    await markPmStarted(ctx.from);
+
+    const u = ctx.from;
+    const head =
+      `📩 Сообщение админу\n` +
+      `От: ${u.first_name || ""} ${u.last_name || ""}${u.username ? ` (@${u.username})` : ""}\n` +
+      `tg_id: ${u.id}`;
+
+    // кнопка “Ответить” администратору (тебе)
+    const kb = new InlineKeyboard().text("↩️ Ответить", `o:reply:${u.id}`);
+
+    try {
+      await bot.api.sendMessage(OWNER_ID, head, { reply_markup: kb });
+      await ctx.copyMessage(OWNER_ID); // ✅ копирует и текст, и фото, и что угодно
+    } catch (e) {
+      await bot.api.sendMessage(OWNER_ID, head + "\n\n❌ Не смог скопировать сообщение (см. логи).");
+    }
+
+    return showScreen(ctx, {
+      text: "✅ Отправлено админу. Спасибо!",
+      kb: new InlineKeyboard().text("⬅️ Меню", "m:home"),
+    });
+  }
+
+  // --- админ отвечает выбранному пользователю ---
+  if (ctx.from?.id === OWNER_ID && ctx.session.mode === "await_owner_reply" && ctx.session.owner_reply_to) {
+    const toId = Number(ctx.session.owner_reply_to);
+    ctx.session.mode = null;
+    ctx.session.owner_reply_to = null;
+
+    try {
+      await ctx.copyMessage(toId); // ✅ отправляет пользователю то, что ты написал/прикрепил
+      await showScreen(ctx, {
+        text: "✅ Ответ отправлен игроку.",
+        kb: new InlineKeyboard().text("⬅️ Меню", "m:home"),
+      });
+    } catch (e) {
+      await showScreen(ctx, {
+        text: "❌ Не смог отправить ответ. Возможно, пользователь не нажал Start или заблокировал бота.",
+        kb: new InlineKeyboard().text("⬅️ Меню", "m:home"),
+      });
+    }
+    return;
+  }
+
+  return next();
+});
+
+
+bot.callbackQuery(/^o:reply:(\d+)$/, async (ctx) => {
+  if (ctx.chat?.type !== "private") return;
+  if (ctx.from?.id !== OWNER_ID) return;
+
+  const toId = Number(ctx.match[1]);
+  await ctx.answerCallbackQuery();
+
+  // проверим, что пользователь стартовал бота (иначе ты не сможешь ему ответить)
+  const r = await q(`SELECT pm_started FROM players WHERE tg_id=$1`, [toId]);
+  if (!r.rows?.[0]?.pm_started) {
+    return ctx.reply("❌ Пользователь ещё не нажимал Start у бота — ответить нельзя.");
+  }
+
+  ctx.session.mode = "await_owner_reply";
+  ctx.session.owner_reply_to = toId;
+
+  return showScreen(ctx, {
+    text:
+      `↩️ Режим ответа включён\n\n` +
+      `Кому: tg_id ${toId}\n` +
+      `Отправь текст или фото.\n\n` +
+      `❌ Отмена — чтобы выйти.`,
+    kb: cancelKb("m:home"),
+  });
+});
+
+
   bot.on("message:photo", async (ctx) => {
     if (ctx.chat?.type !== "private") return;
     if (ctx.session.mode !== "await_avatar") return;
