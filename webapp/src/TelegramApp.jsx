@@ -1868,30 +1868,18 @@ function openYandexRoute(lat, lon) {
 
                   return (
                     <>
-                        <div className="gameDetailTop">
-                          {/* META: чипы + шестерёнка */}
-                          <div className="gameMetaBar">
-                            <div className="gameMetaChips">
-                              <span className="badge chip">
-                                <span className="chipIcon" aria-hidden="true">⏱</span>
-                                {formatWhen(game.starts_at)}
-                              </span>
-
-                              <span className="badge chip">
-                                <span className="chipIcon" aria-hidden="true">📍</span>
-                                {game.location || "—"}
-                              </span>
-
-                              <span className="badge chip chipStatus">
-                                {uiStatus(game)}
-                              </span>
+                        <div className="gameHero">
+                          <div className="gameHero__top">
+                            <div className="gameHero__when">
+                              <span className="gameHero__whenIcon" aria-hidden="true">🗓</span>
+                              <span>{formatWhen(game.starts_at)}</span>
                             </div>
 
                             {isAdmin ? (
                               <button
-                                className="iconBtn iconBtnSettings"
+                                className="iconBtn gameHero__settings"
                                 type="button"
-                                title="Редактировать игру"
+                                title="Настройки игры"
                                 onClick={() => openGameSheet(game)}
                               >
                                 <span aria-hidden="true">⚙️</span>
@@ -1899,14 +1887,24 @@ function openYandexRoute(lat, lon) {
                             ) : null}
                           </div>
 
-                          {/* ACTIONS: кнопки отдельно */}
+                          <div className="gameHero__mid">
+                            <div className="gameHero__where">
+                              <span className="gameHero__whereIcon" aria-hidden="true">📍</span>
+                              <span className="gameHero__whereText">{game.location || "—"}</span>
+                            </div>
+
+                            <span className="gameHero__status">
+                              {uiStatus(game)}
+                            </span>
+                          </div>
+
                           {(game.geo_lat != null && game.geo_lon != null) || game.video_url ? (
-                            <div className="gameActionBar">
+                            <div className="gameHero__actions">
                               {game.geo_lat != null && game.geo_lon != null ? (
                                 <button
-                                  className="btn secondary btnPill yandexRouteBtn"
+                                  className="btn secondary gameHero__actionBtn"
                                   onClick={() => openYandexRoute(game.geo_lat, game.geo_lon)}
-                                  title="Построить маршрут в Яндекс"
+                                  title="Построить маршрут"
                                 >
                                   <img className="yandexNavIcon" src={yandexNavIcon} alt="" aria-hidden="true" />
                                   Маршрут
@@ -1915,7 +1913,7 @@ function openYandexRoute(lat, lon) {
 
                               {game.video_url ? (
                                 <button
-                                  className="btn secondary btnPill"
+                                  className="btn secondary gameHero__actionBtn"
                                   onClick={() => (tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank"))}
                                 >
                                   ▶️ Видео
@@ -1924,15 +1922,14 @@ function openYandexRoute(lat, lon) {
                             </div>
                           ) : null}
 
-                          {/* МОЙ СТАТУС: отдельным блоком */}
                           {myRsvp ? (
-                            <div className="myRsvpLine">
-                              <span className="badge chip chipMy">
-                                Мой статус: {statusLabel(myRsvp)}
-                              </span>
+                            <div className="gameHero__my">
+                              <span className="gameHero__myLabel">Мой статус</span>
+                              <span className="gameHero__myValue">{statusLabel(myRsvp)}</span>
                             </div>
                           ) : null}
                         </div>
+
                      {/*   {isAdmin && game && isPastGame(game) && (
                         <div className="card" style={{ marginTop: 12 }}>
                           <h3 style={{ margin: 0 }}>🏆 Best player</h3>

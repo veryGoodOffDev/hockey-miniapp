@@ -1994,3 +1994,113 @@ html[data-theme="light"] .btn.outline.active{
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.10);
 }
+
+.gameHero{
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(127,127,127,0.22);
+  background: var(--tg-theme-secondary-bg-color, rgba(255,255,255,0.06));
+  color: var(--tg-theme-text-color, #eaeaea);
+  display: grid;
+  gap: 10px;
+}
+
+.gameHero__top{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gameHero__when{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.gameHero__whenIcon{ opacity: 0.9; }
+
+.gameHero__settings{
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: rgba(127,127,127,0.12);
+  border: 1px solid rgba(127,127,127,0.22);
+}
+
+.gameHero__mid{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.gameHero__where{
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gameHero__whereIcon{ opacity: 0.9; }
+
+.gameHero__whereText{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.95;
+}
+
+.gameHero__status{
+  justify-self: end;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  border: 1px solid rgba(127,127,127,0.22);
+  background: rgba(127,127,127,0.12);
+}
+
+.gameHero__actions{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.gameHero__actionBtn{
+  border-radius: 14px;
+  padding: 12px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* На очень узких экранах — в столбик */
+@media (max-width: 360px){
+  .gameHero__actions{ grid-template-columns: 1fr; }
+}
+
+.gameHero__my{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(127,127,127,0.18);
+}
+
+.gameHero__myLabel{
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.gameHero__myValue{
+  font-weight: 800;
+  font-size: 13px;
+}
