@@ -1910,3 +1910,87 @@ html[data-theme="light"] .btn.outline.active{
   line-height:1;
 }
 .iconBtn:active{ transform: translateY(1px); }
+
+.gameDetailTop{
+  display: grid;
+  gap: 10px;
+}
+
+/* Верхняя строка: чипы слева, шестерёнка справа */
+.gameMetaBar{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.gameMetaChips{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Чипы компактнее и аккуратнее */
+.badge.chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.chipIcon{
+  display: inline-flex;
+  transform: translateY(0.5px);
+  opacity: 0.9;
+}
+
+/* Статус можно визуально отделить */
+.badge.chipStatus{
+  font-weight: 700;
+  /* лёгкое выделение, без привязки к переменным темы */
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+/* Кнопка настроек — маленькая “плашка”, а не в общей куче */
+.iconBtn.iconBtnSettings{
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+  padding: 0;
+}
+
+.iconBtn.iconBtnSettings:active{
+  transform: translateY(1px);
+}
+
+/* Панель действий отдельно */
+.gameActionBar{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Пилюли-кнопки компактнее */
+.btnPill{
+  border-radius: 999px;
+  padding: 10px 12px;
+}
+
+/* Мой статус отдельной строкой */
+.myRsvpLine{
+  display: flex;
+}
+
+.badge.chipMy{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}

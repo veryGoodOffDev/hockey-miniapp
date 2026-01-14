@@ -1868,47 +1868,71 @@ function openYandexRoute(lat, lon) {
 
                   return (
                     <>
-                      <div className="row">
-                        <span className="badge">⏱ {formatWhen(game.starts_at)}</span>
-                        <span className="badge">📍 {game.location || "—"}</span>
-                        <span className="badge">{uiStatus(game)}</span>
-                                {isAdmin ? (
-                                    <button
-                                      className="iconBtn"
-                                      type="button"
-                                      title="Редактировать игру"
-                                      onClick={() => openGameSheet(game)}
-                                    >
-                                      ⚙️
-                                    </button>
-                                  ) : null}
+                        <div className="gameDetailTop">
+                          {/* META: чипы + шестерёнка */}
+                          <div className="gameMetaBar">
+                            <div className="gameMetaChips">
+                              <span className="badge chip">
+                                <span className="chipIcon" aria-hidden="true">⏱</span>
+                                {formatWhen(game.starts_at)}
+                              </span>
 
-                    {game.geo_lat != null && game.geo_lon != null ? (
-                      <button
-                        className="btn secondary yandexRouteBtn"
-                        onClick={() => openYandexRoute(game.geo_lat, game.geo_lon)}
-                        title="Построить маршрут в Яндекс"
-                      >
-                        <img className="yandexNavIcon" src={yandexNavIcon} alt="" aria-hidden="true" />
-                        Маршрут до места
-                      </button>
-                    ) : null}
+                              <span className="badge chip">
+                                <span className="chipIcon" aria-hidden="true">📍</span>
+                                {game.location || "—"}
+                              </span>
 
-                        
-                        
-                        {game.video_url ? (
-                          <button
-                            className="btn secondary"
-                            onClick={() =>
-                              tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank")
-                            }
-                          >
-                            ▶️ Видео
-                          </button>
-                        ) : null}
+                              <span className="badge chip chipStatus">
+                                {uiStatus(game)}
+                              </span>
+                            </div>
 
-                        {myRsvp && <span className="badge">Мой статус: {statusLabel(myRsvp)}</span>}
-                      </div>
+                            {isAdmin ? (
+                              <button
+                                className="iconBtn iconBtnSettings"
+                                type="button"
+                                title="Редактировать игру"
+                                onClick={() => openGameSheet(game)}
+                              >
+                                <span aria-hidden="true">⚙️</span>
+                              </button>
+                            ) : null}
+                          </div>
+
+                          {/* ACTIONS: кнопки отдельно */}
+                          {(game.geo_lat != null && game.geo_lon != null) || game.video_url ? (
+                            <div className="gameActionBar">
+                              {game.geo_lat != null && game.geo_lon != null ? (
+                                <button
+                                  className="btn secondary btnPill yandexRouteBtn"
+                                  onClick={() => openYandexRoute(game.geo_lat, game.geo_lon)}
+                                  title="Построить маршрут в Яндекс"
+                                >
+                                  <img className="yandexNavIcon" src={yandexNavIcon} alt="" aria-hidden="true" />
+                                  Маршрут
+                                </button>
+                              ) : null}
+
+                              {game.video_url ? (
+                                <button
+                                  className="btn secondary btnPill"
+                                  onClick={() => (tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank"))}
+                                >
+                                  ▶️ Видео
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {/* МОЙ СТАТУС: отдельным блоком */}
+                          {myRsvp ? (
+                            <div className="myRsvpLine">
+                              <span className="badge chip chipMy">
+                                Мой статус: {statusLabel(myRsvp)}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
                      {/*   {isAdmin && game && isPastGame(game) && (
                         <div className="card" style={{ marginTop: 12 }}>
                           <h3 style={{ margin: 0 }}>🏆 Best player</h3>
@@ -1953,52 +1977,7 @@ function openYandexRoute(lat, lon) {
                       )}*/}
 
                       <hr />
-                      {/* {isAdmin && game ? (
-  <div className="card" style={{ marginTop: 12 }}>
-    <h3 style={{ margin: 0 }}>⏰ Напоминание по этой игре</h3>
-
-    <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-      <label className="row" style={{ gap: 8, alignItems: "center" }}>
-        <input
-          type="checkbox"
-          checked={remEnabled}
-          onChange={(e) => setRemEnabled(e.target.checked)}
-        />
-        <span>Включено</span>
-      </label>
-
-      <input
-        className="input"
-        type="datetime-local"
-        value={remAt}
-        onChange={(e) => setRemAt(e.target.value)}
-        style={{ minWidth: 220 }}
-        disabled={!remEnabled}
-      />
-
-      <label className="row" style={{ gap: 8, alignItems: "center" }}>
-        <input
-          type="checkbox"
-          checked={remPin}
-          onChange={(e) => setRemPin(e.target.checked)}
-          disabled={!remEnabled}
-        />
-        <span>Закрепить</span>
-      </label>
-
-      <button className="btn" onClick={saveReminderSettings} disabled={remSaving}>
-        {remSaving ? "…" : "Сохранить"}
-      </button>
-    </div>
-
-    {game.reminder_sent_at ? (
-      <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
-        Уже отправлено: <b>{formatWhen(game.reminder_sent_at)}</b>
-      </div>
-    ) : null}
-  </div>
-) : null} */}
-
+                     
                       {game.status === "cancelled" ? (
                         <div className="small">Эта игра отменена.</div>
                       ) : lockRsvp ? (
