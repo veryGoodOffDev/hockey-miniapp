@@ -67,10 +67,12 @@ await ensureSchema(q);
 const bot = createBot();
 await bot.init();
 
-// ✅ чтобы ошибки бота были видны в systemd логах
+// чтобы ошибки бота были видны в systemd логах
 bot.catch((err) => console.error("[bot] error:", err));
 
-// ✅ не запускаем polling во время smoke теста
+// чтобы можно было отправлять PM из API-роутов (admin/pm)
+app.locals.bot = bot;
+
 const isSmoke = process.env.SMOKE === "1";
 if (!isSmoke) {
   bot.start({ drop_pending_updates: true }).catch((e) => {
@@ -80,22 +82,6 @@ if (!isSmoke) {
 } else {
   console.log("[bot] polling disabled (SMOKE=1)");
 }
-
-bot.catch((err) => console.error("[bot] error:", err));
-
-// чтобы не висели старые апдейты
-bot.start({ drop_pending_updates: true });
-
-console.log("[bot] polling started");
-
-app.post("/bot", async (req, res) => {
-  try {
-    await bot.handleUpdate(req.body);
-  } catch (e) {
-    console.error("handleUpdate failed:", e);
-  }
-  res.sendStatus(200);
-});
 
 /** ===================== HELPERS ===================== */
 
