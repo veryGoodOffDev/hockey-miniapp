@@ -68,7 +68,8 @@ export function createBot() {
     if (webAppUrl) kb.webApp("🏒 Открыть мини-приложение", webAppUrl).row();
 
     kb.text("ℹ️ Помощь", "m:help").row()
-      .text("🔄 Перезапустить", "m:home");
+      .text("🔄 Перезапустить", "m:home").row()
+      .text("💬 Написать админу", "m:to_owner");
 
     return kb;
   }
@@ -436,6 +437,21 @@ bot.command("pm", async (ctx) => {
     return showScreen(ctx, { text, kb: cancelKb("m:profile") });
   });
 
+
+  bot.callbackQuery("m:to_owner", async (ctx) => {
+  if (ctx.chat?.type !== "private") return;
+  await ctx.answerCallbackQuery();
+  ctx.session.mode = "await_owner_msg";
+
+  return showScreen(ctx, {
+    text:
+      "💬 Напиши сообщение админу.\n\n" +
+      "Можешь отправить текст или фото. Я перешлю.\n\n" +
+      "❌ Отмена — чтобы выйти.",
+    kb: cancelKb("m:home"),
+  });
+});
+
   // ---------------- message handlers ----------------
   bot.on("message:photo", async (ctx) => {
     if (ctx.chat?.type !== "private") return;
@@ -475,6 +491,42 @@ bot.command("pm", async (ctx) => {
     ctx.session.mode = null;
     return sendProfileMenu(ctx);
   });
+
+  bot.on("message", async (ctx) => {
+  if (ctx.chat?.type !== "private") return;
+  if (!OWNER_ID) return;
+
+  if (ctx.session.mode !== "await_owner_msg") return;
+
+  // выходим из режима после отправки
+  ctx.session.mode = null;
+
+  const u = ctx.from;
+  const head =
+    `📩 Сообщение админу\n` +
+    `От: ${u.first_name || ""} ${u.last_name || ""}` +
+    `${u.username ? ` (@${u.username})` : ""}\n` +
+    `tg_id: ${u.id}`;
+
+  // 1) шапка
+  await bot.api.sendMessage(OWNER_ID, head);
+
+  // 2) копируем само сообщение (текст/фото/док и т.д.)
+  try {
+    await ctx.copyMessage(OWNER_ID);
+  } catch {
+    // fallback только текстом
+    const t = ctx.message?.text ? String(ctx.message.text) : "[не удалось скопировать сообщение]";
+    await bot.api.sendMessage(OWNER_ID, t);
+  }
+
+  // подтверждение пользователю (без спама — редактируем экран)
+  return showScreen(ctx, {
+    text: "✅ Отправлено админу. Спасибо!",
+    kb: new InlineKeyboard().text("⬅️ Меню", "m:home"),
+  });
+});
+
 
   bot.on("message:text", async (ctx) => {
     if (ctx.chat?.type !== "private") return;

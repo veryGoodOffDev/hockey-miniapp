@@ -3012,37 +3012,124 @@ function PmBox({ player }) {
   const [text, setText] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [status, setStatus] = React.useState("");
-  const [lastMsgId, setLastMsgId] = React.useState(null);
+  const [items, setItems] = React.useState([]);
+  const [loadingHist, setLoadingHist] = React.useState(false);
 
-  // чтобы “удалить последнее” переживало переключение игроков
-  React.useEffect(() => {
+  const templates = React.useMemo(
+    () => [
+      {
+        label: "⏰ Напоминание",
+        text: `Напоминание: отметься по игре в мини-приложении 🙌`,
+      },
+      {
+        label: "🏒 Привет",
+        text: `Привет! Напоминаю про игру — загляни в мини-приложение 🙂`,
+      },
+      {
+        label: "✅ Профиль",
+        text: `Можешь, пожалуйста, заполнить профиль (имя/номер/позиция) — так удобнее собирать состав.`,
+      },
+      {
+        label: "🎉 Спасибо",
+        text: `Спасибо! 🔥`,
+      },
+      {
+        label: "⚠️ Важно",
+        text: `Есть важный момент по игре — напиши мне в ответ, пожалуйста.`,
+      },
+    ],
+    []
+  );
+
+  async function loadHistory() {
+    setLoadingHist(true);
     try {
-      const key = `pm_last_${player.tg_id}`;
-      const saved = localStorage.getItem(key);
-      setLastMsgId(saved ? Number(saved) : null);
+      const r = await apiGet(`/api/admin/pm/history?tg_id=${player.tg_id}`);
+      setItems(r?.items || []);
     } catch {
-      setLastMsgId(null);
+      setItems([]);
+    } finally {
+      setLoadingHist(false);
     }
+  }
+
+  React.useEffect(() => {
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player.tg_id]);
 
-  const saveLast = (mid) => {
-    setLastMsgId(mid);
-    try {
-      localStorage.setItem(`pm_last_${player.tg_id}`, String(mid || ""));
-    } catch {}
-  };
+  async function sendNow(msg) {
+    const m = (msg || "").trim();
+    if (!m) return;
 
-  const canSend = !!text.trim() && !sending;
-  const canDelete = !!lastMsgId && !sending;
+    setSending(true);
+    setStatus("");
+    try {
+      const r = await apiPost("/api/admin/pm", { tg_id: player.tg_id, text: m });
+      if (r?.ok) {
+        setText("");
+        setStatus(`✅ Отправлено (id: ${r.message_id})`);
+        await loadHistory();
+      } else {
+        setStatus(`❌ Не отправилось: ${r?.reason || "unknown"}`);
+      }
+    } catch {
+      setStatus("❌ Ошибка отправки (см. backend log)");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function delMsg(message_id) {
+    setSending(true);
+    setStatus("");
+    try {
+      const r = await apiPost("/api/admin/pm/delete", { tg_id: player.tg_id, message_id });
+      if (r?.ok) {
+        setStatus(`🗑 Удалено (id: ${message_id})`);
+        await loadHistory();
+      } else {
+        setStatus(`❌ Не удалилось: ${r?.reason || "unknown"}`);
+      }
+    } catch {
+      setStatus("❌ Ошибка удаления (возможно Telegram уже не позволяет удалить по времени)");
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <div className="card" style={{ marginTop: 12 }}>
-      <div style={{ fontWeight: 900, fontSize: 16 }}>✉️ Сообщение в личку</div>
+      <div style={{ fontWeight: 900, fontSize: 16 }}>✉️ Личное сообщение игроку</div>
 
       <div className="small" style={{ opacity: 0.8, marginTop: 6 }}>
         Получатель: <b>{showName(player)}</b> · tg_id: {player.tg_id}
       </div>
 
+      {/* шаблоны */}
+      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {templates.map((t) => (
+          <button
+            key={t.label}
+            className="btn secondary"
+            style={{ padding: "8px 10px" }}
+            disabled={sending}
+            onClick={() => setText(t.text)}
+          >
+            {t.label}
+          </button>
+        ))}
+        <button
+          className="btn secondary"
+          style={{ padding: "8px 10px" }}
+          disabled={sending || !text.trim()}
+          onClick={() => sendNow(text)}
+        >
+          🚀 Отправить текст
+        </button>
+      </div>
+
+      {/* поле ввода */}
       <div style={{ marginTop: 10 }}>
         <textarea
           className="input"
@@ -3054,65 +3141,12 @@ function PmBox({ player }) {
       </div>
 
       <div className="row" style={{ gap: 10, marginTop: 10 }}>
-        <button
-          className="btn"
-          disabled={!canSend}
-          onClick={async () => {
-            const msg = text.trim();
-            if (!msg) return;
-
-            setSending(true);
-            setStatus("");
-            try {
-              const r = await apiPost("/api/admin/pm", {
-                tg_id: player.tg_id,
-                text: msg,
-              });
-
-              if (r?.ok) {
-                saveLast(r.message_id);
-                setText("");
-                setStatus(`✅ Отправлено (id: ${r.message_id})`);
-              } else {
-                setStatus(`❌ Не отправилось: ${r?.reason || "unknown"}`);
-              }
-            } catch (e) {
-              setStatus("❌ Ошибка отправки (смотри backend log)");
-            } finally {
-              setSending(false);
-            }
-          }}
-        >
+        <button className="btn" disabled={sending || !text.trim()} onClick={() => sendNow(text)}>
           {sending ? "Отправляем…" : "Отправить"}
         </button>
 
-        <button
-          className="btn secondary"
-          disabled={!canDelete}
-          onClick={async () => {
-            if (!lastMsgId) return;
-            setSending(true);
-            setStatus("");
-            try {
-              const r = await apiPost("/api/admin/pm/delete", {
-                tg_id: player.tg_id,
-                message_id: lastMsgId,
-              });
-
-              if (r?.ok) {
-                setStatus(`🗑 Удалено (id: ${lastMsgId})`);
-                saveLast(null);
-              } else {
-                setStatus(`❌ Не удалилось: ${r?.reason || "unknown"}`);
-              }
-            } catch (e) {
-              setStatus("❌ Ошибка удаления (возможно прошло слишком много времени)");
-            } finally {
-              setSending(false);
-            }
-          }}
-        >
-          Удалить последнее
+        <button className="btn secondary" disabled={sending} onClick={loadHistory}>
+          {loadingHist ? "Обновляем…" : "↻ Обновить историю"}
         </button>
       </div>
 
@@ -3122,14 +3156,60 @@ function PmBox({ player }) {
         </div>
       )}
 
-      {!!lastMsgId && (
-        <div className="small" style={{ marginTop: 6, opacity: 0.65 }}>
-          Последнее отправленное message_id: {lastMsgId}
+      <hr />
+
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontWeight: 900 }}>История</div>
+        <div className="small" style={{ opacity: 0.7 }}>
+          последние 25
+        </div>
+      </div>
+
+      {loadingHist ? (
+        <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
+          Загружаем историю…
+        </div>
+      ) : items.length === 0 ? (
+        <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
+          Пока пусто.
+        </div>
+      ) : (
+        <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+          {items.map((it) => {
+            const when = it.created_at ? new Date(it.created_at).toLocaleString() : "";
+            const deleted = !!it.deleted_at;
+
+            return (
+              <div key={it.message_id} className="card" style={{ borderRadius: 12 }}>
+                <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
+                  <div className="small" style={{ opacity: 0.75 }}>
+                    {when} · id: {it.message_id}
+                    {deleted ? " · 🗑 удалено" : ""}
+                  </div>
+
+                  {!deleted && (
+                    <button
+                      className="btn secondary"
+                      style={{ padding: "6px 10px" }}
+                      disabled={sending}
+                      onClick={() => delMsg(it.message_id)}
+                      title="Удалить это сообщение у игрока"
+                    >
+                      🗑
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{it.text}</div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
+
 
 
 function posHuman(posRaw) {

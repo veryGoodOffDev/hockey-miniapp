@@ -2261,6 +2261,31 @@ app.post("/api/admin/pm/delete", async (req, res) => {
   }
 });
 
+app.get("/api/admin/pm/history", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!requireOwner(req, res, user)) return;
+
+  const toId = Number(req.query.tg_id);
+  if (!Number.isFinite(toId) || toId <= 0) {
+    return res.status(400).json({ ok: false, reason: "bad_tg_id" });
+  }
+
+  const r = await q(
+    `
+    SELECT message_id, text, created_at, deleted_at, delete_reason
+    FROM bot_messages
+    WHERE chat_id=$1 AND kind='pm'
+    ORDER BY created_at DESC
+    LIMIT 25
+    `,
+    [toId]
+  );
+
+  res.json({ ok: true, items: r.rows });
+});
+
 /** ====== PLAYERS (roster) ====== */
 app.get("/api/players", async (req, res) => {
   const user = requireWebAppAuth(req, res);
