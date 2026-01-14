@@ -332,6 +332,37 @@ export function createBot() {
     return ctx.reply("✅ Этот чат назначен для уведомлений.");
   });
 
+// ---------------- сообщение в личку только для разработчика ----------------
+const OWNER_ID = Number(process.env.OWNER_TG_ID || 0);
+
+bot.command("pm", async (ctx) => {
+  if (ctx.chat?.type !== "private") return;
+  if (!OWNER_ID || ctx.from?.id !== OWNER_ID) return ctx.reply("Недоступно.");
+
+  const raw = (ctx.message?.text || "").trim();
+  const parts = raw.split(" ");
+  const toId = Number(parts[1]);
+  const text = parts.slice(2).join(" ").trim();
+
+  if (!Number.isFinite(toId) || !text) {
+    return ctx.reply("Формат: /pm <tg_id> <текст>");
+  }
+
+  // проверим, что пользователь запускал бота
+  const r = await q(`SELECT pm_started FROM players WHERE tg_id=$1`, [toId]);
+  if (!r.rows?.[0]?.pm_started) {
+    return ctx.reply("Пользователь ещё не нажимал Start у бота — написать нельзя.");
+  }
+
+  try {
+    await bot.api.sendMessage(toId, text, { disable_web_page_preview: true });
+    return ctx.reply("✅ Отправлено.");
+  } catch (e) {
+    return ctx.reply(`❌ Не отправилось (возможно, пользователь заблокировал бота).`);
+  }
+});
+
+
   // ---------------- callbacks: navigation ----------------
   bot.callbackQuery("m:home", async (ctx) => {
     if (ctx.chat?.type !== "private") return;
