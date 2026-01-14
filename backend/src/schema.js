@@ -116,6 +116,7 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started_at TIMESTAMPTZ;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_last_seen TIMESTAMPTZ;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS bot_menu_msg_id BIGINT;`);
   await q(`CREATE INDEX IF NOT EXISTS idx_players_pm_started ON players(pm_started);`);
 
 
