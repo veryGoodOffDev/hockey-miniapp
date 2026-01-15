@@ -113,6 +113,10 @@ const [commentDraft, setCommentDraft] = useState("");
 const [commentEditId, setCommentEditId] = useState(null);
 const [commentBusy, setCommentBusy] = useState(false);
 
+const commentsPollRef = useRef(null);
+const commentsHashRef = useRef(""); // чтобы не перерендеривать без изменений
+
+
 const REACTIONS = ["❤️","🔥","👍","😂","👏","😡","🤔"];
 const [reactPickFor, setReactPickFor] = useState(null);
 
@@ -164,6 +168,22 @@ const onChanged = async ({ label, gameId, action } = {}) => {
 //   setAdminGameOpen(false);
 //   setAdminGame(null);
 // }
+
+function commentsHash(list) {
+  try {
+    // учитываем текст + updated + реакции (emoji/count/my)
+    return JSON.stringify(
+      (list || []).map(c => ({
+        id: c.id,
+        body: c.body,
+        u: c.updated_at || c.created_at,
+        r: (c.reactions || []).map(x => `${x.emoji}:${x.count}:${x.my ? 1 : 0}`).join("|")
+      }))
+    );
+  } catch {
+    return String(Date.now());
+  }
+}
 
 
 function openGameSheet(game) {
@@ -294,6 +314,7 @@ async function submitComment() {
 
     if (r?.ok) {
       setComments(r.comments || []);
+      commentsHashRef.current = commentsHash(r.comments || []);
       setCommentDraft("");
       setCommentEditId(null);
     }
@@ -309,7 +330,10 @@ async function removeComment(id) {
   setCommentBusy(true);
   try {
     const r = await apiDelete(`/api/game-comments/${id}`);
-    if (r?.ok) setComments(r.comments || []);
+    if (r?.ok) {
+      setComments(r.comments || []);
+      commentsHashRef.current = commentsHash(r.comments || []);
+    } 
   } finally {
     setCommentBusy(false);
   }
@@ -319,7 +343,11 @@ async function toggleReaction(commentId, emoji, on) {
   setCommentBusy(true);
   try {
     const r = await apiPost(`/api/game-comments/${commentId}/react`, { emoji, on });
-    if (r?.ok) setComments(r.comments || []);
+    if (r?.ok) {
+      setComments(r.comments || []);
+      commentsHashRef.current = commentsHash(r.comments || []);
+
+    } 
   } finally {
     setCommentBusy(false);
   }
@@ -338,16 +366,24 @@ function errReason(e) {
 }
 
 
-async function refreshCommentsOnly(gameId) {
+async function refreshCommentsOnly(gameId, { silent = false } = {}) {
   if (!gameId) return;
-  setCommentsLoading(true);
+  if (!silent) setCommentsLoading(true);
+
   try {
     const r = await apiGet(`/api/game-comments?game_id=${gameId}`);
-    setComments(r.comments || []);
+    const next = r.comments || [];
+    const h = commentsHash(next);
+
+    if (h !== commentsHashRef.current) {
+      commentsHashRef.current = h;
+      setComments(next);
+    }
   } finally {
-    setCommentsLoading(false);
+    if (!silent) setCommentsLoading(false);
   }
 }
+
 
 
 
@@ -700,6 +736,29 @@ useEffect(() => {
   if (photoModal.open) window.addEventListener("keydown", onKey);
   return () => window.removeEventListener("keydown", onKey);
 }, [photoModal.open]);
+
+useEffect(() => {
+  // стартуем только в деталке
+  if (gameView !== "detail" || !selectedGameId) return;
+
+  // сразу подгружаем (тихо)
+  refreshCommentsOnly(selectedGameId, { silent: true }).catch(() => {});
+
+  // чистим старый таймер
+  if (commentsPollRef.current) clearInterval(commentsPollRef.current);
+
+  commentsPollRef.current = setInterval(() => {
+    // если вкладка скрыта — реже/не надо
+    if (document.hidden) return;
+    refreshCommentsOnly(selectedGameId, { silent: true }).catch(() => {});
+  }, 7000); // 7 сек — норм
+
+  return () => {
+    if (commentsPollRef.current) clearInterval(commentsPollRef.current);
+    commentsPollRef.current = null;
+  };
+}, [gameView, selectedGameId]);
+
 
 function clipText(s, max = 70) {
   const t = String(s || "").trim().replace(/\s+/g, " ");
