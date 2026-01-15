@@ -3408,12 +3408,15 @@ function Avatar({ p, big = false, onClick }) {
 }
 
 
-function AvatarCircle({ url, fallbackUrl = "", name = "", size = 34 }) {
-  const [src, setSrc] = useState(url || "");
+function AvatarCircle({ tgId = "", fallbackUrl = "", url = "", name = "", size = 34 }) {
+  const primary = tgId ? `/api/players/${tgId}/avatar` : (url || "");
+  const secondary = (fallbackUrl || url || "");
 
-  useEffect(() => {
-    setSrc(url || "");
-  }, [url]);
+  const [src, setSrc] = React.useState(primary || secondary || "");
+
+  React.useEffect(() => {
+    setSrc(primary || secondary || "");
+  }, [primary, secondary]);
 
   const letter = (String(name).trim()[0] || "•").toUpperCase();
 
@@ -3439,7 +3442,8 @@ function AvatarCircle({ url, fallbackUrl = "", name = "", size = 34 }) {
           draggable={false}
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           onError={() => {
-            if (fallbackUrl && src !== fallbackUrl) setSrc(fallbackUrl);
+            // 1) если упал primary — пробуем secondary
+            if (src === primary && secondary && secondary !== primary) setSrc(secondary);
             else setSrc("");
           }}
         />
