@@ -385,6 +385,7 @@ async function refreshCommentsOnly(gameId, { silent = false } = {}) {
     if (h !== commentsHashRef.current) {
       commentsHashRef.current = h;
       setComments(next);
+      patchCommentsCount(gameId, next.length);
     }
   } finally {
     if (!silent) setCommentsLoading(false);
@@ -463,16 +464,20 @@ async function refreshGameOnly(gameId = selectedGameId) {
 }
 
 function patchCommentsCount(gameId, cnt) {
-  if (!gameId) return;
+  setGames(prev => {
+    const cur = (prev || []).find(x => x.id === gameId)?.comments_count ?? 0;
+    if (cur === cnt) return prev;
+    return (prev || []).map(x => x.id === gameId ? { ...x, comments_count: cnt } : x);
+  });
 
-  setUpcomingGames((prev) =>
-    (prev || []).map((x) => (x.id === gameId ? { ...x, comments_count: cnt } : x))
-  );
-
-  setPastPage((prev) =>
-    (prev || []).map((x) => (x.id === gameId ? { ...x, comments_count: cnt } : x))
-  );
+  setPastPage(prev => {
+    const cur = (prev || []).find(x => x.id === gameId)?.comments_count ?? 0;
+    if (cur === cnt) return prev;
+    return (prev || []).map(x => x.id === gameId ? { ...x, comments_count: cnt } : x);
+  });
 }
+
+
 
 /**
  * Единственная точка синхронизации UI после мутаций
