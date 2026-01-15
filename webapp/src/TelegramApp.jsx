@@ -314,6 +314,10 @@ async function submitComment() {
 
     if (r?.ok) {
       setComments(r.comments || []);
+      const cnt = (r.comments || []).length;
+      patchCommentsCount(selectedGameId, cnt);
+
+
       commentsHashRef.current = commentsHash(r.comments || []);
       setCommentDraft("");
       setCommentEditId(null);
@@ -332,6 +336,9 @@ async function removeComment(id) {
     const r = await apiDelete(`/api/game-comments/${id}`);
     if (r?.ok) {
       setComments(r.comments || []);
+      const cnt = (r.comments || []).length;
+      patchCommentsCount(selectedGameId, cnt);
+
       commentsHashRef.current = commentsHash(r.comments || []);
     } 
   } finally {
@@ -453,6 +460,18 @@ async function refreshGameOnly(gameId = selectedGameId) {
   setRsvps(gg.rsvps || []);
   setTeams(normalizeTeams(gg.teams));
   return gg;
+}
+
+function patchCommentsCount(gameId, cnt) {
+  if (!gameId) return;
+
+  setUpcomingGames((prev) =>
+    (prev || []).map((x) => (x.id === gameId ? { ...x, comments_count: cnt } : x))
+  );
+
+  setPastPage((prev) =>
+    (prev || []).map((x) => (x.id === gameId ? { ...x, comments_count: cnt } : x))
+  );
 }
 
 /**
@@ -1901,6 +1920,11 @@ function openYandexRoute(lat, lon) {
                             
                             <div className="gameCard__topRight">
                               {g.video_url ? <span className="gameCard__pill" title="Есть видео">▶️</span> : null}
+                                {(g.comments_count ?? 0) > 0 ? (
+                                  <span className="gameCard__pill" title="Комментарии">
+                                    💬 {g.comments_count}
+                                  </span>
+                                ) : null}
                             </div>
                           </div>
                     

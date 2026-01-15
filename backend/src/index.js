@@ -1412,6 +1412,14 @@ app.get("/api/games", async (req, res) => {
         SUM((status='no')::int)    AS no_count
       FROM rsvps
       GROUP BY game_id
+    ),
+    comment_counts AS (
+      SELECT
+        c.game_id,
+        COUNT(*)::int AS comments_count
+      FROM game_comments c
+      WHERE c.game_id IN (SELECT id FROM page)
+      GROUP BY c.game_id
     )
     SELECT
       t.total,
@@ -1419,11 +1427,13 @@ app.get("/api/games", async (req, res) => {
       COALESCE(c.yes_count,0)   AS yes_count,
       COALESCE(c.maybe_count,0) AS maybe_count,
       COALESCE(c.no_count,0)    AS no_count,
+      COALESCE(cc.comments_count,0) AS comments_count,
       my.status AS my_status,
       ${sqlPlayerName("bp")} AS best_player_name
     FROM page p
     CROSS JOIN total t
     LEFT JOIN counts c ON c.game_id = p.id
+    LEFT JOIN comment_counts cc ON cc.game_id = p.id
     LEFT JOIN rsvps my ON my.game_id = p.id AND my.tg_id = $7
     LEFT JOIN players bp ON bp.tg_id = p.best_player_tg_id
     ORDER BY p.starts_at ${order};
