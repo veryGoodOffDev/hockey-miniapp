@@ -1080,7 +1080,8 @@ async function loadGameComments(gameId, viewerTgId) {
       p.display_name AS p_display_name,
       p.first_name   AS p_first_name,
       p.username     AS p_username,
-      p.photo_url    AS p_photo_url,
+      p.photo_url       AS p_photo_url,
+      p.avatar_file_id  AS p_avatar_file_id,
 
       -- реакции: [{emoji,count,my}]
       COALESCE(rx.reactions, '[]'::jsonb) AS reactions

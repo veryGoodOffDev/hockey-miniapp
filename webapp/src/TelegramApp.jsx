@@ -297,16 +297,43 @@ function initialsFrom(name) {
   return parts.map(x => (x[0] || "").toUpperCase()).join("") || "??";
 }
 
-function AvatarCircle({ url, name }) {
-  const [err, setErr] = useState(false);
-  const initials = initialsFrom(name);
+function AvatarCircle({ url, fallbackUrl = "", name = "", size = 34 }) {
+  const [src, setSrc] = useState(url || "");
+
+  useEffect(() => {
+    setSrc(url || "");
+  }, [url]);
+
+  const letter = (String(name).trim()[0] || "•").toUpperCase();
 
   return (
-    <div className="avatarCircle" title={name || ""}>
-      {url && !err ? (
-        <img src={url} alt="" onError={() => setErr(true)} />
+    <div
+      className="cmtAvatarCircle"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        overflow: "hidden",
+        display: "grid",
+        placeItems: "center",
+        border: "1px solid var(--border)",
+        background: "color-mix(in srgb, var(--tg-text) 8%, transparent)",
+        flex: "0 0 auto",
+      }}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          onError={() => {
+            if (fallbackUrl && src !== fallbackUrl) setSrc(fallbackUrl);
+            else setSrc("");
+          }}
+        />
       ) : (
-        <span>{initials}</span>
+        <span style={{ fontWeight: 900 }}>{letter}</span>
       )}
     </div>
   );
@@ -2316,21 +2343,15 @@ function openYandexRoute(lat, lon) {
 
                                           const canEdit = isMine;
                                           const canDelete = isAdmin || isMine;
-
-                                          const author = c.author ?? {
-                                            tg_id: c.author_tg_id,
-                                            display_name: c.author_name,
-                                            first_name: c.author_first_name,
-                                            username: c.author_username,
-                                            photo_url: c.author_photo_url,
-                                          };
+                                          
 
                                           const authorName =
                                             author?.display_name ||
                                             author?.first_name ||
                                             (author?.username ? `@${author.username}` : String(c.author_tg_id));
 
-                                          const avatarUrl = (author?.photo_url || "").trim();
+                                          const author = c.author || {};
+                                          const avatarUrl = (author.photo_url || "").trim();
 
                                           const createdMs = c.created_at ? new Date(c.created_at).getTime() : 0;
                                           const updatedMs = c.updated_at ? new Date(c.updated_at).getTime() : 0;
@@ -2419,7 +2440,8 @@ function openYandexRoute(lat, lon) {
                                               {/* AVATAR RIGHT for mine */}
                                               {isMine ? (
                                                 <div className="cmtAvatar">
-                                                  <AvatarCircle url={avatarUrl} name={authorName} />
+                                                  <AvatarCircle url={avatarUrl} fallbackUrl={(author?.photo_url_fallback || "").trim()} name={authorName} />
+
                                                 </div>
                                               ) : null}
                                             </div>
