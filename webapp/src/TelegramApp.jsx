@@ -424,18 +424,62 @@ async function removeComment(id) {
 }
 
 async function toggleReaction(commentId, emoji, on) {
-  setCommentBusy(true);
+  const gid = selectedGameId;
+
+  // ✅ 1) СРАЗУ обновляем UI локально (optimistic)
+  setComments(prev => {
+    const next = (prev || []).map(c => {
+      if (c.id !== commentId) return c;
+
+      const list = Array.isArray(c.reactions) ? [...c.reactions] : [];
+      const idx = list.findIndex(r => r.emoji === emoji);
+
+      if (idx >= 0) {
+        const r = { ...list[idx] };
+        const count = Number(r.count || 0);
+
+        if (on && !r.my) {
+          r.my = true;
+          r.count = count + 1;
+        } else if (!on && r.my) {
+          r.my = false;
+          r.count = Math.max(0, count - 1);
+        }
+
+        // если стало 0 — можно убрать чип
+        if ((r.count || 0) <= 0) list.splice(idx, 1);
+        else list[idx] = r;
+      } else if (on) {
+        // реакции не было — добавляем
+        list.unshift({ emoji, count: 1, my: true });
+      }
+
+      return { ...c, reactions: list };
+    });
+
+    commentsHashRef.current = commentsHash(next);
+    return next;
+  });
+
+  // ✅ 2) Потом шлём запрос и синкаемся
   try {
     const r = await apiPost(`/api/game-comments/${commentId}/react`, { emoji, on });
-    if (r?.ok) {
-      setComments(r.comments || []);
-      commentsHashRef.current = commentsHash(r.comments || []);
 
-    } 
-  } finally {
-    setCommentBusy(false);
+    // если сервер возвращает comments — используем их
+    if (r?.ok && Array.isArray(r.comments)) {
+      commentsHashRef.current = commentsHash(r.comments);
+      setComments(r.comments);
+    } else {
+      // если сервер не возвращает — просто тихо рефрешим
+      refreshCommentsOnly(gid, { silent: true }).catch(() => {});
+    }
+  } catch (e) {
+    console.error("toggleReaction failed:", e);
+    // откат: просто рефрешим с сервера
+    refreshCommentsOnly(gid, { silent: true }).catch(() => {});
   }
 }
+
 
 
 async function loadFunStatus() {

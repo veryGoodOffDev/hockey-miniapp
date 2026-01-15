@@ -3704,6 +3704,8 @@ app.post("/api/game-comments/:id/react", async (req, res) => {
   const row = cr.rows[0];
   if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
 
+  const gameId = Number(row.game_id); // ✅ ВОТ ЭТОГО НЕ ХВАТАЛО
+
   if (on) {
     await q(
       `INSERT INTO game_comment_reactions(comment_id, user_tg_id, reaction)
@@ -3719,9 +3721,15 @@ app.post("/api/game-comments/:id/react", async (req, res) => {
     );
   }
 
+  // ✅ ВОЗВРАЩАЕМ ОБНОВЛЕННЫЕ КОММЕНТЫ
+  // если loadGameComments у тебя 2 аргумента — оставь так:
+  // const comments = await loadGameComments(gameId, user.id);
+
+
   const baseUrl = getPublicBaseUrl(req);
   const comments = await loadGameComments(gameId, user.id, baseUrl);
-  res.json({ ok: true, comments });
+
+  return res.json({ ok: true, comments });
 });
 
 
