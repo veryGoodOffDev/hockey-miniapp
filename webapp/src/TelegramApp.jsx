@@ -258,6 +258,74 @@ function tgPopup({ title, message, buttons }) {
 }
 
 
+function initialsFrom(name) {
+  const s = String(name || "").trim();
+  if (!s) return "??";
+  const parts = s.split(/\s+/).slice(0, 2);
+  return parts.map(x => (x[0] || "").toUpperCase()).join("") || "??";
+}
+
+function AvatarCircle({ url, name }) {
+  const [err, setErr] = useState(false);
+  const initials = initialsFrom(name);
+
+  return (
+    <div className="avatarCircle" title={name || ""}>
+      {url && !err ? (
+        <img src={url} alt="" onError={() => setErr(true)} />
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
+  );
+}
+
+
+async function submitComment() {
+  if (!game?.id) return;
+  const body = String(commentDraft || "").trim();
+  if (!body) return;
+
+  setCommentBusy(true);
+  try {
+    const r = commentEditId
+      ? await apiPatch(`/api/game-comments/${commentEditId}`, { body })
+      : await apiPost(`/api/game-comments`, { game_id: game.id, body });
+
+    if (r?.ok) {
+      setComments(r.comments || []);
+      setCommentDraft("");
+      setCommentEditId(null);
+    }
+  } finally {
+    setCommentBusy(false);
+  }
+}
+
+async function removeComment(id) {
+  const ok = confirm("Удалить комментарий?");
+  if (!ok) return;
+
+  setCommentBusy(true);
+  try {
+    const r = await apiDelete(`/api/game-comments/${id}`);
+    if (r?.ok) setComments(r.comments || []);
+  } finally {
+    setCommentBusy(false);
+  }
+}
+
+async function toggleReaction(commentId, emoji, on) {
+  setCommentBusy(true);
+  try {
+    const r = await apiPost(`/api/game-comments/${commentId}/react`, { emoji, on });
+    if (r?.ok) setComments(r.comments || []);
+  } finally {
+    setCommentBusy(false);
+  }
+}
+
+
 async function loadFunStatus() {
   try {
     const r = await apiGet("/api/fun/status");
@@ -3421,72 +3489,8 @@ function PmBox({ player }) {
   );
 }
 
-function initialsFrom(name) {
-  const s = String(name || "").trim();
-  if (!s) return "??";
-  const parts = s.split(/\s+/).slice(0, 2);
-  return parts.map(x => (x[0] || "").toUpperCase()).join("") || "??";
-}
-
-function AvatarCircle({ url, name }) {
-  const [err, setErr] = useState(false);
-  const initials = initialsFrom(name);
-
-  return (
-    <div className="avatarCircle" title={name || ""}>
-      {url && !err ? (
-        <img src={url} alt="" onError={() => setErr(true)} />
-      ) : (
-        <span>{initials}</span>
-      )}
-    </div>
-  );
-}
 
 
-async function submitComment() {
-  if (!game?.id) return;
-  const body = String(commentDraft || "").trim();
-  if (!body) return;
-
-  setCommentBusy(true);
-  try {
-    const r = commentEditId
-      ? await apiPatch(`/api/game-comments/${commentEditId}`, { body })
-      : await apiPost(`/api/game-comments`, { game_id: game.id, body });
-
-    if (r?.ok) {
-      setComments(r.comments || []);
-      setCommentDraft("");
-      setCommentEditId(null);
-    }
-  } finally {
-    setCommentBusy(false);
-  }
-}
-
-async function removeComment(id) {
-  const ok = confirm("Удалить комментарий?");
-  if (!ok) return;
-
-  setCommentBusy(true);
-  try {
-    const r = await apiDelete(`/api/game-comments/${id}`);
-    if (r?.ok) setComments(r.comments || []);
-  } finally {
-    setCommentBusy(false);
-  }
-}
-
-async function toggleReaction(commentId, emoji, on) {
-  setCommentBusy(true);
-  try {
-    const r = await apiPost(`/api/game-comments/${commentId}/react`, { emoji, on });
-    if (r?.ok) setComments(r.comments || []);
-  } finally {
-    setCommentBusy(false);
-  }
-}
 
 
 
