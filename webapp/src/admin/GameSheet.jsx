@@ -17,6 +17,11 @@ export default function GameSheet({
 }) {
   const [gameDraft, setGameDraft] = useState(null);
 
+    // info blocks (notice + info)
+  const [noticeText, setNoticeText] = useState("");
+  const [infoText, setInfoText] = useState("");
+  const [infoSaving, setInfoSaving] = useState(false);
+
   // reminder
 const [remEnabled, setRemEnabled] = useState(false);
 const [remAt, setRemAt] = useState("");
@@ -90,6 +95,9 @@ const [remSaving, setRemSaving] = useState(false);
       geo_address: game.geo_address || "",
       raw: game,
     });
+        // init info blocks
+    setNoticeText(game.notice_text || "");
+    setInfoText(game.info_text || "");
 
     setVideoOpen(false);
     setGuestsState({ loading: false, list: [] });
@@ -111,6 +119,12 @@ const [remSaving, setRemSaving] = useState(false);
     loadAttendanceForGame(game.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, game?.id]);
+
+    useEffect(() => {
+    if (!isOpen || !game) return;
+    setNoticeText(game.notice_text || "");
+    setInfoText(game.info_text || "");
+  }, [isOpen, game?.id, game?.notice_text, game?.info_text]);
 
   useEffect(() => {
   if (!isOpen || !game) return;
@@ -191,6 +205,39 @@ async function saveReminderSettings() {
     notify("✅ Напоминание сохранено");
   } finally {
     setRemSaving(false);
+  }
+}
+
+
+async function saveInfoBlocks() {
+  if (!gameDraft?.id) return;
+
+  const notice = String(noticeText ?? "").replace(/\r\n/g, "\n").trim();
+  const info = String(infoText ?? "").replace(/\r\n/g, "\n").trim();
+
+  if (notice && notice.length > 240) {
+    alert("❌ Короткая заметка должна быть до 240 символов");
+    return;
+  }
+
+  setInfoSaving(true);
+  try {
+    const ok = await runOp("save info blocks", async () => {
+      const r = await apiPatch(`/api/games/${gameDraft.id}`, {
+        notice_text: notice,     // пустое -> сервер сам положит null (у тебя так сделано)
+        info_text: info,
+      });
+      if (!r?.ok) throw new Error(r?.reason || r?.error || "info_save_failed");
+    });
+
+    if (!ok) return;
+
+    await onReload?.(gameDraft.id);
+    await onChanged?.({ label: "✅ Информация по игре сохранена — обновляю приложение…", gameId: gameDraft.id });
+
+    notify("✅ Информация сохранена");
+  } finally {
+    setInfoSaving(false);
   }
 }
 
@@ -702,6 +749,68 @@ async function saveReminderSettings() {
 
           <label>Арена</label>
           <input className="input" value={gameDraft.location} onChange={(e) => setGameDraft((d) => ({ ...d, location: e.target.value }))} />
+                    {/* ====== INFO / NOTICE ====== */}
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="rowBetween">
+              <h3 style={{ margin: 0 }}>ℹ️ Информация по игре</h3>
+
+              <button
+                className="btn"
+                onClick={saveInfoBlocks}
+                disabled={infoSaving || opBusy}
+                title="Сохранить важную информацию"
+              >
+                {infoSaving ? "…" : "Сохранить"}
+              </button>
+            </div>
+
+            <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+              Коротко (видно в списке игр), до 240 символов
+            </div>
+
+            <input
+              className="input"
+              value={noticeText}
+              maxLength={240}
+              onChange={(e) => setNoticeText(e.target.value)}
+              placeholder="Напр: Внимание! Игра в ВС в 7:30, просьба быть вовремя."
+            />
+
+            <div className="small" style={{ marginTop: 6, opacity: 0.7 }}>
+              {String(noticeText || "").trim().length}/240
+            </div>
+
+            <div className="small" style={{ marginTop: 10, opacity: 0.85 }}>
+              Подробно (видно в деталке)
+            </div>
+
+            <textarea
+              className="input"
+              rows={4}
+              value={infoText}
+              onChange={(e) => setInfoText(e.target.value)}
+              placeholder="Оплата, сбор, форма, нюансы льда, что взять и т.д."
+              style={{ resize: "vertical", whiteSpace: "pre-wrap" }}
+            />
+
+            <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+              <button
+                className="btn secondary"
+                type="button"
+                onClick={() => { setNoticeText(""); setInfoText(""); }}
+                disabled={infoSaving || opBusy}
+                title="Очистить поля (и нажать Сохранить)"
+              >
+                Очистить
+              </button>
+
+              {(noticeText || infoText) ? (
+                <span className="badge" title="Будет видно в списке/деталке">✅ будет показано</span>
+              ) : (
+                <span className="small" style={{ opacity: 0.8 }}>Поля пустые — блоки не отображаются</span>
+              )}
+            </div>
+          </div>
 
           <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
             <button className="btn secondary" onClick={() => setGeoPickOpen(true)} disabled={!gameDraft}>

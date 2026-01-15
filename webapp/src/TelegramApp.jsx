@@ -1827,6 +1827,33 @@ function openYandexRoute(lat, lon) {
                             </button>
 
                           </div>
+                          {game.notice_text ? (
+                            <div className="gameNoticeInline">
+                              <span className="gameNoticeInline__icon" aria-hidden="true">⚠️</span>
+                              <span className="gameNoticeInline__text">{game.notice_text}</span>
+
+                              {isAdmin ? (
+                                <button
+                                  className="iconBtn gameNoticeInline__edit"
+                                  type="button"
+                                  title="Изменить важную заметку"
+                                  onClick={() => openGameSheet(game)}  // или openInfoModal(game)
+                                >
+                                  ✏️
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : isAdmin ? (
+                            <button
+                              className="btn secondary"
+                              style={{ marginTop: 10 }}
+                              onClick={() => openGameSheet(game)}
+                              title="Добавить важную заметку"
+                            >
+                              ➕ Важно
+                            </button>
+                          ) : null}
+
                         </div>
                       );
                     })}
@@ -1929,6 +1956,53 @@ function openYandexRoute(lat, lon) {
                             </div>
                           ) : null}
                         </div>
+                        {game.notice_text ? (
+                          <div className="gameNoticeBlock">
+                            <span className="gameNoticeBlock__icon" aria-hidden="true">⚠️</span>
+                            <div className="gameNoticeBlock__body">
+                              <div className="gameNoticeBlock__title">Важно</div>
+                              <div className="gameNoticeBlock__text">{game.notice_text}</div>
+                            </div>
+
+                          {isAdmin ? (
+                                  <button
+                                    className="iconBtn"
+                                    type="button"
+                                    title="Редактировать"
+                                    onClick={() => openGameSheet(game)}
+                                  >
+                                    ✏️
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : isAdmin ? (
+                              <button className="btn secondary" style={{ marginTop: 10 }} onClick={() => openGameSheet(game)}>
+                                ➕ Добавить “Важно”
+                              </button>
+                            ) : null}
+
+                            {game.info_text ? (
+                              <div className="card" style={{ marginTop: 12 }}>
+                                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                                  <h3 style={{ margin: 0 }}>ℹ️ Важная информация</h3>
+
+                                  {isAdmin ? (
+                                    <button className="iconBtn" type="button" title="Редактировать" onClick={() => openGameSheet(game)}>
+                                      ✏️
+                                    </button>
+                                  ) : null}
+                                </div>
+
+                                <div className="small" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                                  {game.info_text}
+                                </div>
+                              </div>
+                            ) : isAdmin ? (
+                              <button className="btn secondary" style={{ marginTop: 10 }} onClick={() => openGameSheet(game)}>
+                                ➕ Добавить подробности
+                              </button>
+                            ) : null}
+
 
                      {/*   {isAdmin && game && isPastGame(game) && (
                         <div className="card" style={{ marginTop: 12 }}>

@@ -14,13 +14,13 @@ export async function ensureSchema(q) {
     );
   `);
 
-  // idempotent alterations (ok to keep)
+  
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT '';`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'scheduled';`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS video_url TEXT;`);
-  // ✅ Best player (обладатель талисмана после игры)
+  //  Best player (обладатель талисмана после игры)
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS best_player_tg_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS best_player_set_by BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS best_player_set_at TIMESTAMPTZ;`);
@@ -30,10 +30,10 @@ export async function ensureSchema(q) {
   await q(`CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS geo_lat DOUBLE PRECISION;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS geo_lon DOUBLE PRECISION;`);
-  // ✅ НОВОЕ: текстовые блоки информации по игре
+  //  текстовые блоки информации по игре
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS info_text TEXT;`);    // длинный текст "Важная информация"
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS notice_text TEXT;`);  // короткий "Важно!"
-  // ✅ Напоминания по игре
+  //  Напоминания по игре
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_at TIMESTAMPTZ;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;`);
@@ -96,22 +96,22 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS jersey_number INT;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;`);
 
-  // ✅ поля гостей (оставляем для совместимости)
+  //  поля гостей (оставляем для совместимости)
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS created_by BIGINT;`);
 
-  // ✅ НОВОЕ: тип игрока
+  //  тип игрока
   // tg     = игрок из Telegram (обычный)
   // manual = постоянный игрок, добавлен админом вручную (без TG)
   // guest  = разовый гость (не в общем списке игроков)
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS player_kind TEXT;`);
 
-    // ✅ BOT PROFILE: чтобы понимать, что человек реально нажал Start в личке
+    //  BOT PROFILE: чтобы понимать, что человек реально нажал Start в личке
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started_at TIMESTAMPTZ;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_last_seen TIMESTAMPTZ;`);
 
-  // ✅ BOT AVATAR: хранить file_id телеги (НЕ url)
+  // BOT AVATAR: хранить file_id телеги (НЕ url)
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_file_id TEXT;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started_at TIMESTAMPTZ;`);
@@ -154,10 +154,10 @@ export async function ensureSchema(q) {
   `);
 
   
-    // ✅ позиция на конкретную игру (оверрайд профиля)
+    //  позиция на конкретную игру (оверрайд профиля)
   await q(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS pos_override TEXT;`);
 
-  // ✅ check-constraint (idempotent)
+  //  check-constraint (idempotent)
   await q(`
     DO $$
     BEGIN
@@ -171,7 +171,7 @@ export async function ensureSchema(q) {
     END$$;
   `);
 
-  // ✅ индекс на rsvps — важно создавать ПОСЛЕ таблицы
+  //  индекс на rsvps — важно создавать ПОСЛЕ таблицы
   await q(`CREATE INDEX IF NOT EXISTS idx_rsvps_tg_id ON rsvps(tg_id);`);
 
   
