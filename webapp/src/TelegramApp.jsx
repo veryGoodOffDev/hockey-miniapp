@@ -1827,32 +1827,38 @@ function openYandexRoute(lat, lon) {
                             </button>
 
                           </div>
-                          {game.notice_text ? (
-                            <div className="gameNoticeInline">
-                              <span className="gameNoticeInline__icon" aria-hidden="true">⚠️</span>
-                              <span className="gameNoticeInline__text">{game.notice_text}</span>
+                              {g.notice_text ? (
+                                <div className="gameNoticeInline" onClick={(e) => e.stopPropagation()}>
+                                  <span className="gameNoticeInline__icon" aria-hidden="true">⚠️</span>
+                                  <span className="gameNoticeInline__text">{g.notice_text}</span>
 
-                              {isAdmin ? (
+                                  {isAdmin ? (
+                                    <button
+                                      className="iconBtn gameNoticeInline__edit"
+                                      type="button"
+                                      title="Изменить важную заметку"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openGameSheet(g);
+                                      }}
+                                    >
+                                      ✏️
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : isAdmin ? (
                                 <button
-                                  className="iconBtn gameNoticeInline__edit"
-                                  type="button"
-                                  title="Изменить важную заметку"
-                                  onClick={() => openGameSheet(game)}  // или openInfoModal(game)
+                                  className="btn secondary"
+                                  style={{ marginTop: 10 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openGameSheet(g);
+                                  }}
+                                  title="Добавить важную заметку"
                                 >
-                                  ✏️
+                                  ➕ Важно
                                 </button>
                               ) : null}
-                            </div>
-                          ) : isAdmin ? (
-                            <button
-                              className="btn secondary"
-                              style={{ marginTop: 10 }}
-                              onClick={() => openGameSheet(game)}
-                              title="Добавить важную заметку"
-                            >
-                              ➕ Важно
-                            </button>
-                          ) : null}
 
                         </div>
                       );
