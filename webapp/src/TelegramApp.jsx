@@ -297,47 +297,7 @@ function initialsFrom(name) {
   return parts.map(x => (x[0] || "").toUpperCase()).join("") || "??";
 }
 
-function AvatarCircle({ url, fallbackUrl = "", name = "", size = 34 }) {
-  const [src, setSrc] = useState(url || "");
 
-  useEffect(() => {
-    setSrc(url || "");
-  }, [url]);
-
-  const letter = (String(name).trim()[0] || "•").toUpperCase();
-
-  return (
-    <div
-      className="cmtAvatarCircle"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 999,
-        overflow: "hidden",
-        display: "grid",
-        placeItems: "center",
-        border: "1px solid var(--border)",
-        background: "color-mix(in srgb, var(--tg-text) 8%, transparent)",
-        flex: "0 0 auto",
-      }}
-    >
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          draggable={false}
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-          onError={() => {
-            if (fallbackUrl && src !== fallbackUrl) setSrc(fallbackUrl);
-            else setSrc("");
-          }}
-        />
-      ) : (
-        <span style={{ fontWeight: 900 }}>{letter}</span>
-      )}
-    </div>
-  );
-}
 
 
 async function submitComment() {
@@ -3443,6 +3403,49 @@ function Avatar({ p, big = false, onClick }) {
       title={clickable ? "Открыть фото" : ""}
     >
       {letter}
+    </div>
+  );
+}
+
+
+function AvatarCircle({ url, fallbackUrl = "", name = "", size = 34 }) {
+  const [src, setSrc] = useState(url || "");
+
+  useEffect(() => {
+    setSrc(url || "");
+  }, [url]);
+
+  const letter = (String(name).trim()[0] || "•").toUpperCase();
+
+  return (
+    <div
+      className="cmtAvatarCircle"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        overflow: "hidden",
+        display: "grid",
+        placeItems: "center",
+        border: "1px solid var(--border)",
+        background: "color-mix(in srgb, var(--tg-text) 8%, transparent)",
+        flex: "0 0 auto",
+      }}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          onError={() => {
+            if (fallbackUrl && src !== fallbackUrl) setSrc(fallbackUrl);
+            else setSrc("");
+          }}
+        />
+      ) : (
+        <span style={{ fontWeight: 900 }}>{letter}</span>
+      )}
     </div>
   );
 }
