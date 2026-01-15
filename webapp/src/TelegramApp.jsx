@@ -2270,29 +2270,45 @@ function openYandexRoute(lat, lon) {
                                       <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю комментарии…</div>
                                     ) : null}
 
-                                    <div style={{ marginTop: 10 }}>
+                                    <div className="commentComposer" style={{ marginTop: 10 }}>
                                       <textarea
-                                        className="input"
-                                        rows={3}
+                                        className="commentComposer__input"
+                                        rows={1}
                                         value={commentDraft}
                                         onChange={(e) => setCommentDraft(e.target.value)}
-                                        placeholder={commentEditId ? "Редактируешь комментарий…" : "Напиши комментарий…"}
+                                        onInput={(e) => {
+                                          // авто-рост как в чатах
+                                          e.currentTarget.style.height = "0px";
+                                          e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 140)}px`;
+                                        }}
+                                        placeholder={commentEditId ? "Редактируешь…" : "Сообщение…"}
                                         maxLength={800}
-                                        style={{ resize: "vertical" }}
                                       />
 
-                                      <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                                        <button className="btn" disabled={commentBusy || !String(commentDraft||"").trim()} onClick={submitComment}>
-                                          {commentEditId ? "Сохранить" : "Отправить"}
-                                        </button>
-
-                                        {commentEditId ? (
-                                          <button className="btn secondary" disabled={commentBusy} onClick={() => { setCommentEditId(null); setCommentDraft(""); }}>
-                                            Отмена
-                                          </button>
-                                        ) : null}
-                                      </div>
+                                      <button
+                                        className="commentComposer__send"
+                                        disabled={commentBusy || !String(commentDraft || "").trim()}
+                                        onClick={submitComment}
+                                        type="button"
+                                        title={commentEditId ? "Сохранить" : "Отправить"}
+                                      >
+                                        {commentEditId ? "✅" : "➤"}
+                                      </button>
                                     </div>
+
+                                    {commentEditId ? (
+                                      <div className="commentEditBar">
+                                        <span>Редактирование комментария</span>
+                                        <button
+                                          className="btn secondary"
+                                          disabled={commentBusy}
+                                          onClick={() => { setCommentEditId(null); setCommentDraft(""); }}
+                                          type="button"
+                                        >
+                                          Отмена
+                                        </button>
+                                      </div>
+                                    ) : null}
 
                                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                                       {!commentsLoading && comments.length === 0 ? (
