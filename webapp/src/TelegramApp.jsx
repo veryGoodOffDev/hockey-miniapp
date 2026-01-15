@@ -112,6 +112,8 @@ const [commentsLoading, setCommentsLoading] = useState(false);
 const [commentDraft, setCommentDraft] = useState("");
 const [commentEditId, setCommentEditId] = useState(null);
 const [commentBusy, setCommentBusy] = useState(false);
+const [commentBusyId, setCommentBusyId] = useState(null);   // какой коммент сейчас “в работе”
+const [flashId, setFlashId] = useState(null);               // подсветить после сохранения
 
 const commentsPollRef = useRef(null);
 const commentsHashRef = useRef(""); // чтобы не перерендеривать без изменений
@@ -302,29 +304,105 @@ function initialsFrom(name) {
 
 async function submitComment() {
   if (!game?.id) return;
-  const body = String(commentDraft || "").trim();
+
+  const body = String(commentDraft || "").replace(/\r\n/g, "\n").trim();
   if (!body) return;
 
-  setCommentBusy(true);
-  try {
-    const r = commentEditId
-      ? await apiPatch(`/api/game-comments/${commentEditId}`, { body })
-      : await apiPost(`/api/game-comments`, { game_id: game.id, body });
+  const gameId = game.id;
+  const nowIso = new Date().toISOString();
 
+  // helper: вставить новый коммент сразу сверху, но после закрепа (если есть)
+  const insertNewToTop = (prev, item) => {
+    const arr = Array.isArray(prev) ? prev : [];
+    const pinIdx = arr.findIndex(x => x?.is_pinned);
+    if (pinIdx === 0) return [arr[0], item, ...arr.slice(1)];
+    return [item, ...arr];
+  };
+
+  setCommentBusy(true);
+
+  // ===== EDIT =====
+  if (commentEditId) {
+    const id = commentEditId;
+
+    // ✅ мгновенно выходим из режима редактирования
+    setCommentEditId(null);
+    setCommentDraft("");
+
+    // ✅ оптимистично обновляем текст сразу
+    setComments(prev =>
+      (prev || []).map(c =>
+        c.id === id ? { ...c, body, updated_at: nowIso, _pending: "edit" } : c
+      )
+    );
+
+    setCommentBusyId(id);
+
+    try {
+      const r = await apiPatch(`/api/game-comments/${id}`, { body });
+
+      if (r?.ok) {
+        setComments(r.comments || []);
+        patchCommentsCount?.(gameId, (r.comments || []).length);
+
+        // подсветим сохранённый коммент
+        setFlashId(id);
+        setTimeout(() => setFlashId(null), 900);
+      } else {
+        // если бек вернул ошибку — просто перезагрузим комменты
+        const rr = await apiGet(`/api/game-comments?game_id=${gameId}`);
+        if (rr?.ok) setComments(rr.comments || []);
+      }
+    } finally {
+      setCommentBusy(false);
+      setCommentBusyId(null);
+    }
+
+    return;
+  }
+
+  // ===== NEW =====
+  const tmpId = `tmp_${Date.now()}`;
+  const meId = String(me?.id ?? me?.tg_id ?? "");
+
+  const temp = {
+    id: tmpId,
+    game_id: gameId,
+    author_tg_id: meId,
+    body,
+    created_at: nowIso,
+    updated_at: null,
+    is_pinned: false,
+    reactions: [],
+    author: {
+      tg_id: me?.id ?? me?.tg_id,
+      display_name: me?.display_name || "",
+      first_name: me?.first_name || "",
+      username: me?.username || "",
+      photo_url: me?.photo_url || "",
+    },
+    _pending: "send",
+  };
+
+  // ✅ сразу показываем в списке (сверху)
+  setComments(prev => insertNewToTop(prev, temp));
+  setCommentDraft("");
+  setCommentBusyId(tmpId);
+
+  try {
+    const r = await apiPost(`/api/game-comments`, { game_id: gameId, body });
     if (r?.ok) {
       setComments(r.comments || []);
-      const cnt = (r.comments || []).length;
-      patchCommentsCount(selectedGameId, cnt);
-
-
-      commentsHashRef.current = commentsHash(r.comments || []);
-      setCommentDraft("");
-      setCommentEditId(null);
+      patchCommentsCount?.(gameId, (r.comments || []).length);
+    } else {
+      setComments(prev => (prev || []).filter(c => c.id !== tmpId));
     }
   } finally {
     setCommentBusy(false);
+    setCommentBusyId(null);
   }
 }
+
 
 async function removeComment(id) {
   const ok = confirm("Удалить комментарий?");
@@ -905,6 +983,18 @@ async function rsvp(status) {
       sync: { gameId: selectedGameId, refreshGames: true, refreshGame: true },
     }
   );
+}
+
+
+async function togglePin(commentId, on) {
+  if (!game?.id) return;
+  setCommentBusy(true);
+  try {
+    const r = await apiPost(`/api/game-comments/${commentId}/pin`, { on });
+    if (r?.ok) setComments(r.comments || []);
+  } finally {
+    setCommentBusy(false);
+  }
 }
 
 
@@ -2292,8 +2382,9 @@ function openYandexRoute(lat, lon) {
                                         type="button"
                                         title={commentEditId ? "Сохранить" : "Отправить"}
                                       >
-                                        {commentEditId ? "✅" : "➤"}
+                                        {commentBusy ? "⏳" : (commentEditId ? "✅" : "➤")}
                                       </button>
+
                                     </div>
 
                                     {commentEditId ? (
@@ -2336,7 +2427,10 @@ function openYandexRoute(lat, lon) {
                                           const reactions = Array.isArray(c.reactions) ? c.reactions : [];
 
                                           return (
-                                            <div key={c.id} className={`cmtRow ${isMine ? "mine" : ""}`}>
+                                            <div
+                                              key={c.id}
+                                              className={`cmtRow ${isMine ? "mine" : ""} ${c._pending ? "pending" : ""} ${flashId === c.id ? "flash" : ""} ${c.is_pinned ? "pinned" : ""}`}
+                                            >
                                               {/* AVATAR LEFT for others */}
                                               {!isMine ? (
                                                 <div className="cmtAvatar">
@@ -2362,6 +2456,18 @@ function openYandexRoute(lat, lon) {
                                                 <div className="cmtText">{c.body}</div>
 
                                                 <div className="cmtActions">
+                                                  {isAdmin ? (
+                                                        <button
+                                                          className="iconBtn"
+                                                          type="button"
+                                                          title={c.is_pinned ? "Открепить" : "Закрепить"}
+                                                          disabled={commentBusy}
+                                                          onClick={() => togglePin(c.id, !c.is_pinned)}
+                                                        >
+                                                          {c.is_pinned ? "📌" : "📍"}
+                                                        </button>
+                                                      ) : null}
+
                                                   {reactions.map((r) => (
                                                     <button
                                                       key={r.emoji}
@@ -2417,6 +2523,7 @@ function openYandexRoute(lat, lon) {
                                               {isMine ? (
                                                 <div className="cmtAvatar">
                                                   <AvatarCircle url={avatarUrl} fallbackUrl={(author?.photo_url_fallback || "").trim()} name={authorName} />
+                                                  {c.is_pinned ? <span className="cmtPinTag">📌 закреплено</span> : null}
 
                                                 </div>
                                               ) : null}

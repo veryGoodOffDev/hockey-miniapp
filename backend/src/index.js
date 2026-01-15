@@ -1082,10 +1082,12 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       p.photo_url       AS p_photo_url,
       p.avatar_file_id  AS p_avatar_file_id,
       p.updated_at      AS p_updated_at,
+      (g.pinned_comment_id = c.id) AS is_pinned,
 
       COALESCE(rx.reactions, '[]'::jsonb) AS reactions
 
     FROM game_comments c
+    JOIN games g ON g.id = c.game_id
     LEFT JOIN players p ON p.tg_id = c.author_tg_id
 
     LEFT JOIN LATERAL (
@@ -1102,14 +1104,14 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
           r.reaction,
           COUNT(*)::int AS cnt,
           BOOL_OR(r.user_tg_id = $2) AS my
-        FROM game_comment_reactions r
-        WHERE r.comment_id = c.id
-        GROUP BY r.reaction
+          FROM game_comment_reactions r
+          WHERE r.comment_id = c.id
+          GROUP BY r.reaction
       ) t
     ) rx ON TRUE
 
     WHERE c.game_id = $1
-    ORDER BY c.created_at ASC
+    ORDER BY (g.pinned_comment_id = c.id) DESC, c.created_at DESC
     `,
     [gameId, viewerTgId]
   );
@@ -1123,6 +1125,7 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       photo_url: row.p_photo_url || "",
       avatar_file_id: row.p_avatar_file_id || null,
       updated_at: row.p_updated_at || null,
+      is_pinned: !!row.is_pinned,
     };
 
     const author = presentPlayer(rawPlayer, baseUrl); // ✅ ключевое
@@ -3713,6 +3716,49 @@ app.post("/api/game-comments/:id/react", async (req, res) => {
       `DELETE FROM game_comment_reactions
        WHERE comment_id=$1 AND user_tg_id=$2 AND reaction=$3`,
       [id, user.id, emoji]
+    );
+  }
+
+  const baseUrl = getPublicBaseUrl(req);
+  const comments = await loadGameComments(gameId, user.id, baseUrl);
+  res.json({ ok: true, comments });
+});
+
+
+app.post("/api/game-comments/:id/pin", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+  const id = Number(req.params.id);
+  const on = !!req.body?.on;
+
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+  const cr = await q(`SELECT game_id FROM game_comments WHERE id=$1`, [id]);
+  const row = cr.rows[0];
+  if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
+
+  const gameId = row.game_id;
+
+  if (on) {
+    // ✅ закрепить (только если коммент реально относится к этой игре)
+    await q(
+      `UPDATE games
+       SET pinned_comment_id=$1
+       WHERE id=$2
+         AND EXISTS (SELECT 1 FROM game_comments WHERE id=$1 AND game_id=$2)`,
+      [id, gameId]
+    );
+  } else {
+    // ✅ открепить (только если сейчас закреплён именно он)
+    await q(
+      `UPDATE games
+       SET pinned_comment_id=NULL
+       WHERE id=$1 AND pinned_comment_id=$2`,
+      [gameId, id]
     );
   }
 

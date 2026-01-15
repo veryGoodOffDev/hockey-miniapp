@@ -39,6 +39,21 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_message_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_pin BOOLEAN NOT NULL DEFAULT TRUE;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS pinned_comment_id BIGINT;`);
+
+
+  await q(`
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='games_pinned_comment_fk') THEN
+    ALTER TABLE games
+      ADD CONSTRAINT games_pinned_comment_fk
+      FOREIGN KEY (pinned_comment_id)
+      REFERENCES game_comments(id)
+      ON DELETE SET NULL;
+  END IF;
+END$$;
+`);
 
   // полезный индекс: быстро искать “к отправке”
   await q(`
