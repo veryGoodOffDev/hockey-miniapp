@@ -1075,22 +1075,27 @@ async function loadGameComments(gameId, viewerTgId) {
       c.created_at,
       c.updated_at,
 
-      ${sqlPlayerName("p")} AS author_name,
-      p.username AS author_username,
-      NULLIF(BTRIM(p.photo_url), '') AS author_photo_url,
+      -- автор (как player)
+      p.tg_id        AS p_tg_id,
+      p.display_name AS p_display_name,
+      p.first_name   AS p_first_name,
+      p.username     AS p_username,
+      p.photo_url    AS p_photo_url,
 
-      COALESCE(rx.reactions, '[]'::json) AS reactions
+      -- реакции: [{emoji,count,my}]
+      COALESCE(rx.reactions, '[]'::jsonb) AS reactions
+
     FROM game_comments c
     LEFT JOIN players p ON p.tg_id = c.author_tg_id
 
     LEFT JOIN LATERAL (
-      SELECT json_agg(
-        json_build_object(
+      SELECT jsonb_agg(
+        jsonb_build_object(
           'emoji', t.reaction,
           'count', t.cnt,
-          'my', t.my
+          'my',    t.my
         )
-        ORDER BY t.cnt DESC, t.reaction ASC
+        ORDER BY t.reaction
       ) AS reactions
       FROM (
         SELECT
@@ -1109,8 +1114,27 @@ async function loadGameComments(gameId, viewerTgId) {
     [gameId, viewerTgId]
   );
 
-  return r.rows || [];
+  return (r.rows || []).map((row) => ({
+    id: row.id,
+    game_id: row.game_id,
+    author_tg_id: row.author_tg_id,
+    body: row.body,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+
+    // ✅ вот это нужно для Avatar()
+    author: {
+      tg_id: row.p_tg_id ?? row.author_tg_id,
+      display_name: row.p_display_name || "",
+      first_name: row.p_first_name || "",
+      username: row.p_username || "",
+      photo_url: row.p_photo_url || "",
+    },
+
+    reactions: row.reactions || [],
+  }));
 }
+
 
 
 
@@ -1430,13 +1454,13 @@ app.get("/api/games", async (req, res) => {
       COALESCE(cc.comments_count,0) AS comments_count,
       my.status AS my_status,
       ${sqlPlayerName("bp")} AS best_player_name
-    FROM page p
-    CROSS JOIN total t
-    LEFT JOIN counts c ON c.game_id = p.id
-    LEFT JOIN comment_counts cc ON cc.game_id = p.id
-    LEFT JOIN rsvps my ON my.game_id = p.id AND my.tg_id = $7
-    LEFT JOIN players bp ON bp.tg_id = p.best_player_tg_id
-    ORDER BY p.starts_at ${order};
+      FROM page p
+      CROSS JOIN total t
+      LEFT JOIN counts c ON c.game_id = p.id
+      LEFT JOIN comment_counts cc ON cc.game_id = p.id
+      LEFT JOIN rsvps my ON my.game_id = p.id AND my.tg_id = $7
+      LEFT JOIN players bp ON bp.tg_id = p.best_player_tg_id
+      ORDER BY p.starts_at ${order};
   `;
 
 const [r, holderR] = await Promise.all([

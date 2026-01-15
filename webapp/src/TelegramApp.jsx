@@ -2324,7 +2324,7 @@ function openYandexRoute(lat, lon) {
                                         return (
                                           <div key={c.id} className="commentCard">
                                             <div className="commentTop">
-                                              <AvatarCircle url={c.author_photo_url} name={authorName} />
+                                              <Avatar p={c.author} big={false} />
 
                                               <div className="commentMain">
                                                 <div className="commentHead">
