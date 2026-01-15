@@ -3585,22 +3585,27 @@ app.post("/api/admin/games/:id/best-player", async (req, res) => {
 
 /* ------- comments ------------------ */
 app.get("/api/game-comments", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
 
-  const is_admin = await isAdminId(user.id);
-  if (!is_admin) {
-    if (!(await requireGroupMember(req, res, user))) return;
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) {
+      if (!(await requireGroupMember(req, res, user))) return;
+    }
+
+    const gameId = req.query.game_id ? Number(req.query.game_id) : null;
+    if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+    const baseUrl = getPublicBaseUrl(req);
+    const comments = await loadGameComments(gameId, user.id, baseUrl);
+    return res.json({ ok: true, comments });
+  } catch (e) {
+    console.error("GET /api/game-comments failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
   }
-
-  const gameId = req.query.game_id ? Number(req.query.game_id) : null;
-  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
-
-  const baseUrl = getPublicBaseUrl(req);
-  const comments = await loadGameComments(gameId, user.id, baseUrl);
-  
-  res.json({ ok: true, comments });
 });
+
 
 
 app.post("/api/game-comments", async (req, res) => {
@@ -3627,64 +3632,75 @@ app.post("/api/game-comments", async (req, res) => {
 });
 
 app.patch("/api/game-comments/:id", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
 
-  const is_admin = await isAdminId(user.id);
-  if (!is_admin) {
-    if (!(await requireGroupMember(req, res, user))) return;
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) {
+      if (!(await requireGroupMember(req, res, user))) return;
+    }
+
+    const id = Number(req.params.id);
+    const text = String(req.body?.body ?? "").replace(/\r\n/g, "\n").trim();
+
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+    if (!text) return res.status(400).json({ ok: false, reason: "empty_body" });
+    if (text.length > 800) return res.status(400).json({ ok: false, reason: "too_long" });
+
+    const cr = await q(`SELECT game_id, author_tg_id FROM game_comments WHERE id=$1`, [id]);
+    const row = cr.rows[0];
+    if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    if (!is_admin && String(row.author_tg_id) !== String(user.id)) {
+      return res.status(403).json({ ok: false, reason: "not_owner" });
+    }
+
+    await q(`UPDATE game_comments SET body=$1, updated_at=NOW() WHERE id=$2`, [text, id]);
+
+    const gameId = Number(row.game_id);              // ✅ ВАЖНО
+    const baseUrl = getPublicBaseUrl(req);
+    const comments = await loadGameComments(gameId, user.id, baseUrl);
+    return res.json({ ok: true, comments });
+  } catch (e) {
+    console.error("PATCH /api/game-comments/:id failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
   }
-
-  const id = Number(req.params.id);
-  const text = String(req.body?.body ?? "").replace(/\r\n/g, "\n").trim();
-
-  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
-  if (!text) return res.status(400).json({ ok: false, reason: "empty_body" });
-  if (text.length > 800) return res.status(400).json({ ok: false, reason: "too_long" });
-
-  const cr = await q(`SELECT game_id, author_tg_id FROM game_comments WHERE id=$1`, [id]);
-  const row = cr.rows[0];
-  if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
-
-  if (!is_admin && String(row.author_tg_id) !== String(user.id)) {
-    return res.status(403).json({ ok: false, reason: "not_owner" });
-  }
-
-  await q(`UPDATE game_comments SET body=$1, updated_at=NOW() WHERE id=$2`, [text, id]);
-
-  const gameId = Number(row.game_id);              // ✅ ВАЖНО
-  const comments = await loadGameComments(gameId, user.id); // ✅ без gameId-undefined
-
-  return res.json({ ok: true, comments });
 });
 
 
+
 app.delete("/api/game-comments/:id", async (req, res) => {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return;
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
 
-  const is_admin = await isAdminId(user.id);
-  if (!is_admin) {
-    if (!(await requireGroupMember(req, res, user))) return;
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) {
+      if (!(await requireGroupMember(req, res, user))) return;
+    }
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const cr = await q(`SELECT game_id, author_tg_id FROM game_comments WHERE id=$1`, [id]);
+    const row = cr.rows[0];
+    if (!row) return res.json({ ok: true, comments: [] });
+
+    if (!is_admin && String(row.author_tg_id) !== String(user.id)) {
+      return res.status(403).json({ ok: false, reason: "not_owner" });
+    }
+
+    await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
+
+    const gameId = Number(row.game_id);              // ✅ ВАЖНО
+    const baseUrl = getPublicBaseUrl(req);
+    const comments = await loadGameComments(gameId, user.id, baseUrl);
+    return res.json({ ok: true, comments });
+  } catch (e) {
+    console.error("DELETE /api/game-comments/:id failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
   }
-
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
-
-  const cr = await q(`SELECT game_id, author_tg_id FROM game_comments WHERE id=$1`, [id]);
-  const row = cr.rows[0];
-  if (!row) return res.json({ ok: true, comments: [] });
-
-  if (!is_admin && String(row.author_tg_id) !== String(user.id)) {
-    return res.status(403).json({ ok: false, reason: "not_owner" });
-  }
-
-  await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
-
-  const gameId = Number(row.game_id);               // ✅ ВАЖНО
-  const comments = await loadGameComments(gameId, user.id);
-
-  return res.json({ ok: true, comments });
 });
 
 
