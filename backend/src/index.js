@@ -1064,7 +1064,7 @@ function fmtGameLine(g) {
 
 const ALLOWED_REACTIONS = new Set(["❤️","🔥","👍","😂","👏","😡","🤔"]);
 
-async function loadGameComments(gameId, viewerTgId) {
+async function loadGameComments(gameId, viewerTgId, baseUrl) {
   const r = await q(
     `
     SELECT
@@ -1075,15 +1075,14 @@ async function loadGameComments(gameId, viewerTgId) {
       c.created_at,
       c.updated_at,
 
-      -- автор (как player)
       p.tg_id        AS p_tg_id,
       p.display_name AS p_display_name,
       p.first_name   AS p_first_name,
       p.username     AS p_username,
       p.photo_url       AS p_photo_url,
       p.avatar_file_id  AS p_avatar_file_id,
+      p.updated_at      AS p_updated_at,
 
-      -- реакции: [{emoji,count,my}]
       COALESCE(rx.reactions, '[]'::jsonb) AS reactions
 
     FROM game_comments c
@@ -1115,26 +1114,32 @@ async function loadGameComments(gameId, viewerTgId) {
     [gameId, viewerTgId]
   );
 
-  return (r.rows || []).map((row) => ({
-    id: row.id,
-    game_id: row.game_id,
-    author_tg_id: row.author_tg_id,
-    body: row.body,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-
-    // ✅ вот это нужно для Avatar()
-    author: {
+  return (r.rows || []).map((row) => {
+    const rawPlayer = {
       tg_id: row.p_tg_id ?? row.author_tg_id,
       display_name: row.p_display_name || "",
       first_name: row.p_first_name || "",
       username: row.p_username || "",
       photo_url: row.p_photo_url || "",
-    },
+      avatar_file_id: row.p_avatar_file_id || null,
+      updated_at: row.p_updated_at || null,
+    };
 
-    reactions: row.reactions || [],
-  }));
+    const author = presentPlayer(rawPlayer, baseUrl); // ✅ ключевое
+
+    return {
+      id: row.id,
+      game_id: row.game_id,
+      author_tg_id: row.author_tg_id,
+      body: row.body,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      author,
+      reactions: row.reactions || [],
+    };
+  });
 }
+
 
 
 
@@ -2442,10 +2447,11 @@ function mimeFromFilePath(filePath = "") {
 
 app.get("/api/players/:tg_id/avatar", async (req, res) => {
   const tgId = Number(req.params.tg_id);
-  if (!Number.isFinite(tgId)) return res.status(400).end();
-
   const r = await q(`SELECT avatar_file_id FROM players WHERE tg_id=$1`, [tgId]);
   const fileId = r.rows?.[0]?.avatar_file_id;
+
+  console.log("[avatar]", { tgId, hasFileId: !!fileId });
+
   if (!fileId) return res.status(404).end();
 
   try {
@@ -2455,18 +2461,19 @@ app.get("/api/players/:tg_id/avatar", async (req, res) => {
 
     const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`;
     const resp = await fetch(url);
-    if (!resp.ok) return res.status(502).end();
+    if (!resp.ok) {
+      console.log("[avatar] tg file fetch failed", resp.status);
+      return res.status(502).end();
+    }
 
-    // ✅ ВОТ ТУТ КЛЮЧ: не берём octet-stream от Telegram
     res.setHeader("Content-Type", mimeFromFilePath(filePath));
-    // res.setHeader("Cache-Control", "public, max-age=3600");
-    res.setHeader("Cache-Control", "no-store");
-
+    res.setHeader("Cache-Control", "public, max-age=3600");
 
     const buf = Buffer.from(await resp.arrayBuffer());
     res.end(buf);
   } catch (e) {
-    res.status(500).end();
+    console.log("[avatar] getFile failed:", e?.description || e?.message || e);
+    res.status(502).end();
   }
 });
 
@@ -3585,7 +3592,9 @@ app.get("/api/game-comments", async (req, res) => {
   const gameId = req.query.game_id ? Number(req.query.game_id) : null;
   if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
 
-  const comments = await loadGameComments(gameId, user.id);
+  const baseUrl = getPublicBaseUrl(req);
+  const comments = await loadGameComments(gameId, user.id, baseUrl);
+  
   res.json({ ok: true, comments });
 });
 
@@ -3608,7 +3617,8 @@ app.post("/api/game-comments", async (req, res) => {
 
   await q(`INSERT INTO game_comments(game_id, author_tg_id, body) VALUES($1,$2,$3)`, [gameId, user.id, text]);
 
-  const comments = await loadGameComments(gameId, user.id);
+  const baseUrl = getPublicBaseUrl(req);
+  const comments = await loadGameComments(gameId, user.id, baseUrl);
   res.json({ ok: true, comments });
 });
 
@@ -3638,7 +3648,8 @@ app.patch("/api/game-comments/:id", async (req, res) => {
 
   await q(`UPDATE game_comments SET body=$1, updated_at=NOW() WHERE id=$2`, [text, id]);
 
-  const comments = await loadGameComments(row.game_id, user.id);
+  const baseUrl = getPublicBaseUrl(req);
+  const comments = await loadGameComments(gameId, user.id, baseUrl);
   res.json({ ok: true, comments });
 });
 
@@ -3664,7 +3675,8 @@ app.delete("/api/game-comments/:id", async (req, res) => {
 
   await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
 
-  const comments = await loadGameComments(row.game_id, user.id);
+  const baseUrl = getPublicBaseUrl(req);
+  const comments = await loadGameComments(gameId, user.id, baseUrl);
   res.json({ ok: true, comments });
 });
 
@@ -3704,7 +3716,8 @@ app.post("/api/game-comments/:id/react", async (req, res) => {
     );
   }
 
-  const comments = await loadGameComments(row.game_id, user.id);
+  const baseUrl = getPublicBaseUrl(req);
+  const comments = await loadGameComments(gameId, user.id, baseUrl);
   res.json({ ok: true, comments });
 });
 
