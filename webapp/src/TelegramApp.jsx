@@ -106,6 +106,17 @@ const [remPin, setRemPin] = useState(true);
 const [remSaving, setRemSaving] = useState(false);
 const [gameSheetOpen, setGameSheetOpen] = useState(false);
 const [gameSheetGame, setGameSheetGame] = useState(null);
+
+const [comments, setComments] = useState([]);
+const [commentsLoading, setCommentsLoading] = useState(false);
+const [commentDraft, setCommentDraft] = useState("");
+const [commentEditId, setCommentEditId] = useState(null);
+const [commentBusy, setCommentBusy] = useState(false);
+
+const REACTIONS = ["❤️","🔥","👍","😂","👏","😡","🤔"];
+const [reactPickFor, setReactPickFor] = useState(null);
+
+
 function tgSafeAlert(text) {
   if (!tg?.showAlert) {
     window.alert(text);
@@ -257,6 +268,19 @@ async function loadFunStatus() {
 function errReason(e) {
   return e?.reason || e?.data?.reason || e?.response?.data?.reason || null;
 }
+
+
+async function refreshCommentsOnly(gameId) {
+  if (!gameId) return;
+  setCommentsLoading(true);
+  try {
+    const r = await apiGet(`/api/game-comments?game_id=${gameId}`);
+    setComments(r.comments || []);
+  } finally {
+    setCommentsLoading(false);
+  }
+}
+
 
 
   // ===== UI feedback for any mutations =====
@@ -1723,12 +1747,10 @@ function openYandexRoute(lat, lon) {
 
                               setDetailLoading(true);
 
-                              Promise.all([
-                                refreshGameOnly(id),          // детальная инфа
-                                // refreshUpcomingGamesOnly(), // опционально, если хочешь сразу обновить talisman/best-player в списке
-                              ])
-                                .catch(console.error)
-                                .finally(() => setDetailLoading(false));
+                             Promise.all([refreshGameOnly(id)])
+                                  .then(() => refreshCommentsOnly(id))
+                                  .catch(console.error)
+                                  .finally(() => setDetailLoading(false));
                             }}
 
                         >
@@ -2093,6 +2115,139 @@ function openYandexRoute(lat, lon) {
                         <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} />
                         <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
                       </div>
+                      <hr />
+
+                                  <div className="card">
+                                    <div className="rowBetween">
+                                      <h3 style={{ margin: 0 }}>💬 Комментарии</h3>
+                                      <span className="badgeMini">{comments.length}</span>
+                                    </div>
+
+                                    {commentsLoading ? (
+                                      <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю комментарии…</div>
+                                    ) : null}
+
+                                    <div style={{ marginTop: 10 }}>
+                                      <textarea
+                                        className="input"
+                                        rows={3}
+                                        value={commentDraft}
+                                        onChange={(e) => setCommentDraft(e.target.value)}
+                                        placeholder={commentEditId ? "Редактируешь комментарий…" : "Напиши комментарий…"}
+                                        maxLength={800}
+                                        style={{ resize: "vertical" }}
+                                      />
+
+                                      <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                                        <button className="btn" disabled={commentBusy || !String(commentDraft||"").trim()} onClick={submitComment}>
+                                          {commentEditId ? "Сохранить" : "Отправить"}
+                                        </button>
+
+                                        {commentEditId ? (
+                                          <button className="btn secondary" disabled={commentBusy} onClick={() => { setCommentEditId(null); setCommentDraft(""); }}>
+                                            Отмена
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    </div>
+
+                                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                                      {!commentsLoading && comments.length === 0 ? (
+                                        <div className="small" style={{ opacity: 0.8 }}>Комментариев пока нет.</div>
+                                      ) : comments.map((c) => {
+                                        const isMine = String(c.author_tg_id) === String(me?.id);
+                                        const canEdit = isMine;
+                                        const canDelete = isAdmin || isMine;
+
+                                        const authorName =
+                                          c.author_name ||
+                                          (c.author_username ? `@${c.author_username}` : String(c.author_tg_id));
+
+                                        const reactions = Array.isArray(c.reactions) ? c.reactions : [];
+
+                                        return (
+                                          <div key={c.id} className="commentCard">
+                                            <div className="commentTop">
+                                              <AvatarCircle url={c.author_photo_url} name={authorName} />
+
+                                              <div className="commentMain">
+                                                <div className="commentHead">
+                                                  <div className="commentAuthor">{authorName}</div>
+                                                  <div className="commentMeta">
+                                                    {new Date(c.created_at).toLocaleString("ru-RU", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
+                                                    {c.updated_at ? " · изменено" : ""}
+                                                  </div>
+                                                </div>
+
+                                                <div className="commentBody">{c.body}</div>
+
+                                                <div className="commentActions">
+                                                  {reactions.map((r) => (
+                                                    <button
+                                                      key={r.emoji}
+                                                      className={r.my ? "reactChip on" : "reactChip"}
+                                                      disabled={commentBusy}
+                                                      onClick={() => toggleReaction(c.id, r.emoji, !r.my)}
+                                                      type="button"
+                                                    >
+                                                      {r.emoji} <b>{r.count}</b>
+                                                    </button>
+                                                  ))}
+
+                                                  <button className="reactChip add" type="button" onClick={() => setReactPickFor(c.id)} disabled={commentBusy}>
+                                                    ➕
+                                                  </button>
+
+                                                  <div style={{ flex: 1 }} />
+
+                                                  {canEdit ? (
+                                                    <button className="iconBtn" type="button" title="Редактировать"
+                                                      onClick={() => { setCommentEditId(c.id); setCommentDraft(c.body || ""); }}
+                                                    >
+                                                      ✏️
+                                                    </button>
+                                                  ) : null}
+
+                                                  {canDelete ? (
+                                                    <button className="iconBtn" type="button" title="Удалить" onClick={() => removeComment(c.id)}>
+                                                      🗑️
+                                                    </button>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                          {reactPickFor ? (
+                                            <div className="reactOverlay" onClick={() => setReactPickFor(null)}>
+                                              <div className="reactModal" onClick={(e) => e.stopPropagation()}>
+                                                <div className="reactGrid">
+                                                  {REACTIONS.map((emo) => (
+                                                    <button
+                                                      key={emo}
+                                                      className="reactPickBtn"
+                                                      onClick={() => {
+                                                        const c = comments.find(x => x.id === reactPickFor);
+                                                        const found = (c?.reactions || []).find(r => r.emoji === emo);
+                                                        toggleReaction(reactPickFor, emo, !(found?.my));
+                                                        setReactPickFor(null);
+                                                      }}
+                                                    >
+                                                      {emo}
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                                <button className="btn secondary" style={{ marginTop: 10, width: "100%" }} onClick={() => setReactPickFor(null)}>
+                                                  Закрыть
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : null}
+
                     </>
                   );
                 })()
@@ -3265,6 +3420,74 @@ function PmBox({ player }) {
     </div>
   );
 }
+
+function initialsFrom(name) {
+  const s = String(name || "").trim();
+  if (!s) return "??";
+  const parts = s.split(/\s+/).slice(0, 2);
+  return parts.map(x => (x[0] || "").toUpperCase()).join("") || "??";
+}
+
+function AvatarCircle({ url, name }) {
+  const [err, setErr] = useState(false);
+  const initials = initialsFrom(name);
+
+  return (
+    <div className="avatarCircle" title={name || ""}>
+      {url && !err ? (
+        <img src={url} alt="" onError={() => setErr(true)} />
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
+  );
+}
+
+
+async function submitComment() {
+  if (!game?.id) return;
+  const body = String(commentDraft || "").trim();
+  if (!body) return;
+
+  setCommentBusy(true);
+  try {
+    const r = commentEditId
+      ? await apiPatch(`/api/game-comments/${commentEditId}`, { body })
+      : await apiPost(`/api/game-comments`, { game_id: game.id, body });
+
+    if (r?.ok) {
+      setComments(r.comments || []);
+      setCommentDraft("");
+      setCommentEditId(null);
+    }
+  } finally {
+    setCommentBusy(false);
+  }
+}
+
+async function removeComment(id) {
+  const ok = confirm("Удалить комментарий?");
+  if (!ok) return;
+
+  setCommentBusy(true);
+  try {
+    const r = await apiDelete(`/api/game-comments/${id}`);
+    if (r?.ok) setComments(r.comments || []);
+  } finally {
+    setCommentBusy(false);
+  }
+}
+
+async function toggleReaction(commentId, emoji, on) {
+  setCommentBusy(true);
+  try {
+    const r = await apiPost(`/api/game-comments/${commentId}/react`, { emoji, on });
+    if (r?.ok) setComments(r.comments || []);
+  } finally {
+    setCommentBusy(false);
+  }
+}
+
 
 
 

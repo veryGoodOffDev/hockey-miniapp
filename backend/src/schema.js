@@ -343,4 +343,33 @@ await q(`CREATE INDEX IF NOT EXISTS idx_fun_actions_log_user ON fun_actions_log(
 await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium BOOLEAN NOT NULL DEFAULT FALSE;`);
 
 
+  /** ===================== GAME COMMENTS ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS game_comments (
+      id BIGSERIAL PRIMARY KEY,
+      game_id INT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      author_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_game_comments_game_id_created ON game_comments(game_id, created_at);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_game_comments_author ON game_comments(author_tg_id);`);
+
+  /** ===================== GAME COMMENT REACTIONS ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS game_comment_reactions (
+      comment_id BIGINT NOT NULL REFERENCES game_comments(id) ON DELETE CASCADE,
+      user_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      reaction TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (comment_id, user_tg_id, reaction)
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_gcr_comment ON game_comment_reactions(comment_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_gcr_user ON game_comment_reactions(user_tg_id);`);
+
 }

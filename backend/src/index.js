@@ -1062,6 +1062,58 @@ function fmtGameLine(g) {
 }
 
 
+const ALLOWED_REACTIONS = new Set(["❤️","🔥","👍","😂","👏","😡","🤔"]);
+
+async function loadGameComments(gameId, viewerTgId) {
+  const r = await q(
+    `
+    SELECT
+      c.id,
+      c.game_id,
+      c.author_tg_id,
+      c.body,
+      c.created_at,
+      c.updated_at,
+
+      ${sqlPlayerName("p")} AS author_name,
+      p.username AS author_username,
+      NULLIF(BTRIM(p.photo_url), '') AS author_photo_url,
+
+      COALESCE(rx.reactions, '[]'::json) AS reactions
+    FROM game_comments c
+    LEFT JOIN players p ON p.tg_id = c.author_tg_id
+
+    LEFT JOIN LATERAL (
+      SELECT json_agg(
+        json_build_object(
+          'emoji', t.reaction,
+          'count', t.cnt,
+          'my', t.my
+        )
+        ORDER BY t.cnt DESC, t.reaction ASC
+      ) AS reactions
+      FROM (
+        SELECT
+          r.reaction,
+          COUNT(*)::int AS cnt,
+          BOOL_OR(r.user_tg_id = $2) AS my
+        FROM game_comment_reactions r
+        WHERE r.comment_id = c.id
+        GROUP BY r.reaction
+      ) t
+    ) rx ON TRUE
+
+    WHERE c.game_id = $1
+    ORDER BY c.created_at ASC
+    `,
+    [gameId, viewerTgId]
+  );
+
+  return r.rows || [];
+}
+
+
+
 
 /** ===================== ROUTES ===================== */
 
@@ -3482,6 +3534,143 @@ app.post("/api/admin/games/:id/best-player", async (req, res) => {
   );
 
   res.json({ ok: true, game: ur.rows[0] });
+});
+
+
+/* ------- comments ------------------ */
+app.get("/api/game-comments", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  const gameId = req.query.game_id ? Number(req.query.game_id) : null;
+  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const comments = await loadGameComments(gameId, user.id);
+  res.json({ ok: true, comments });
+});
+
+
+app.post("/api/game-comments", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  const gameId = Number(req.body?.game_id);
+  const text = String(req.body?.body ?? "").replace(/\r\n/g, "\n").trim();
+
+  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+  if (!text) return res.status(400).json({ ok: false, reason: "empty_body" });
+  if (text.length > 800) return res.status(400).json({ ok: false, reason: "too_long" });
+
+  await q(`INSERT INTO game_comments(game_id, author_tg_id, body) VALUES($1,$2,$3)`, [gameId, user.id, text]);
+
+  const comments = await loadGameComments(gameId, user.id);
+  res.json({ ok: true, comments });
+});
+
+app.patch("/api/game-comments/:id", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  const id = Number(req.params.id);
+  const text = String(req.body?.body ?? "").replace(/\r\n/g, "\n").trim();
+
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+  if (!text) return res.status(400).json({ ok: false, reason: "empty_body" });
+  if (text.length > 800) return res.status(400).json({ ok: false, reason: "too_long" });
+
+  const cr = await q(`SELECT game_id, author_tg_id FROM game_comments WHERE id=$1`, [id]);
+  const row = cr.rows[0];
+  if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
+
+  if (!is_admin && String(row.author_tg_id) !== String(user.id)) {
+    return res.status(403).json({ ok: false, reason: "not_owner" });
+  }
+
+  await q(`UPDATE game_comments SET body=$1, updated_at=NOW() WHERE id=$2`, [text, id]);
+
+  const comments = await loadGameComments(row.game_id, user.id);
+  res.json({ ok: true, comments });
+});
+
+app.delete("/api/game-comments/:id", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+  const cr = await q(`SELECT game_id, author_tg_id FROM game_comments WHERE id=$1`, [id]);
+  const row = cr.rows[0];
+  if (!row) return res.json({ ok: true, comments: [] });
+
+  if (!is_admin && String(row.author_tg_id) !== String(user.id)) {
+    return res.status(403).json({ ok: false, reason: "not_owner" });
+  }
+
+  await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
+
+  const comments = await loadGameComments(row.game_id, user.id);
+  res.json({ ok: true, comments });
+});
+
+
+app.post("/api/game-comments/:id/react", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin) {
+    if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  const id = Number(req.params.id);
+  const emoji = String(req.body?.emoji ?? "").trim();
+  const on = !!req.body?.on;
+
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+  if (!ALLOWED_REACTIONS.has(emoji)) return res.status(400).json({ ok: false, reason: "bad_reaction" });
+
+  const cr = await q(`SELECT game_id FROM game_comments WHERE id=$1`, [id]);
+  const row = cr.rows[0];
+  if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
+
+  if (on) {
+    await q(
+      `INSERT INTO game_comment_reactions(comment_id, user_tg_id, reaction)
+       VALUES($1,$2,$3)
+       ON CONFLICT DO NOTHING`,
+      [id, user.id, emoji]
+    );
+  } else {
+    await q(
+      `DELETE FROM game_comment_reactions
+       WHERE comment_id=$1 AND user_tg_id=$2 AND reaction=$3`,
+      [id, user.id, emoji]
+    );
+  }
+
+  const comments = await loadGameComments(row.game_id, user.id);
+  res.json({ ok: true, comments });
 });
 
 

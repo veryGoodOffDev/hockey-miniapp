@@ -2158,3 +2158,99 @@ html[data-theme="light"] .btn.outline.active{
   line-height: 1.3;
   opacity: .95;
 }
+
+
+.commentCard{
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.commentTop{ display:flex; gap:10px; align-items:flex-start; }
+.commentMain{ flex:1; min-width: 0; }
+
+.avatarCircle{
+  width: 38px; height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--tg-text) 6%, transparent);
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
+  flex: 0 0 auto;
+}
+.avatarCircle img{ width:100%; height:100%; object-fit:cover; display:block; }
+.avatarCircle span{ font-weight: 900; font-size: 12px; opacity: .9; }
+
+.commentHead{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items: baseline;
+}
+.commentAuthor{ font-weight: 900; }
+.commentMeta{ opacity:.7; font-size: 12px; }
+
+.commentBody{
+  margin-top: 6px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.35;
+  opacity: .95;
+}
+
+.commentActions{
+  margin-top: 10px;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+
+.reactChip{
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+  display:flex;
+  gap:6px;
+  align-items:center;
+  line-height:1;
+}
+.reactChip.on{
+  box-shadow: inset 0 0 0 999px color-mix(in srgb, #22c55e 14%, transparent);
+}
+.reactChip.add{ opacity: .85; }
+
+.reactOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 99999;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  padding: 12px;
+}
+.reactModal{
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px;
+}
+.reactGrid{
+  display:grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+.reactPickBtn{
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border-radius: 14px;
+  padding: 10px 0;
+  font-size: 18px;
+  cursor:pointer;
+}
