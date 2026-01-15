@@ -2254,3 +2254,73 @@ html[data-theme="light"] .btn.outline.active{
   font-size: 18px;
   cursor:pointer;
 }
+
+.cmtRow{
+  display:flex;
+  gap:10px;
+  align-items:flex-end;
+  margin-top:10px;
+}
+
+.cmtRow.mine{
+  justify-content:flex-end;
+}
+
+.cmtAvatar{
+  flex: 0 0 auto;
+}
+
+.cmtBubble{
+  max-width: min(520px, 78%);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card-bg) 92%, black);
+  border-radius: 18px;
+  padding: 10px 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.16);
+}
+
+.cmtRow.mine .cmtBubble{
+  background: color-mix(in srgb, #16a34a 12%, var(--card-bg));
+  border-color: color-mix(in srgb, #16a34a 30%, var(--border));
+}
+
+.cmtHead{
+  display:flex;
+  gap:10px;
+  align-items:baseline;
+  justify-content:space-between;
+  margin-bottom: 6px;
+}
+
+.cmtAuthor{
+  font-weight: 900;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmtMeta{
+  font-size: 12px;
+  opacity: .75;
+  flex: 0 0 auto;
+}
+
+.cmtText{
+  white-space: pre-wrap;
+  line-height: 1.35;
+}
+
+.cmtActions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* чуть “легче” иконки в чате */
+.cmtActions .iconBtn{
+  border-radius: 12px;
+  padding: 6px 8px;
+  opacity: .9;
+}

@@ -2311,33 +2311,60 @@ function openYandexRoute(lat, lon) {
                                       {!commentsLoading && comments.length === 0 ? (
                                         <div className="small" style={{ opacity: 0.8 }}>Комментариев пока нет.</div>
                                       ) : comments.map((c) => {
-                                        const isMine = String(c.author_tg_id) === String(me?.id);
-                                        const canEdit = isMine;
-                                        const canDelete = isAdmin || isMine;
+                                          const myId = String(me?.id ?? me?.tg_id ?? "");
+                                          const isMine = String(c.author_tg_id) === myId;
 
-                                        const authorName =
-                                          c.author_name ||
-                                          (c.author_username ? `@${c.author_username}` : String(c.author_tg_id));
+                                          const canEdit = isMine;
+                                          const canDelete = isAdmin || isMine;
 
-                                        const reactions = Array.isArray(c.reactions) ? c.reactions : [];
+                                          const author = c.author ?? {
+                                            tg_id: c.author_tg_id,
+                                            display_name: c.author_name,
+                                            first_name: c.author_first_name,
+                                            username: c.author_username,
+                                            photo_url: c.author_photo_url,
+                                          };
 
-                                        return (
-                                          <div key={c.id} className="commentCard">
-                                            <div className="commentTop">
-                                              <Avatar p={c.author} big={false} />
+                                          const authorName =
+                                            author?.display_name ||
+                                            author?.first_name ||
+                                            (author?.username ? `@${author.username}` : String(c.author_tg_id));
 
-                                              <div className="commentMain">
-                                                <div className="commentHead">
-                                                  <div className="commentAuthor">{authorName}</div>
-                                                  <div className="commentMeta">
-                                                    {new Date(c.created_at).toLocaleString("ru-RU", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
-                                                    {c.updated_at ? " · изменено" : ""}
+                                          const avatarUrl = (author?.photo_url || "").trim();
+
+                                          const createdMs = c.created_at ? new Date(c.created_at).getTime() : 0;
+                                          const updatedMs = c.updated_at ? new Date(c.updated_at).getTime() : 0;
+                                          const edited = !!(updatedMs && createdMs && updatedMs - createdMs > 5000);
+
+                                          const reactions = Array.isArray(c.reactions) ? c.reactions : [];
+
+                                          return (
+                                            <div key={c.id} className={`cmtRow ${isMine ? "mine" : ""}`}>
+                                              {/* AVATAR LEFT for others */}
+                                              {!isMine ? (
+                                                <div className="cmtAvatar">
+                                                  <AvatarCircle url={avatarUrl} name={authorName} />
+                                                </div>
+                                              ) : null}
+
+                                              {/* BUBBLE */}
+                                              <div className="cmtBubble">
+                                                <div className="cmtHead">
+                                                  <div className="cmtAuthor">{isMine ? "Я" : authorName}</div>
+                                                  <div className="cmtMeta">
+                                                    {new Date(c.created_at).toLocaleString("ru-RU", {
+                                                      day: "2-digit",
+                                                      month: "2-digit",
+                                                      hour: "2-digit",
+                                                      minute: "2-digit",
+                                                    })}
+                                                    {edited ? " · изменено" : ""}
                                                   </div>
                                                 </div>
 
-                                                <div className="commentBody">{c.body}</div>
+                                                <div className="cmtText">{c.body}</div>
 
-                                                <div className="commentActions">
+                                                <div className="cmtActions">
                                                   {reactions.map((r) => (
                                                     <button
                                                       key={r.emoji}
@@ -2350,31 +2377,54 @@ function openYandexRoute(lat, lon) {
                                                     </button>
                                                   ))}
 
-                                                  <button className="reactChip add" type="button" onClick={() => setReactPickFor(c.id)} disabled={commentBusy}>
+                                                  <button
+                                                    className="reactChip add"
+                                                    type="button"
+                                                    onClick={() => setReactPickFor(c.id)}
+                                                    disabled={commentBusy}
+                                                    title="Добавить реакцию"
+                                                  >
                                                     ➕
                                                   </button>
 
                                                   <div style={{ flex: 1 }} />
 
                                                   {canEdit ? (
-                                                    <button className="iconBtn" type="button" title="Редактировать"
-                                                      onClick={() => { setCommentEditId(c.id); setCommentDraft(c.body || ""); }}
+                                                    <button
+                                                      className="iconBtn"
+                                                      type="button"
+                                                      title="Редактировать"
+                                                      onClick={() => {
+                                                        setCommentEditId(c.id);
+                                                        setCommentDraft(c.body || "");
+                                                      }}
                                                     >
                                                       ✏️
                                                     </button>
                                                   ) : null}
 
                                                   {canDelete ? (
-                                                    <button className="iconBtn" type="button" title="Удалить" onClick={() => removeComment(c.id)}>
+                                                    <button
+                                                      className="iconBtn"
+                                                      type="button"
+                                                      title="Удалить"
+                                                      onClick={() => removeComment(c.id)}
+                                                    >
                                                       🗑️
                                                     </button>
                                                   ) : null}
                                                 </div>
                                               </div>
+
+                                              {/* AVATAR RIGHT for mine */}
+                                              {isMine ? (
+                                                <div className="cmtAvatar">
+                                                  <AvatarCircle url={avatarUrl} name={authorName} />
+                                                </div>
+                                              ) : null}
                                             </div>
-                                          </div>
-                                        );
-                                      })}
+                                          );
+                                        })}
                                     </div>
                                   </div>
 
