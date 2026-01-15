@@ -184,7 +184,19 @@ function commentsHash(list) {
     return String(Date.now());
   }
 }
+function patchCommentsCount(gameId, cnt) {
+  setGames(prev => {
+    const cur = (prev || []).find(x => x.id === gameId)?.comments_count ?? 0;
+    if (cur === cnt) return prev;
+    return (prev || []).map(x => x.id === gameId ? { ...x, comments_count: cnt } : x);
+  });
 
+  setPastPage(prev => {
+    const cur = (prev || []).find(x => x.id === gameId)?.comments_count ?? 0;
+    if (cur === cnt) return prev;
+    return (prev || []).map(x => x.id === gameId ? { ...x, comments_count: cnt } : x);
+  });
+}
 
 function openGameSheet(game) {
   if (!game) return;
@@ -463,19 +475,7 @@ async function refreshGameOnly(gameId = selectedGameId) {
   return gg;
 }
 
-function patchCommentsCount(gameId, cnt) {
-  setGames(prev => {
-    const cur = (prev || []).find(x => x.id === gameId)?.comments_count ?? 0;
-    if (cur === cnt) return prev;
-    return (prev || []).map(x => x.id === gameId ? { ...x, comments_count: cnt } : x);
-  });
 
-  setPastPage(prev => {
-    const cur = (prev || []).find(x => x.id === gameId)?.comments_count ?? 0;
-    if (cur === cnt) return prev;
-    return (prev || []).map(x => x.id === gameId ? { ...x, comments_count: cnt } : x);
-  });
-}
 
 
 
