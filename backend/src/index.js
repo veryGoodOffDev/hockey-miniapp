@@ -1137,6 +1137,7 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       body: row.body,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      is_pinned: pinnedId != null && String(row.id) === String(pinnedId),
       author,
       reactions: row.reactions || [],
     };
@@ -3651,10 +3652,12 @@ app.patch("/api/game-comments/:id", async (req, res) => {
 
   await q(`UPDATE game_comments SET body=$1, updated_at=NOW() WHERE id=$2`, [text, id]);
 
-  const baseUrl = getPublicBaseUrl(req);
-  const comments = await loadGameComments(gameId, user.id, baseUrl);
-  res.json({ ok: true, comments });
+  const gameId = Number(row.game_id);              // ✅ ВАЖНО
+  const comments = await loadGameComments(gameId, user.id); // ✅ без gameId-undefined
+
+  return res.json({ ok: true, comments });
 });
+
 
 app.delete("/api/game-comments/:id", async (req, res) => {
   const user = requireWebAppAuth(req, res);
@@ -3678,10 +3681,12 @@ app.delete("/api/game-comments/:id", async (req, res) => {
 
   await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
 
-  const baseUrl = getPublicBaseUrl(req);
-  const comments = await loadGameComments(gameId, user.id, baseUrl);
-  res.json({ ok: true, comments });
+  const gameId = Number(row.game_id);               // ✅ ВАЖНО
+  const comments = await loadGameComments(gameId, user.id);
+
+  return res.json({ ok: true, comments });
 });
+
 
 
 app.post("/api/game-comments/:id/react", async (req, res) => {
@@ -3742,17 +3747,15 @@ app.post("/api/game-comments/:id/pin", async (req, res) => {
 
   const id = Number(req.params.id);
   const on = !!req.body?.on;
-
   if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
 
   const cr = await q(`SELECT game_id FROM game_comments WHERE id=$1`, [id]);
   const row = cr.rows[0];
   if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
 
-  const gameId = row.game_id;
+  const gameId = Number(row.game_id);
 
   if (on) {
-    // ✅ закрепить (только если коммент реально относится к этой игре)
     await q(
       `UPDATE games
        SET pinned_comment_id=$1
@@ -3761,7 +3764,6 @@ app.post("/api/game-comments/:id/pin", async (req, res) => {
       [id, gameId]
     );
   } else {
-    // ✅ открепить (только если сейчас закреплён именно он)
     await q(
       `UPDATE games
        SET pinned_comment_id=NULL
@@ -3770,9 +3772,8 @@ app.post("/api/game-comments/:id/pin", async (req, res) => {
     );
   }
 
-  const baseUrl = getPublicBaseUrl(req);
-  const comments = await loadGameComments(gameId, user.id, baseUrl);
-  res.json({ ok: true, comments });
+  const comments = await loadGameComments(gameId, user.id);
+  return res.json({ ok: true, comments });
 });
 
 
