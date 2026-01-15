@@ -1075,13 +1075,14 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       c.created_at,
       c.updated_at,
 
-      p.tg_id        AS p_tg_id,
-      p.display_name AS p_display_name,
-      p.first_name   AS p_first_name,
-      p.username     AS p_username,
+      p.tg_id           AS p_tg_id,
+      p.display_name    AS p_display_name,
+      p.first_name      AS p_first_name,
+      p.username        AS p_username,
       p.photo_url       AS p_photo_url,
       p.avatar_file_id  AS p_avatar_file_id,
       p.updated_at      AS p_updated_at,
+
       (g.pinned_comment_id = c.id) AS is_pinned,
 
       COALESCE(rx.reactions, '[]'::jsonb) AS reactions
@@ -1104,9 +1105,9 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
           r.reaction,
           COUNT(*)::int AS cnt,
           BOOL_OR(r.user_tg_id = $2) AS my
-          FROM game_comment_reactions r
-          WHERE r.comment_id = c.id
-          GROUP BY r.reaction
+        FROM game_comment_reactions r
+        WHERE r.comment_id = c.id
+        GROUP BY r.reaction
       ) t
     ) rx ON TRUE
 
@@ -1125,10 +1126,9 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       photo_url: row.p_photo_url || "",
       avatar_file_id: row.p_avatar_file_id || null,
       updated_at: row.p_updated_at || null,
-      is_pinned: !!row.is_pinned,
     };
 
-    const author = presentPlayer(rawPlayer, baseUrl); // ✅ ключевое
+    const author = presentPlayer(rawPlayer, baseUrl); // ✅
 
     return {
       id: row.id,
@@ -1137,12 +1137,13 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       body: row.body,
       created_at: row.created_at,
       updated_at: row.updated_at,
-      is_pinned: pinnedId != null && String(row.id) === String(pinnedId),
+      is_pinned: !!row.is_pinned,        // ✅ берём прямо из SQL
       author,
       reactions: row.reactions || [],
     };
   });
 }
+
 
 
 
@@ -3788,7 +3789,8 @@ app.post("/api/game-comments/:id/pin", async (req, res) => {
     );
   }
 
-  const comments = await loadGameComments(gameId, user.id);
+ const baseUrl = getPublicBaseUrl(req);
+  const comments = await loadGameComments(gameId, user.id, baseUrl);
   return res.json({ ok: true, comments });
 });
 
