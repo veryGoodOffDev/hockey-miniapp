@@ -2300,7 +2300,7 @@ function openYandexRoute(lat, lon) {
                                       ) : comments.map((c) => {
                                           const myId = String(me?.id ?? me?.tg_id ?? "");
                                           const isMine = String(c.author_tg_id) === myId;
-
+                                          const author = c.author || {};
                                           const canEdit = isMine;
                                           const canDelete = isAdmin || isMine;
                                           
@@ -2310,7 +2310,7 @@ function openYandexRoute(lat, lon) {
                                             author?.first_name ||
                                             (author?.username ? `@${author.username}` : String(c.author_tg_id));
 
-                                          const author = c.author || {};
+                                          
                                           const avatarUrl = (author.photo_url || "").trim();
 
                                           const createdMs = c.created_at ? new Date(c.created_at).getTime() : 0;
