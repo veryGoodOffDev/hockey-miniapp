@@ -2484,6 +2484,7 @@ function openYandexRoute(lat, lon) {
 
                                               {/* BUBBLE */}
                                               <div className="cmtBubble">
+                                                {c.is_pinned ? <span className="cmtPinTag">📌 закреплено</span> : null}
                                                 <div className="cmtHead">
                                                   <div className="cmtAuthor">{isMine ? "Я" : authorName}</div>
                                                   <div className="cmtMeta">
@@ -2567,7 +2568,7 @@ function openYandexRoute(lat, lon) {
                                               {isMine ? (
                                                 <div className="cmtAvatar">
                                                   <AvatarCircle url={avatarUrl} fallbackUrl={(author?.photo_url_fallback || "").trim()} name={authorName} />
-                                                  {c.is_pinned ? <span className="cmtPinTag">📌 закреплено</span> : null}
+                                                  
 
                                                 </div>
                                               ) : null}
