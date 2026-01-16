@@ -2614,8 +2614,7 @@ function openYandexRoute(lat, lon) {
                                           {reactPickFor ? (
                                             <div className="reactOverlay" onClick={() => setReactPickFor(null)}>
                                               <div className="reactModal" onClick={(e) => e.stopPropagation()}>
-                                                <div className="reactGrid">
-                                                  <div className="reactWhoBlock">
+                                                 <div className="reactWhoBlock">
                                                     <div className="reactWhoTitle">Кто поставил реакции</div>
 
                                                     {!reactWhoCanView ? (
@@ -2665,7 +2664,7 @@ function openYandexRoute(lat, lon) {
                                                   </div>
 
                                                   <div className="reactDivider" />
-
+                                                <div className="reactGrid">
                                                   {REACTIONS.map((emo) => (
                                                     <button
                                                       key={emo}
