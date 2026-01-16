@@ -127,28 +127,8 @@ const [reactWhoList, setReactWhoList] = useState([]);
 const [reactWhoCanView, setReactWhoCanView] = useState(true);
 
 
-const canViewReactors = !!(isAdmin || fun?.premium);
 
-async function openReactPicker(commentId) {
-  setReactPickFor(commentId);
 
-  setReactWhoList([]);
-  setReactWhoCanView(canViewReactors);
-
-  // если нельзя — просто показываем “🔒”, но саму модалку откроем
-  if (!canViewReactors) return;
-
-  setReactWhoLoading(true);
-  try {
-    const r = await apiGet(`/api/game-comments/${commentId}/reactors`);
-    if (r?.ok) {
-      setReactWhoCanView(r.can_view !== false);
-      setReactWhoList(r.reactors || []);
-    }
-  } finally {
-    setReactWhoLoading(false);
-  }
-}
 
 
 
@@ -451,6 +431,30 @@ async function removeComment(id) {
     setCommentBusy(false);
   }
 }
+
+
+async function openReactPicker(commentId) {
+  const canViewReactors = !!(isAdmin || fun?.premium);
+  setReactPickFor(commentId);
+
+  setReactWhoList([]);
+  setReactWhoCanView(canViewReactors);
+
+  // если нельзя — просто показываем “🔒”, но саму модалку откроем
+  if (!canViewReactors) return;
+
+  setReactWhoLoading(true);
+  try {
+    const r = await apiGet(`/api/game-comments/${commentId}/reactors`);
+    if (r?.ok) {
+      setReactWhoCanView(r.can_view !== false);
+      setReactWhoList(r.reactors || []);
+    }
+  } finally {
+    setReactWhoLoading(false);
+  }
+}
+
 
 async function toggleReaction(commentId, emoji, on) {
   const gid = selectedGameId;
