@@ -2426,3 +2426,19 @@ html[data-theme="light"] .btn.outline.active{
   opacity: .85;
   margin-left: 8px;
 }
+
+
+.reactWhoBlock { margin-bottom: 8px; }
+.reactWhoTitle { font-weight: 900; margin-bottom: 8px; }
+
+.reactWhoList { display: grid; gap: 8px; max-height: 180px; overflow: auto; padding-right: 4px; }
+.reactWhoRow { display: flex; align-items: center; gap: 10px; }
+.reactWhoName { font-weight: 800; flex: 1; }
+
+.reactEmojiStack { display: flex; align-items: center; }
+.reactEmoji { font-size: 16px; margin-left: -6px; }
+.reactEmoji:first-child { margin-left: 0; }
+
+.reactDivider { height: 1px; background: rgba(255,255,255,0.08); margin: 10px 0; }
+
+.reactLock { padding: 10px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); }

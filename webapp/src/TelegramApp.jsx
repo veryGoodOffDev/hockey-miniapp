@@ -122,6 +122,35 @@ const commentsHashRef = useRef(""); // чтобы не перерендерив�
 const REACTIONS = ["❤️","🔥","👍","😂","👏","😡","🤔"];
 const [reactPickFor, setReactPickFor] = useState(null);
 
+const [reactWhoLoading, setReactWhoLoading] = useState(false);
+const [reactWhoList, setReactWhoList] = useState([]);
+const [reactWhoCanView, setReactWhoCanView] = useState(true);
+
+
+const canViewReactors = !!(isAdmin || fun?.premium);
+
+async function openReactPicker(commentId) {
+  setReactPickFor(commentId);
+
+  setReactWhoList([]);
+  setReactWhoCanView(canViewReactors);
+
+  // если нельзя — просто показываем “🔒”, но саму модалку откроем
+  if (!canViewReactors) return;
+
+  setReactWhoLoading(true);
+  try {
+    const r = await apiGet(`/api/game-comments/${commentId}/reactors`);
+    if (r?.ok) {
+      setReactWhoCanView(r.can_view !== false);
+      setReactWhoList(r.reactors || []);
+    }
+  } finally {
+    setReactWhoLoading(false);
+  }
+}
+
+
 
 function tgSafeAlert(text) {
   if (!tg?.showAlert) {
@@ -2582,6 +2611,57 @@ function openYandexRoute(lat, lon) {
                                             <div className="reactOverlay" onClick={() => setReactPickFor(null)}>
                                               <div className="reactModal" onClick={(e) => e.stopPropagation()}>
                                                 <div className="reactGrid">
+                                                  <div className="reactWhoBlock">
+                                                    <div className="reactWhoTitle">Кто поставил реакции</div>
+
+                                                    {!reactWhoCanView ? (
+                                                      <div className="reactLock">
+                                                        <div className="small" style={{ opacity: 0.85 }}>
+                                                          🔒 Доступно только для <b>🌟 Премиум</b>
+                                                        </div>
+                                                        <button
+                                                          className="btn secondary"
+                                                          style={{ marginTop: 8, width: "100%" }}
+                                                          onClick={() => {
+                                                            setReactPickFor(null);
+                                                            setTab("profile");
+                                                            setProfileView("thanks");
+                                                          }}
+                                                          type="button"
+                                                        >
+                                                          Получить Премиум 😄
+                                                        </button>
+                                                      </div>
+                                                    ) : reactWhoLoading ? (
+                                                      <div className="small" style={{ opacity: 0.8 }}>Загружаю…</div>
+                                                    ) : reactWhoList.length === 0 ? (
+                                                      <div className="small" style={{ opacity: 0.8 }}>Реакций на комментарий нет.</div>
+                                                    ) : (
+                                                      <div className="reactWhoList">
+                                                        {reactWhoList.map((it) => {
+                                                          const u = it.user || {};
+                                                          const name =
+                                                            u.display_name || u.first_name || (u.username ? `@${u.username}` : String(u.tg_id || ""));
+
+                                                          return (
+                                                            <div key={String(u.tg_id)} className="reactWhoRow">
+                                                              <AvatarCircle url={(u.photo_url || "").trim()} name={name} />
+                                                              <div className="reactWhoName">{name}</div>
+
+                                                              <div className="reactEmojiStack" title={(it.emojis || []).join(" ")}>
+                                                                {(it.emojis || []).map((e) => (
+                                                                  <span key={e} className="reactEmoji">{e}</span>
+                                                                ))}
+                                                              </div>
+                                                            </div>
+                                                          );
+                                                        })}
+                                                      </div>
+                                                    )}
+                                                  </div>
+
+                                                  <div className="reactDivider" />
+
                                                   {REACTIONS.map((emo) => (
                                                     <button
                                                       key={emo}

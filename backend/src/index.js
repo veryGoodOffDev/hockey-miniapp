@@ -504,9 +504,7 @@ function makeToken() {
 }
 
 function publicBaseUrl() {
-  // куда ведёт ссылка (для внешнего браузера)
-  // выстави PUBLIC_WEB_URL = https://your-frontend-domain
-  // fallback: WEB_APP_URL (если он уже указывает на https фронта)
+
   const a = String(process.env.PUBLIC_WEB_URL || "").trim();
   if (a) return a.replace(/\/+$/, "");
   const b = String(process.env.WEB_APP_URL || "").trim();
@@ -3793,6 +3791,89 @@ app.post("/api/game-comments/:id/pin", async (req, res) => {
   const comments = await loadGameComments(gameId, user.id, baseUrl);
   return res.json({ ok: true, comments });
 });
+
+app.get("/api/game-comments/:id/reactors", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) {
+      if (!(await requireGroupMember(req, res, user))) return;
+    }
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const cr = await q(`SELECT game_id FROM game_comments WHERE id=$1`, [id]);
+    const row = cr.rows[0];
+    if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    // ✅ премиум из players
+    const pr = await q(`SELECT joke_premium FROM players WHERE tg_id=$1`, [user.id]);
+    const premium = pr.rows[0]?.joke_premium === true;
+
+    // ✅ правило: видеть список могут админы ИЛИ premium
+    const can_view = is_admin || premium;
+
+    if (!can_view) {
+      return res.json({ ok: true, can_view: false, reactors: [] });
+    }
+
+    const baseUrl = getPublicBaseUrl(req);
+
+    const rr = await q(
+      `
+      SELECT
+        u.user_tg_id AS tg_id,
+        array_agg(u.reaction ORDER BY u.reaction) AS emojis,
+
+        p.tg_id           AS p_tg_id,
+        p.display_name    AS p_display_name,
+        p.first_name      AS p_first_name,
+        p.username        AS p_username,
+        p.photo_url       AS p_photo_url,
+        p.avatar_file_id  AS p_avatar_file_id,
+        p.updated_at      AS p_updated_at
+
+      FROM (
+        SELECT DISTINCT user_tg_id, reaction
+        FROM game_comment_reactions
+        WHERE comment_id = $1
+      ) u
+      LEFT JOIN players p ON p.tg_id = u.user_tg_id
+      GROUP BY
+        u.user_tg_id,
+        p.tg_id, p.display_name, p.first_name, p.username, p.photo_url, p.avatar_file_id, p.updated_at
+      ORDER BY COALESCE(p.display_name, p.first_name, p.username, u.user_tg_id::text) ASC
+      `,
+      [id]
+    );
+
+    const reactors = (rr.rows || []).map((x) => {
+      const rawPlayer = {
+        tg_id: x.p_tg_id ?? x.tg_id,
+        display_name: x.p_display_name || "",
+        first_name: x.p_first_name || "",
+        username: x.p_username || "",
+        photo_url: x.p_photo_url || "",
+        avatar_file_id: x.p_avatar_file_id || null,
+        updated_at: x.p_updated_at || null,
+      };
+
+      return {
+        user: presentPlayer(rawPlayer, baseUrl),
+        emojis: x.emojis || [],
+      };
+    });
+
+    return res.json({ ok: true, can_view: true, reactors });
+  } catch (e) {
+    console.error("GET /api/game-comments/:id/reactors failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
 
 
 const port = process.env.PORT || 10000;
