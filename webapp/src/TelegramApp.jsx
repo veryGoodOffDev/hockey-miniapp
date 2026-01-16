@@ -2557,7 +2557,7 @@ function openYandexRoute(lat, lon) {
                                                   <button
                                                     className="reactChip add"
                                                     type="button"
-                                                    onClick={() => setReactPickFor(c.id)}
+                                                    onClick={() => openReactPicker(c.id)}
                                                     disabled={commentBusy}
                                                     title="Добавить реакцию"
                                                   >
