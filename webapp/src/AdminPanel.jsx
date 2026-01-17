@@ -894,6 +894,7 @@ async function deleteGame() {
     }
 
 
+
   /** ===================== GUESTS ===================== */
   async function loadGuestsForGame(gameId) {
     setGuestsState({ loading: true, list: [] });
@@ -1540,6 +1541,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                   {p.is_guest ? " · 🧷 гость" : ""}
                   {p.is_admin ? " · ⭐ админ" : ""}
                   {p.is_env_admin ? " · 🔒 env-админ" : ""}
+                  {p.joke_premium_active ? " · 🌟 премиум" : ""}
                 </div>
               </div>
             ))}

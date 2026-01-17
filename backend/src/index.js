@@ -1216,32 +1216,144 @@ app.post("/api/me", async (req, res) => {
 
 
       /** ====== FUN (profile jokes) ====== */
+/** ====== FUN (profile jokes) ====== */
 app.get("/api/fun/status", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    await ensurePlayer(user);
+
+    // премиум: lifetime || until > now
+    const pr = await q(
+      `SELECT joke_premium, joke_premium_until
+       FROM players
+       WHERE tg_id=$1`,
+      [user.id]
+    );
+
+    const lifetime = pr.rows[0]?.joke_premium === true;
+    const until = pr.rows[0]?.joke_premium_until || null;
+    const timed = !!(until && new Date(until).getTime() > Date.now());
+
+    const premium = lifetime || timed;
+
+    // totals
+    const r = await q(
+      `SELECT action, COUNT(*)::int AS total
+       FROM fun_actions_log
+       WHERE user_id=$1
+       GROUP BY action`,
+      [user.id]
+    );
+
+    const map = new Map(r.rows.map((x) => [x.action, x.total]));
+
+    return res.json({
+      ok: true,
+      thanks_total: map.get("thanks") || 0,
+      donate_total: map.get("donate") || 0,
+      premium,
+      premium_until: until,          // 👈 добавили
+      premium_lifetime: lifetime,    // 👈 добавили
+    });
+  } catch (e) {
+    console.error("GET /api/fun/status failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.post("/api/admin/players/:tg_id/joke-premium", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
-  if (!(await requireGroupMember(req, res, user))) return;
 
-  await ensurePlayer(user);
+  // лучше так, если у тебя есть супер-админ логика:
+  // const is_super = await isSuperAdminId(user.id);
+  // if (!is_super) return res.status(403).json({ ok:false, reason:"super_admin_only" });
 
-  const pr = await q(`SELECT joke_premium FROM players WHERE tg_id=$1`, [user.id]);
-  const premium = pr.rows[0]?.joke_premium === true;
+  const is_admin = await isAdminId(user.id);
+  if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
 
-  const r = await q(
-    `SELECT action, COUNT(*)::int AS total
-     FROM fun_actions_log
-     WHERE user_id=$1
-     GROUP BY action`,
-    [user.id]
+  const tgId = Number(req.params.tg_id);
+  const op = String(req.body?.op || "").trim();
+
+  if (!Number.isFinite(tgId)) return res.status(400).json({ ok: false, reason: "bad_tg_id" });
+
+  if (op === "grant_days") {
+    const days = Number(req.body?.days);
+    if (!Number.isFinite(days) || days <= 0 || days > 365) {
+      return res.status(400).json({ ok: false, reason: "bad_days" });
+    }
+
+    // продляем от max(now, текущий until)
+    await q(
+      `
+      UPDATE players
+      SET joke_premium_until =
+          GREATEST(COALESCE(joke_premium_until, NOW()), NOW())
+          + ($2::int || ' days')::interval,
+          updated_at = NOW()
+      WHERE tg_id=$1
+      `,
+      [tgId, days]
+    );
+  } else if (op === "revoke_all") {
+    // снять и срок, и пожизненный
+    await q(
+      `UPDATE players
+       SET joke_premium_until=NULL,
+           joke_premium=FALSE,
+           updated_at=NOW()
+       WHERE tg_id=$1`,
+      [tgId]
+    );
+  } else if (op === "set_lifetime") {
+    const on = !!req.body?.on;
+    await q(
+      `UPDATE players
+       SET joke_premium=$2,
+           updated_at=NOW()
+       WHERE tg_id=$1`,
+      [tgId, on]
+    );
+  } else if (op === "set_until") {
+    // если захочешь вручную конкретную дату (не обязательно)
+    const untilIso = String(req.body?.until || "").trim();
+    const d = new Date(untilIso);
+    if (!untilIso || !Number.isFinite(d.getTime())) {
+      return res.status(400).json({ ok: false, reason: "bad_until" });
+    }
+    await q(
+      `UPDATE players
+       SET joke_premium_until=$2,
+           updated_at=NOW()
+       WHERE tg_id=$1`,
+      [tgId, d.toISOString()]
+    );
+  } else {
+    return res.status(400).json({ ok: false, reason: "bad_op" });
+  }
+
+  // отдаём новое состояние
+  const pr = await q(
+    `SELECT joke_premium, joke_premium_until
+     FROM players WHERE tg_id=$1`,
+    [tgId]
   );
 
-  const map = new Map(r.rows.map(x => [x.action, x.total]));
-  res.json({
+  const lifetime = pr.rows[0]?.joke_premium === true;
+  const until = pr.rows[0]?.joke_premium_until || null;
+  const timed = !!(until && new Date(until).getTime() > Date.now());
+
+  return res.json({
     ok: true,
-    thanks_total: map.get("thanks") || 0,
-    donate_total: map.get("donate") || 0,
-    premium
+    premium: lifetime || timed,
+    premium_until: until,
+    premium_lifetime: lifetime,
   });
 });
+
 
 
 app.post("/api/fun/thanks", async (req, res) => {
@@ -2170,17 +2282,23 @@ app.get("/api/admin/players", async (req, res) => {
   if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
-  const r = await q(
-    `SELECT
-      tg_id, first_name, last_name, username,
-      display_name, jersey_number,
-      is_guest, player_kind, created_by,
-      position, skill, skating, iq, stamina, passing, shooting,
-      notes, disabled,
-      is_admin, updated_at
-     FROM players
-     ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
-  );
+const r = await q(
+  `SELECT
+    tg_id, first_name, last_name, username,
+    display_name, jersey_number,
+    is_guest, player_kind, created_by,
+    position, skill, skating, iq, stamina, passing, shooting,
+    notes, disabled,
+    is_admin, updated_at,
+
+    joke_premium,
+    joke_premium_until,
+    (joke_premium = TRUE OR (joke_premium_until IS NOT NULL AND joke_premium_until > NOW())) AS joke_premium_active
+
+   FROM players
+   ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
+);
+
 
   const env = envAdminSet();
   const players = r.rows.map((p) => ({

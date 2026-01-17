@@ -356,6 +356,13 @@ await q(`
 await q(`CREATE INDEX IF NOT EXISTS idx_fun_actions_log_user ON fun_actions_log(user_id, action);`);
 
 await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium BOOLEAN NOT NULL DEFAULT FALSE;`);
+// premium по времени (истекает)
+await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_until TIMESTAMPTZ;`);
+
+// опционально: кто/когда выдал (удобно)
+await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_set_by BIGINT;`);
+await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_set_at TIMESTAMPTZ;`);
+await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
 
 
   /** ===================== GAME COMMENTS ===================== */

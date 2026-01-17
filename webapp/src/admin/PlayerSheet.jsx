@@ -14,6 +14,39 @@ export default function PlayerSheet({
   onChanged,
 }) {
   const [draft, setDraft] = useState(null);
+  const [premBusy, setPremBusy] = useState(false);
+
+function fmtUntil(ts) {
+  try {
+    if (!ts) return "";
+    return new Date(ts).toLocaleString("ru-RU", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+    });
+  } catch { return ""; }
+}
+
+async function setPremium(op, extra = {}) {
+  if (!player?.tg_id) return;
+  setPremBusy(true);
+  try {
+    const r = await apiPost(`/api/admin/players/${player.tg_id}/joke-premium`, { op, ...extra });
+    if (r?.ok) {
+      // обновим player в sheet локально
+      setDraft((d) => ({
+        ...d,
+        joke_premium: !!r.premium_lifetime,
+        joke_premium_until: r.premium_until || null,
+        joke_premium_active: !!r.premium,
+      }));
+
+      await onReload?.();
+      await onChanged?.({ label: "✅ Премиум обновлён", refreshPlayers: true });
+    }
+  } finally {
+    setPremBusy(false);
+  }
+}
+
 
   useEffect(() => {
     if (!open || !player) return;
@@ -153,6 +186,47 @@ export default function PlayerSheet({
               {draft.is_admin ? "Снять админа" : "Сделать админом"}
             </button>
           )}
+          {isSuperAdmin && !draft?.is_guest ? (
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="rowBetween">
+                <div style={{ fontWeight: 900 }}>🌟 Премиум (реакции)</div>
+                <span className="badgeMini">
+                  {draft.joke_premium ? "lifetime" : (draft.joke_premium_active ? "active" : "off")}
+                </span>
+              </div>
+
+              <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+                {draft.joke_premium ? (
+                  "Пожизненный премиум"
+                ) : draft.joke_premium_until ? (
+                  <>До: <b>{fmtUntil(draft.joke_premium_until)}</b></>
+                ) : (
+                  "Премиум не выдан"
+                )}
+              </div>
+
+              <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                <button className="btn secondary" disabled={premBusy} onClick={() => setPremium("grant_days", { days: 1 })}>
+                  +1 день
+                </button>
+                <button className="btn secondary" disabled={premBusy} onClick={() => setPremium("grant_days", { days: 7 })}>
+                  +7 дней
+                </button>
+                <button className="btn secondary" disabled={premBusy} onClick={() => setPremium("grant_days", { days: 30 })}>
+                  +30 дней
+                </button>
+
+                <button className="btn secondary" disabled={premBusy} onClick={() => setPremium("set_lifetime", { on: !draft.joke_premium })}>
+                  {draft.joke_premium ? "Снять lifetime" : "Сделать lifetime"}
+                </button>
+
+                <button className="btn secondary" disabled={premBusy} onClick={() => setPremium("revoke_all")}>
+                  🚫 Снять премиум
+                </button>
+              </div>
+            </div>
+          ) : null}
+
 
           <button className="btn secondary" onClick={onClose}>Готово</button>
         </div>
