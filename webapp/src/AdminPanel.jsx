@@ -386,7 +386,16 @@ const [sheetPlayer, setSheetPlayer] = useState(null);
 
 const [createGeoPickOpen, setCreateGeoPickOpen] = useState(false);
 
+function openPlayerSheet(p) {
+  if (!p) return;
+  setSheetPlayer(p);
+  setPlayerSheetOpen(true);
+}
 
+function closePlayerSheet() {
+  setPlayerSheetOpen(false);
+  setSheetPlayer(null);
+}
 
 
 
