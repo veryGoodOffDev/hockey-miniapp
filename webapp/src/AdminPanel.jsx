@@ -835,7 +835,7 @@ async function deleteGame() {
 }
 
 
-  async function openPlayerSheet(p) {
+  async function openPlayerSheetLegacy(p) {
     setOpenPlayerId(p.tg_id);
     setPlayerDraft({
       tg_id: p.tg_id,
@@ -859,7 +859,7 @@ async function deleteGame() {
     });
   }
 
-  function closePlayerSheet() {
+  function closePlayerSheetLegacy() {
     setOpenPlayerId(null);
     setPlayerDraft(null);
   }
