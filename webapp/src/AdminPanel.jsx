@@ -1946,7 +1946,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       )}
 
       {/* ====== PLAYER SHEET ====== */}
-      {openPlayerId && playerDraft && (
+      {/* {openPlayerId && playerDraft && (
         <Sheet title={`Игрок: ${showName(playerDraft)}${showNum(playerDraft)}`} onClose={closePlayerSheet}>
           <div className="card">
           <div className="small" style={{ opacity: 0.9 }}>
@@ -2048,7 +2048,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             </div>
           </div>
         </Sheet>
-      )}
+      )} */}
         <MapPickModal
   open={createGeoPickOpen}
   initial={{
