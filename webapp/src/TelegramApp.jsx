@@ -2644,7 +2644,16 @@ function openYandexRoute(lat, lon) {
                                             <div className="reactOverlay" onClick={() => setReactPickFor(null)}>
                                               <div className="reactModal" onClick={(e) => e.stopPropagation()}>
                                                  <div className="reactWhoBlock">
-                                                    <div className="reactWhoTitle">Кто поставил реакции</div>
+                                                    <div className="reactWhoTitle">Кто поставил реакции
+                                                        <button
+                                                          className="iconBtn"
+                                                          type="button"
+                                                          onClick={() => setReactPickFor(null)}
+                                                          title="Закрыть"
+                                                        >
+                                                          ✕
+                                                        </button>
+                                                    </div>
 
                                                     {!reactWhoCanView ? (
                                                       <div className="reactLock">
