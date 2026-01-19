@@ -48,30 +48,39 @@ async function setPremium(op, extra = {}) {
 }
 
 
-  useEffect(() => {
-    if (!open || !player) return;
+useEffect(() => {
+  if (!open || !player) return;
 
-    setDraft({
-      tg_id: player.tg_id,
-      display_name: player.display_name || "",
-      player_kind: player.player_kind || "tg",
-      jersey_number: player.jersey_number ?? "",
-      position: (player.position || "F").toUpperCase(),
-      skill: Number(player.skill ?? 5),
-      skating: Number(player.skating ?? 5),
-      iq: Number(player.iq ?? 5),
-      stamina: Number(player.stamina ?? 5),
-      passing: Number(player.passing ?? 5),
-      shooting: Number(player.shooting ?? 5),
-      notes: player.notes || "",
-      disabled: !!player.disabled,
-      is_admin: !!player.is_admin,
-      is_guest: !!player.is_guest,
-      username: player.username || "",
-      first_name: player.first_name || "",
-      is_env_admin: !!player.is_env_admin,
-    });
-  }, [open, player?.tg_id]);
+  const until = player.joke_premium_until ? new Date(player.joke_premium_until).getTime() : 0;
+  const active = !!player.joke_premium || (until && until > Date.now());
+
+  setDraft({
+    tg_id: player.tg_id,
+    display_name: player.display_name || "",
+    player_kind: player.player_kind || "tg",
+    jersey_number: player.jersey_number ?? "",
+    position: (player.position || "F").toUpperCase(),
+    skill: Number(player.skill ?? 5),
+    skating: Number(player.skating ?? 5),
+    iq: Number(player.iq ?? 5),
+    stamina: Number(player.stamina ?? 5),
+    passing: Number(player.passing ?? 5),
+    shooting: Number(player.shooting ?? 5),
+    notes: player.notes || "",
+    disabled: !!player.disabled,
+    is_admin: !!player.is_admin,
+    is_guest: !!player.is_guest,
+    username: player.username || "",
+    first_name: player.first_name || "",
+    is_env_admin: !!player.is_env_admin,
+
+
+    joke_premium: !!player.joke_premium,
+    joke_premium_until: player.joke_premium_until || null,
+    joke_premium_active: active,
+  });
+}, [open, player?.tg_id]);
+
 
   function notify(text) {
     const tg = window.Telegram?.WebApp;

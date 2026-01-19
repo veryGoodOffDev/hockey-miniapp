@@ -2351,15 +2351,22 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
     ]
   );
 
-  const pr = await q(
-    `SELECT
-      tg_id, first_name, username, display_name, jersey_number,
-      is_guest, player_kind, created_by,
-      position, skill, skating, iq, stamina, passing, shooting,
-      notes, disabled, is_admin
-     FROM players WHERE tg_id=$1`,
-    [tgId]
-  );
+    const pr = await q(
+      `SELECT
+        tg_id, first_name, last_name, username,
+        display_name, jersey_number,
+        is_guest, player_kind, created_by,
+        position, skill, skating, iq, stamina, passing, shooting,
+        notes, disabled, is_admin, updated_at,
+
+        joke_premium,
+        joke_premium_until,
+        (joke_premium = TRUE OR (joke_premium_until IS NOT NULL AND joke_premium_until > NOW())) AS joke_premium_active
+      FROM players
+      WHERE tg_id=$1`,
+      [tgId]
+    );
+
 
   res.json({ ok: true, player: pr.rows[0] });
 });
