@@ -2645,14 +2645,15 @@ function openYandexRoute(lat, lon) {
                                               <div className="reactModal" onClick={(e) => e.stopPropagation()}>
                                                  <div className="reactWhoBlock">
                                                     <div className="reactWhoTitle">Кто поставил реакции
-                                                        <button
-                                                          className="iconBtn"
-                                                          type="button"
-                                                          onClick={() => setReactPickFor(null)}
-                                                          title="Закрыть"
-                                                        >
-                                                          ✕
-                                                        </button>
+                                                      <button
+                                                        className="reactCloseBtn"
+                                                        type="button"
+                                                        onClick={() => setReactPickFor(null)}
+                                                        aria-label="Close"
+                                                        title="Закрыть"
+                                                      >
+                                                        ✕
+                                                      </button>
                                                     </div>
 
                                                     {!reactWhoCanView ? (
@@ -2688,10 +2689,15 @@ function openYandexRoute(lat, lon) {
                                                             <div key={String(u.tg_id)} className="reactWhoRow">
                                                               <AvatarCircle url={(u.photo_url || "").trim()} name={name} />
                                                               <div className="reactWhoName">{name}</div>
-
                                                               <div className="reactEmojiStack" title={(it.emojis || []).join(" ")}>
-                                                                {(it.emojis || []).map((e) => (
-                                                                  <span key={e} className="reactEmoji">{e}</span>
+                                                                {(it.emojis || []).map((e, idx) => (
+                                                                  <span
+                                                                    key={`${e}-${idx}`}
+                                                                    className="reactEmoji"
+                                                                    style={{ zIndex: 50 - idx }}
+                                                                  >
+                                                                    {e}
+                                                                  </span>
                                                                 ))}
                                                               </div>
                                                             </div>

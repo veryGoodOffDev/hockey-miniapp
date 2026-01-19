@@ -2396,37 +2396,37 @@ html[data-theme="light"] .btn.outline.active{
   margin-left: 8px;
 }
 
-/* ===== REACTIONS MODAL ===== */
+/* ===== REACTIONS (Telegram adaptive) ===== */
+
 .reactOverlay{
   position: fixed;
   inset: 0;
   z-index: 9999;
+
   display:flex;
   align-items:flex-end;
   justify-content:center;
   padding: 14px;
 
-  /* не полупрозрачная "пыль", а нормальный затемнитель + блюр */
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* мягкий оверлей (не закрывает полностью) */
+  background: color-mix(in srgb, var(--tg-text) 18%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
+/* модалка как bottom sheet */
 .reactModal{
   width: min(520px, 100%);
   max-height: min(86vh, 720px);
   overflow: hidden;
 
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--tg-text);
+  background: var(--card-bg);
 
-  /* плотная карточка, чтобы контент не сливался */
-  background: rgba(18,18,22,0.92);
-  box-shadow:
-    0 18px 60px rgba(0,0,0,0.55),
-    0 2px 0 rgba(255,255,255,0.06) inset;
+  border-radius: calc(var(--r-lg) + 4px);
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.22);
 
-  /* анимация появления */
   transform: translateY(8px);
   animation: reactModalIn .18s ease-out forwards;
 }
@@ -2435,65 +2435,85 @@ html[data-theme="light"] .btn.outline.active{
   to { transform: translateY(0); }
 }
 
-/* внутренние отступы */
-.reactModal > *{
-  padding-left: 14px;
-  padding-right: 14px;
-}
-
-/* верхний блок "кто поставил" */
 .reactWhoBlock{
-  padding-top: 14px;
-  padding-bottom: 10px;
+  padding: 14px 14px 10px;
 }
 
-/* заголовок — как шапка */
 .reactWhoTitle{
   font-weight: 900;
-  letter-spacing: 0.2px;
-  font-size: 15px;
-  margin-bottom: 10px;
+  font-size: var(--fs-h2);
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap: 10px;
+  margin-bottom: 10px;
 }
 
-/* список пользователей — отдельная "вложенная карточка" */
+/* крестик всегда контрастный */
+.reactCloseBtn{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  color: var(--tg-text);
+  background: var(--muted-bg);
+  border: 1px solid var(--border);
+
+  cursor: pointer;
+}
+
+.reactCloseBtn:hover{
+  background: color-mix(in srgb, var(--tg-text) 10%, transparent);
+}
+
+.reactCloseBtn:active{
+  transform: scale(0.96);
+}
+
+/* lock block */
+.reactLock{
+  padding: 12px;
+  border-radius: var(--r-lg);
+  background: var(--muted-bg);
+  border: 1px solid var(--border);
+}
+
 .reactWhoList{
   display: grid;
-  gap: 10px;
+  gap: 8px;
   max-height: 220px;
   overflow: auto;
   padding: 10px;
-  border-radius: 14px;
 
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--tg-text) 5%, transparent);
+  border: 1px solid var(--border);
 }
 
 /* аккуратный скролл */
 .reactWhoList::-webkit-scrollbar{ width: 8px; }
 .reactWhoList::-webkit-scrollbar-thumb{
-  background: rgba(255,255,255,0.16);
+  background: color-mix(in srgb, var(--tg-text) 18%, transparent);
   border-radius: 10px;
 }
-.reactWhoList::-webkit-scrollbar-track{
-  background: transparent;
-}
+.reactWhoList::-webkit-scrollbar-track{ background: transparent; }
 
-/* строка пользователя */
 .reactWhoRow{
   display:flex;
   align-items:center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
 
-  background: rgba(0,0,0,0.18);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: color-mix(in srgb, var(--tg-text) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tg-text) 10%, transparent);
 }
 
+/* имя приоритетнее — не даём реакциям "съесть" ширину */
 .reactWhoName{
   font-weight: 850;
   flex: 1;
@@ -2503,91 +2523,80 @@ html[data-theme="light"] .btn.outline.active{
   white-space: nowrap;
 }
 
-/* эмодзи как чипсы */
+/* реакции справа компактно: перекрытие на 50% */
 .reactEmojiStack{
   display:flex;
   align-items:center;
-  gap: 6px;
-  flex-wrap: wrap;
   justify-content:flex-end;
+  flex: 0 0 auto;
+  max-width: 42%;
 }
 
 .reactEmoji{
-  font-size: 16px;
-  line-height: 1;
-  padding: 6px 8px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
 
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.10);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  background: var(--tg-bg);
+  border: 1px solid var(--border);
+
+  font-size: 16px;
+  line-height: 1;
+
+  margin-left: -12px; /* перекрытие ~ половина */
 }
 
-/* разделитель — более читаемый */
+.reactEmoji:first-child{ margin-left: 0; }
+
+/* разделитель */
 .reactDivider{
   height: 1px;
   margin: 10px 0 0;
   background: linear-gradient(
     to right,
     transparent,
-    rgba(255,255,255,0.12),
+    color-mix(in srgb, var(--tg-text) 18%, transparent),
     transparent
   );
-  padding: 0 !important;
 }
 
-/* сетка выбора реакций */
+/* нижний блок выбора реакций — как в TG (круглые) */
 .reactGrid{
-  padding-top: 12px;
-  padding-bottom: 12px;
-
-  display:grid;
-  grid-template-columns: repeat(6, 1fr);
+  padding: 12px 14px 10px;
+  display:flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
-@media (max-width: 420px){
-  .reactGrid{ grid-template-columns: repeat(5, 1fr); }
-}
-
-/* кнопка-эмодзи как "пузырёк" */
 .reactPickBtn{
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
 
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  color: inherit;
+  border: 1px solid var(--border);
+  background: var(--muted-bg);
+  color: var(--tg-text);
 
   display:flex;
   align-items:center;
   justify-content:center;
 
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
 
   transition: transform .12s ease, background .12s ease, border-color .12s ease;
 }
 
-.reactPickBtn:active{
-  transform: scale(0.96);
-}
-
 .reactPickBtn:hover{
-  background: rgba(255,255,255,0.10);
-  border-color: rgba(255,255,255,0.18);
+  background: color-mix(in srgb, var(--tg-text) 10%, transparent);
+  border-color: color-mix(in srgb, var(--tg-text) 18%, transparent);
 }
 
-/* блок "замок" — тоже аккуратной карточкой */
-.reactLock{
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-}
-
-/* чтобы нижние кнопки не слипались */
-.reactModal .btn{
-  border-radius: 14px;
+.reactPickBtn:active{
+  transform: scale(0.94);
 }
 
