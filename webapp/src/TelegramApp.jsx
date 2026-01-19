@@ -433,16 +433,44 @@ async function removeComment(id) {
 }
 
 
-async function openReactPicker(commentId) {
-  const canViewReactors = !!(isAdmin || fun?.premium);
-  setReactPickFor(commentId);
+// async function openReactPicker(commentId) {
+//   const canViewReactors = !!(isAdmin || fun?.premium);
+//   setReactPickFor(commentId);
 
+//   setReactWhoList([]);
+//   setReactWhoCanView(canViewReactors);
+
+//   // если нельзя — просто показываем “🔒”, но саму модалку откроем
+//   if (!canViewReactors) return;
+
+//   setReactWhoLoading(true);
+//   try {
+//     const r = await apiGet(`/api/game-comments/${commentId}/reactors`);
+//     if (r?.ok) {
+//       setReactWhoCanView(r.can_view !== false);
+//       setReactWhoList(r.reactors || []);
+//     }
+//   } finally {
+//     setReactWhoLoading(false);
+//   }
+// }
+
+async function openReactPicker(commentId) {
+  const now = Date.now();
+
+  const isPremium =
+    !!me?.joke_premium ||
+    !!me?.joke_premium_active ||
+    (!!me?.joke_premium_until && new Date(me.joke_premium_until).getTime() > now) ||
+    !!fun?.premium; // если вдруг оставляешь совместимость
+
+  const canViewReactors = !!(isAdmin || isPremium);
+
+  setReactPickFor(commentId);
   setReactWhoList([]);
   setReactWhoCanView(canViewReactors);
 
-  // если нельзя — просто показываем “🔒”, но саму модалку откроем
-  if (!canViewReactors) return;
-
+  // 👇 лучше НЕ блокировать запрос на клиенте (пусть решает сервер)
   setReactWhoLoading(true);
   try {
     const r = await apiGet(`/api/game-comments/${commentId}/reactors`);
@@ -454,6 +482,7 @@ async function openReactPicker(commentId) {
     setReactWhoLoading(false);
   }
 }
+
 
 
 async function toggleReaction(commentId, emoji, on) {

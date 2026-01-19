@@ -3935,8 +3935,14 @@ app.get("/api/game-comments/:id/reactors", async (req, res) => {
     if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
 
     // ✅ премиум из players
-    const pr = await q(`SELECT joke_premium FROM players WHERE tg_id=$1`, [user.id]);
-    const premium = pr.rows[0]?.joke_premium === true;
+    const pr = await q(
+      `SELECT
+        (joke_premium = TRUE OR (joke_premium_until IS NOT NULL AND joke_premium_until > NOW())) AS premium
+      FROM players
+      WHERE tg_id=$1`,
+      [user.id]
+    );
+    const premium = pr.rows[0]?.premium === true;
 
     // ✅ правило: видеть список могут админы ИЛИ premium
     const can_view = is_admin || premium;
