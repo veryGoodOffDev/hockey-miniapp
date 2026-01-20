@@ -2190,7 +2190,7 @@ function openYandexRoute(lat, lon) {
                           </div>
                               {g.notice_text ? (
                                 <div className="gameNoticeInline" onClick={(e) => e.stopPropagation()}>
-                                  <span className="gameNoticeInline__icon" aria-hidden="true">⚠️</span>
+                                  <span className="gameNoticeInline__icon" aria-hidden="true">ℹ️</span>
                                   <span className="gameNoticeInline__text">{g.notice_text}</span>
 
                                   {isAdmin ? (

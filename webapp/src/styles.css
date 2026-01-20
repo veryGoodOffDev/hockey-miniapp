@@ -2112,7 +2112,7 @@ html[data-theme="light"] .btn.outline.active{
   border-radius: 14px;
   border: 1px solid rgba(255, 193, 7, .35);
   background: rgba(255, 193, 7, .14);
-  color: var(--tg-theme-text-color, #111);
+  color: #fff;
   display: flex;
   gap: 8px;
   align-items: flex-start;
