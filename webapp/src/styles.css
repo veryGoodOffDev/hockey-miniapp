@@ -1059,18 +1059,34 @@ textarea:focus{
 
 .segBtn{
   flex: 1 1 120px;
-  border:1px solid var(--border);
-  background: transparent;
+  border: 1px solid var(--border);
+  background: var(--muted-bg);         /* было transparent */
+  color: var(--tg-text);              /* ВОТ где настраивается цвет текста */
   border-radius: 12px;
   padding: 10px 10px;
   font-weight: 800;
   cursor: pointer;
 }
 
-.segBtn.on{
-  background: color-mix(in srgb, var(--tg-text) 10%, transparent);
-  border-color: color-mix(in srgb, var(--tg-text) 22%, var(--border));
+.segBtn.active{
+  background: var(--tg-btn);          /* заметная активная кнопка */
+  color: var(--tg-btn-text);
+  border-color: color-mix(in srgb, var(--tg-btn) 55%, var(--border));
 }
+
+:root[data-tg="dark"] .segBtn{
+  background: color-mix(in srgb, var(--tg-text) 10%, transparent); /* чуть ярче в dark */
+  border-color: color-mix(in srgb, var(--tg-text) 30%, transparent);
+}
+
+:root[data-tg="dark"] .segBtn.active{
+  background: color-mix(in srgb, var(--tg-btn) 85%, black);
+}
+
+.segBtn { color: var(--tg-text); }
+.segBtn.active { color: var(--tg-btn-text); }
+
+
 .gameListItem.isNext{
   box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 10px 30px rgba(0,0,0,.18);
 }
