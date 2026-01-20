@@ -2888,7 +2888,7 @@ function openYandexRoute(lat, lon) {
                 {donateOpen && (
                   <div className="modalOverlay" onClick={() => !funBusy && setDonateOpen(false)}>
                     <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-                      <h3 style={{ margin: 0 }}>Задонатить (по приколу)</h3>
+                      <h3 style={{ margin: 0 }}>Задонатить (шутка)</h3>
                       <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
                         Выбери вариант:
                       </div>
