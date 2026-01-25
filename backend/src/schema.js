@@ -45,39 +45,47 @@ export async function ensureSchema(q) {
   // полезный индекс: быстро искать “к отправке”
   await q(`
     CREATE INDEX IF NOT EXISTS idx_games_reminder_due
-    ON games(reminder_enabled, reminder_at)
+    ON games (reminder_at) INCLUDE (id)
     WHERE reminder_enabled = TRUE AND reminder_at IS NOT NULL;
   `);
 
 
   await q(`
-  DO $$
-  BEGIN
-    IF NOT EXISTS (
-      SELECT 1 FROM pg_constraint WHERE conname = 'games_geo_pair_chk'
-    ) THEN
-      ALTER TABLE games
-        ADD CONSTRAINT games_geo_pair_chk
-        CHECK (
-          (geo_lat IS NULL AND geo_lon IS NULL)
-          OR
-          (geo_lat IS NOT NULL AND geo_lon IS NOT NULL)
-        );
-    END IF;
-  END$$;
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'games_geo_pair_chk'
+          AND conrelid = 'games'::regclass
+      ) THEN
+        ALTER TABLE games
+          ADD CONSTRAINT games_geo_pair_chk
+          CHECK (
+            (geo_lat IS NULL AND geo_lon IS NULL)
+            OR
+            (geo_lat IS NOT NULL AND geo_lon IS NOT NULL)
+          );
+      END IF;
+    END$$;
 `);
 
   await q(`
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='games_pinned_comment_fk') THEN
-    ALTER TABLE games
-      ADD CONSTRAINT games_pinned_comment_fk
-      FOREIGN KEY (pinned_comment_id)
-      REFERENCES game_comments(id)
-      ON DELETE SET NULL;
-  END IF;
-END$$;
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'games_pinned_comment_fk'
+          AND conrelid = 'games'::regclass
+      ) THEN
+        ALTER TABLE games
+          ADD CONSTRAINT games_pinned_comment_fk
+          FOREIGN KEY (pinned_comment_id)
+          REFERENCES game_comments(id)
+          ON DELETE SET NULL;
+      END IF;
+    END$$;
 `);
 
   /** ===================== PLAYERS ===================== */
