@@ -44,7 +44,7 @@ async function request(path, { method = "GET", body, signal } = {}) {
 
     // Если решишь делать cookie-сессии (вместо bearer) — оставляй включённым.
     // Если у тебя API на другом домене — потребуется CORS с credentials.
-    credentials: "include",
+    credentials: "omit",
   });
 
   // 204 No Content
@@ -84,7 +84,7 @@ export async function apiUpload(path, formData, { signal } = {}) {
     body: formData,
     headers,
     signal,
-    credentials: "include",
+    credentials: "omit",
   });
 
   const text = await r.text();
