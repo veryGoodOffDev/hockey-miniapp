@@ -70,24 +70,6 @@ export async function ensureSchema(q) {
     END$$;
 `);
 
-  await q(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'games_pinned_comment_fk'
-          AND conrelid = 'games'::regclass
-      ) THEN
-        ALTER TABLE games
-          ADD CONSTRAINT games_pinned_comment_fk
-          FOREIGN KEY (pinned_comment_id)
-          REFERENCES game_comments(id)
-          ON DELETE SET NULL;
-      END IF;
-    END$$;
-`);
-
   /** ===================== PLAYERS ===================== */
   await q(`
     CREATE TABLE IF NOT EXISTS players (
@@ -128,11 +110,6 @@ export async function ensureSchema(q) {
   // manual = постоянный игрок, добавлен админом вручную (без TG)
   // guest  = разовый гость (не в общем списке игроков)
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS player_kind TEXT;`);
-
-    //  BOT PROFILE: чтобы понимать, что человек реально нажал Start в личке
-  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started BOOLEAN NOT NULL DEFAULT FALSE;`);
-  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_started_at TIMESTAMPTZ;`);
-  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_last_seen TIMESTAMPTZ;`);
 
   // BOT AVATAR: хранить file_id телеги (НЕ url)
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_file_id TEXT;`);
@@ -387,6 +364,27 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
 
   await q(`CREATE INDEX IF NOT EXISTS idx_game_comments_game_id_created ON game_comments(game_id, created_at);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_game_comments_author ON game_comments(author_tg_id);`);
+
+    // FK games.pinned_comment_id -> game_comments.id
+  // важно: добавлять только ПОСЛЕ того, как создана таблица game_comments
+  await q(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'games_pinned_comment_fk'
+          AND conrelid = 'games'::regclass
+      ) THEN
+        ALTER TABLE games
+          ADD CONSTRAINT games_pinned_comment_fk
+          FOREIGN KEY (pinned_comment_id)
+          REFERENCES game_comments(id)
+          ON DELETE SET NULL;
+      END IF;
+    END$$;
+  `);
+
 
   /** ===================== GAME COMMENT REACTIONS ===================== */
   await q(`
