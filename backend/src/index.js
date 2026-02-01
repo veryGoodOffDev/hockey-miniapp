@@ -106,6 +106,27 @@ function scheduleFunStatsUpdate() {
   }, 1500); // 1.5 сек — норм
 }
 
+const postgameSyncTimers = new Map();
+
+function schedulePostgameCounterSync(gameId) {
+  const id = Number(gameId);
+  if (!Number.isFinite(id)) return;
+
+  if (postgameSyncTimers.has(id)) return;
+
+  const t = setTimeout(async () => {
+    postgameSyncTimers.delete(id);
+    try {
+      await syncPostgameCounter(id);
+    } catch (e) {
+      console.error("syncPostgameCounter failed:", e);
+    }
+  }, 600);
+
+  postgameSyncTimers.set(id, t);
+}
+
+
 function formatGameWhen(startsAtIso) {
   const tz = process.env.TZ_NAME || "Europe/Moscow";
   const dt = startsAtIso ? new Date(startsAtIso) : null;
@@ -666,6 +687,132 @@ function tgMessageExistsButNotEditable(e) {
   const s = tgErrText(e).toLowerCase();
   return s.includes("message is not modified") || s.includes("message can't be edited");
 }
+
+// ===== Postgame discuss message helpers =====
+
+function postgameStartParam(gameId) {
+  // важно: фронт должен уметь распарсить и открыть comments
+  return `game_${gameId}_comments`;
+}
+
+function buildDiscussDeepLink(gameId) {
+  const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
+  return `https://t.me/${botUsername}?startapp=${encodeURIComponent(postgameStartParam(gameId))}`;
+}
+
+function buildDiscussKb(gameId, count) {
+  const label = count > 0 ? `💬 Обсудить (${count})` : "💬 Обсудить";
+  return new InlineKeyboard().url(label, buildDiscussDeepLink(gameId));
+}
+
+function buildPostgameText(g) {
+  const when = formatWhenForGame(g.starts_at);
+  return (
+    `🏒 Игра прошла!\n\n` +
+    `📅 ${when}\n` +
+    `📍 ${g.location || "—"}\n\n` +
+    `Можешь обсудить тактику, похвалить игроков или отметить важные моменты.`
+  );
+}
+
+async function getGameCommentsCount(gameId) {
+  const r = await q(`SELECT COUNT(*)::int AS cnt FROM game_comments WHERE game_id=$1`, [gameId]);
+  return r.rows?.[0]?.cnt ?? 0;
+}
+
+
+async function sendPostgameMessageForGame(g, chat_id) {
+  const cnt = await getGameCommentsCount(g.id);
+  const text = buildPostgameText(g);
+  const kb = buildDiscussKb(g.id, cnt);
+
+  let sent;
+  try {
+    sent = await bot.api.sendMessage(chat_id, text, {
+      reply_markup: kb,
+      disable_web_page_preview: true,
+    });
+  } catch (e) {
+    console.log("[postgame] send failed:", tgErrText(e));
+    return { ok: false, reason: "send_failed" };
+  }
+
+  // логируем как bot_message (как у reminder)
+  try {
+    await logBotMessage({
+      chat_id,
+      message_id: sent.message_id,
+      kind: "postgame",
+      text,
+      reply_markup: replyMarkupToJson(kb),
+      meta: { game_id: g.id, type: "postgame_discuss" },
+    });
+  } catch {}
+
+  // сохраняем привязку для дальнейших обновлений счетчика
+  await q(
+    `UPDATE games
+     SET postgame_sent_at=NOW(),
+         postgame_message_id=$2,
+         postgame_chat_id=$3,
+         postgame_last_count=$4,
+         updated_at=NOW()
+     WHERE id=$1`,
+    [g.id, sent.message_id, chat_id, cnt]
+  );
+
+  return { ok: true, message_id: sent.message_id, count: cnt };
+}
+
+
+
+async function syncPostgameCounter(gameId) {
+  const gr = await q(
+    `SELECT id, postgame_message_id, postgame_chat_id, postgame_last_count
+     FROM games
+     WHERE id=$1`,
+    [gameId]
+  );
+  const g = gr.rows?.[0];
+  if (!g?.postgame_message_id) return { ok: true, skipped: true, reason: "no_postgame_message" };
+
+  const chat_id = Number(g.postgame_chat_id);
+  if (!Number.isFinite(chat_id)) return { ok: false, reason: "bad_chat_id" };
+
+  const cnt = await getGameCommentsCount(gameId);
+
+  // чтобы не долбить Telegram лишний раз
+  if (g.postgame_last_count !== null && Number(g.postgame_last_count) === cnt) {
+    return { ok: true, skipped: true, reason: "count_same" };
+  }
+
+  const kb = buildDiscussKb(gameId, cnt);
+
+  try {
+    await bot.api.editMessageReplyMarkup(chat_id, Number(g.postgame_message_id), {
+      reply_markup: kb,
+    });
+  } catch (e) {
+    if (tgMessageMissing(e)) {
+      // сообщение удалили/недоступно — очищаем привязку, чтобы не пытаться снова
+      await q(
+        `UPDATE games
+         SET postgame_message_id=NULL,
+             postgame_chat_id=NULL,
+             updated_at=NOW()
+         WHERE id=$1`,
+        [gameId]
+      );
+      return { ok: false, reason: "message_missing" };
+    }
+    console.log("[postgame] edit failed:", tgErrText(e));
+    return { ok: false, reason: "edit_failed" };
+  }
+
+  await q(`UPDATE games SET postgame_last_count=$2, updated_at=NOW() WHERE id=$1`, [gameId, cnt]);
+  return { ok: true, count: cnt };
+}
+
 
 async function getNextScheduledGame() {
   const gr = await q(
@@ -3022,6 +3169,59 @@ app.post("/api/internal/reminders/run", async (req, res) => {
   }
 });
 
+app.post("/api/internal/postgame/run", async (req, res) => {
+  if (!checkInternalToken(req)) {
+    return res.status(401).json({ ok: false, reason: "bad_token" });
+  }
+
+  let locked = false;
+
+  try {
+    const lockRes = await q(`SELECT pg_try_advisory_lock($1) AS got`, [777002]);
+    locked = !!lockRes.rows?.[0]?.got;
+    if (!locked) return res.json({ ok: true, checked: 0, sent: 0, reason: "already_running" });
+
+    const chatIdRaw = await getSetting("notify_chat_id", null);
+    if (!chatIdRaw) {
+      return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set" });
+    }
+
+    const chat_id = Number(chatIdRaw);
+    if (!Number.isFinite(chat_id)) return res.json({ ok: false, reason: "notify_chat_id_bad" });
+
+    // берем игры, которым уже 2+ часа, но postgame еще не отправляли
+    // ограничение по давности — чтобы не разослать старье после деплоя
+    const dueRes = await q(`
+      SELECT *
+      FROM games
+      WHERE status IS DISTINCT FROM 'cancelled'
+        AND starts_at <= NOW() - INTERVAL '2 hours'
+        AND postgame_sent_at IS NULL
+        AND starts_at >= NOW() - INTERVAL '14 days'
+      ORDER BY starts_at DESC
+      LIMIT 5
+    `);
+
+    const due = dueRes.rows || [];
+    let sent = 0;
+
+    for (const g of due) {
+      const r = await sendPostgameMessageForGame(g, chat_id);
+      if (r.ok) sent += 1;
+    }
+
+    return res.json({ ok: true, checked: due.length, sent, due_ids: due.map(x => x.id) });
+  } catch (e) {
+    console.error("postgame.run failed:", e);
+    return res.status(500).json({ ok: false, reason: "internal_error" });
+  } finally {
+    if (locked) {
+      try { await q(`SELECT pg_advisory_unlock($1)`, [777002]); } catch {}
+    }
+  }
+});
+
+
 
 app.get("/api/stats/attendance", async (req, res) => {
   try {
@@ -3752,6 +3952,8 @@ app.post("/api/game-comments", async (req, res) => {
 
   const baseUrl = getPublicBaseUrl(req);
   const comments = await loadGameComments(gameId, user.id, baseUrl);
+  schedulePostgameCounterSync(gameId);
+
   res.json({ ok: true, comments });
 });
 
@@ -3816,6 +4018,8 @@ app.delete("/api/game-comments/:id", async (req, res) => {
     }
 
     await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
+
+    schedulePostgameCounterSync(gameId);
 
     const gameId = Number(row.game_id);              // ✅ ВАЖНО
     const baseUrl = getPublicBaseUrl(req);
