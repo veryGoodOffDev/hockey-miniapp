@@ -648,20 +648,46 @@ async function runOp(label, fn, { successText = "Готово", errorText = "Н�
   if (opTimerRef.current) clearTimeout(opTimerRef.current);
 }
 // ===== light refreshes (avoid heavy refreshAll) =====
-async function refreshUpcomingGamesOnly() {
-  const gl = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
+// async function refreshUpcomingGamesOnly() {
+//   const gl = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
 
-  if (gl?.ok === false) {
-    setGamesError(gl);
+//   if (gl?.ok === false) {
+//     setGamesError(gl);
+//     setGames([]);
+//     return null;
+//   }
+
+//   setGamesError(null);
+//   setGames(gl.games || []);
+//   setTalismanHolder(gl.talisman_holder || null);
+//   return gl.games || [];
+// }
+async function refreshUpcomingGamesOnly() {
+  const [gl, pl] = await Promise.allSettled([
+    apiGet("/api/games?scope=upcoming&limit=365&offset=0"),
+    apiGet("/api/games?scope=past&limit=20&offset=0"),
+  ]);
+
+  if (gl.status === "rejected") throw gl.reason;
+  const up = gl.value;
+
+  if (up?.ok === false) {
+    setGamesError(up);
     setGames([]);
     return null;
   }
 
+  const past = pl.status === "fulfilled" ? (pl.value?.games || []) : [];
+  const todayFromPast = past.filter((g) => !gameFlags(g?.starts_at).isPast); // сегодня/не ушла за 00:00
+
+  const merged = mergeUniqueById(up.games || [], todayFromPast);
+
   setGamesError(null);
-  setGames(gl.games || []);
-  setTalismanHolder(gl.talisman_holder || null);
-  return gl.games || [];
+  setGames(merged);
+  setTalismanHolder(up.talisman_holder || null);
+  return merged;
 }
+
 
 async function refreshPlayersDirOnly() {
   const r = await apiGet("/api/players");
@@ -906,7 +932,13 @@ async function refreshAll(forceGameId) {
       return;
     }
 
-    const list = gl.games || [];
+    let todayFromPast = [];
+    try {
+      const p = await apiGet("/api/games?scope=past&limit=20&offset=0");
+      todayFromPast = (p?.games || []).filter((g) => !gameFlags(g?.starts_at).isPast);
+    } catch {}
+
+    const list = mergeUniqueById(gl.games || [], todayFromPast);
     setGames(list);
     setTalismanHolder(gl.talisman_holder || null);
 
@@ -1443,7 +1475,13 @@ function sortByMetricDesc(list, key) {
   });
 }
 
-
+function mergeUniqueById(primary = [], extra = []) {
+  const m = new Map();
+  // extra сначала, primary (upcoming) поверх — чтобы данные upcoming приоритетнее
+  for (const g of extra) m.set(String(g.id), g);
+  for (const g of primary) m.set(String(g.id), g);
+  return Array.from(m.values());
+}
   const myRsvp = useMemo(() => {
     if (!me?.tg_id) return null;
     const row = (rsvps || []).find((r) => String(r.tg_id) === String(me.tg_id));
