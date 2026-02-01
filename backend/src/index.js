@@ -2809,6 +2809,39 @@ app.post("/api/admin/reminder/sendNow", async (req, res) => {
   }
 });
 
+/** ====== ADMIN: postgame discuss sendNow ====== */
+app.post("/api/admin/games/:id/postgame/sendNow", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const gameId = Number(req.params.id);
+  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const force = req.body?.force === true;
+
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  const chat_id = Number(chatIdRaw);
+  if (!Number.isFinite(chat_id)) return res.status(400).json({ ok: false, reason: "notify_chat_id_bad" });
+
+  const gr = await q(`SELECT * FROM games WHERE id=$1`, [gameId]);
+  const g = gr.rows?.[0];
+  if (!g) return res.status(404).json({ ok: false, reason: "game_not_found" });
+  if (g.status === "cancelled") return res.status(400).json({ ok: false, reason: "game_cancelled" });
+
+  if (!force && g.postgame_message_id) {
+    const s = await syncPostgameCounter(gameId);
+    return res.json({ ok: true, already_sent: true, message_id: g.postgame_message_id, synced: s });
+  }
+
+  const r = await sendPostgameMessageForGame(g, chat_id);
+  return res.json(r);
+});
+
+
 app.get("/api/admin/bot-messages", async (req, res) => {
   const user = requireWebAppAuth(req, res);
   if (!user) return;
@@ -3169,28 +3202,53 @@ app.post("/api/internal/reminders/run", async (req, res) => {
   }
 });
 
+app.post("/api/internal/postgame/send", async (req, res) => {
+  if (!checkInternalToken(req)) {
+    return res.status(401).json({ ok: false, reason: "bad_token" });
+  }
+
+  const gameId = Number(req.query.game_id || req.body?.game_id);
+  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+
+  const chat_id = Number(chatIdRaw);
+  if (!Number.isFinite(chat_id)) return res.status(400).json({ ok: false, reason: "notify_chat_id_bad" });
+
+  const gr = await q(`SELECT * FROM games WHERE id=$1`, [gameId]);
+  const g = gr.rows?.[0];
+  if (!g) return res.status(404).json({ ok: false, reason: "game_not_found" });
+
+  const force = String(req.query.force || "") === "1" || req.body?.force === true;
+
+  if (!force && g.postgame_message_id) {
+    const s = await syncPostgameCounter(gameId);
+    return res.json({ ok: true, already_sent: true, message_id: g.postgame_message_id, synced: s });
+  }
+
+  const r = await sendPostgameMessageForGame(g, chat_id);
+  return res.json(r);
+});
+
+
 app.post("/api/internal/postgame/run", async (req, res) => {
   if (!checkInternalToken(req)) {
     return res.status(401).json({ ok: false, reason: "bad_token" });
   }
 
   let locked = false;
-
   try {
     const lockRes = await q(`SELECT pg_try_advisory_lock($1) AS got`, [777002]);
     locked = !!lockRes.rows?.[0]?.got;
     if (!locked) return res.json({ ok: true, checked: 0, sent: 0, reason: "already_running" });
 
     const chatIdRaw = await getSetting("notify_chat_id", null);
-    if (!chatIdRaw) {
-      return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set" });
-    }
+    if (!chatIdRaw) return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set" });
 
     const chat_id = Number(chatIdRaw);
     if (!Number.isFinite(chat_id)) return res.json({ ok: false, reason: "notify_chat_id_bad" });
 
-    // берем игры, которым уже 2+ часа, но postgame еще не отправляли
-    // ограничение по давности — чтобы не разослать старье после деплоя
     const dueRes = await q(`
       SELECT *
       FROM games
@@ -3204,13 +3262,14 @@ app.post("/api/internal/postgame/run", async (req, res) => {
 
     const due = dueRes.rows || [];
     let sent = 0;
+    const sent_ids = [];
 
     for (const g of due) {
       const r = await sendPostgameMessageForGame(g, chat_id);
-      if (r.ok) sent += 1;
+      if (r.ok) { sent += 1; sent_ids.push(g.id); }
     }
 
-    return res.json({ ok: true, checked: due.length, sent, due_ids: due.map(x => x.id) });
+    return res.json({ ok: true, checked: due.length, sent, due_ids: due.map(x => x.id), sent_ids });
   } catch (e) {
     console.error("postgame.run failed:", e);
     return res.status(500).json({ ok: false, reason: "internal_error" });
