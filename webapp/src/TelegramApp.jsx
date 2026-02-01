@@ -117,6 +117,7 @@ const [flashId, setFlashId] = useState(null);               // подсвети�
 
 const commentsPollRef = useRef(null);
 const commentsHashRef = useRef(""); // чтобы не перерендеривать без изменений
+const commentsBlockRef = useRef(null);
 
 
 const REACTIONS = ["❤️","🔥","👍","😂","👏","😡","🤔"];
@@ -127,6 +128,37 @@ const [reactWhoList, setReactWhoList] = useState([]);
 const [reactWhoCanView, setReactWhoCanView] = useState(true);
 
 
+const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
+
+function openGameDetail(id, focus = null) {
+  setSelectedGameId(id);
+  setGameView("detail");
+
+  setGame(null);
+  setRsvps([]);
+  setTeams(null);
+
+  setDetailLoading(true);
+  setDetailFocus(focus);
+
+  Promise.all([refreshGameOnly(id)])
+    .then(() => refreshCommentsOnly(id))
+    .catch(console.error)
+    .finally(() => setDetailLoading(false));
+}
+
+useEffect(() => {
+  if (detailFocus !== "comments") return;
+  if (gameView !== "detail") return;
+  if (detailLoading) return;
+  if (!game) return;
+
+  requestAnimationFrame(() => {
+    commentsBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  setDetailFocus(null);
+}, [detailFocus, gameView, detailLoading, game?.id]);
 
 
 
@@ -699,19 +731,62 @@ async function syncAfterMutation(sync = {}) {
     return t;
   }
 
-  function isPastGame(g) {
-    if (!g?.starts_at) return false;
-    const t = new Date(g.starts_at).getTime();
-    // прошла, если начало было больше чем 3 часа назад
-    return t < Date.now() - 3 * 60 * 60 * 1000;
-  }
+  // function isPastGame(g) {
+  //   if (!g?.starts_at) return false;
+  //   const t = new Date(g.starts_at).getTime();
+  //   // прошла, если начало было больше чем 3 часа назад
+  //   return t < Date.now() - 3 * 60 * 60 * 1000;
+  // }
+function gameFlags(starts_at) {
+  if (!starts_at) return { isPast: false, isFinished: false, isLive: false };
 
-  function uiStatus(g) {
-    if (!g) return "";
-    if (g.status === "cancelled") return "Отменена";
-    if (isPastGame(g)) return "Прошла";
-    return "Запланирована";
-  }
+  const startMs = new Date(starts_at).getTime();
+  const now = Date.now();
+
+  // 00:00 сегодняшнего дня (локальное время клиента)
+  const today00 = new Date();
+  today00.setHours(0, 0, 0, 0);
+
+  const isPast = startMs < today00.getTime();                 // в "прошедшие" после 00:00 следующего дня
+  const isFinished = now >= startMs + 2 * 60 * 60 * 1000;     // "прошла" через 2 часа
+  const isLive = now >= startMs && now < startMs + 2 * 60 * 60 * 1000; // "идёт" первые 2 часа
+
+  return { isPast, isFinished, isLive };
+}
+
+function isPastGame(g) {
+  return gameFlags(g?.starts_at).isPast;
+}
+
+function uiStatus(game) {
+  if (!game) return "—";
+  if (game.status === "cancelled") return "Отменена";
+
+  const { isFinished, isLive } = gameFlags(game.starts_at);
+
+  if (isFinished) return "Прошла";
+  if (isLive) return "Идёт";
+  return "Запланирована";
+}
+
+
+// function uiStatus(game) {
+//   if (!game) return "—";
+//   if (game.status === "cancelled") return "Отменена";
+
+//   const { isFinished } = gameFlags(game.starts_at);
+//   if (isFinished) return "Прошла";
+
+//   // дальше твоя логика для будущей/идёт/набор
+//   return "Скоро"; 
+// }
+
+  // function uiStatus(g) {
+  //   if (!g) return "";
+  //   if (g.status === "cancelled") return "Отменена";
+  //   if (isPastGame(g)) return "Прошла";
+  //   return "Запланирована";
+  // }
 
 async function loadAttendance(opts = {}) {
   const {
@@ -1985,7 +2060,7 @@ function openYandexRoute(lat, lon) {
                 <div className="small" style={{ marginTop: 2 }}>
                   {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
                 </div>
-              ) : (
+                ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {!showPast && (
                     <div className="row" style={{ marginTop: 10, gap: 8 }}>
@@ -2037,8 +2112,9 @@ function openYandexRoute(lat, lon) {
                   )}
 
                     {listToShow.map((g, idx) => {
-                      const past = isPastGame(g);
-                      const lockRsvp = past && !isAdmin;
+                      const { isPast, isFinished } = gameFlags(g.starts_at);
+                    const past = isPast; // для класса/стайла "прошедшая" (после 00:00)
+                    const lockRsvp = isFinished && !isAdmin; // блокируем RSVP через 2 часа после начала
                       const when = formatWhen(g.starts_at);
                       const status = g.my_status || "maybe";
                       const tone = cardToneByMyStatus(status);
@@ -2068,24 +2144,25 @@ function openYandexRoute(lat, lon) {
                             backgroundPosition: "center",
                             backgroundRepeat: "no-repeat",
                           }}
-                            onClick={() => {
-                              const id = g.id;
+                          onClick={() => openGameDetail(g.id)}
+                            // onClick={() => {
+                            //   const id = g.id;
 
-                              setSelectedGameId(id);
-                              setGameView("detail");
+                            //   setSelectedGameId(id);
+                            //   setGameView("detail");
 
-                              // Сброс "хвостов" прежней деталки (чтобы не мигало старым)
-                              setGame(null);
-                              setRsvps([]);
-                              setTeams(null);
+                            //   // Сброс "хвостов" прежней деталки (чтобы не мигало старым)
+                            //   setGame(null);
+                            //   setRsvps([]);
+                            //   setTeams(null);
 
-                              setDetailLoading(true);
+                            //   setDetailLoading(true);
 
-                             Promise.all([refreshGameOnly(id)])
-                                  .then(() => refreshCommentsOnly(id))
-                                  .catch(console.error)
-                                  .finally(() => setDetailLoading(false));
-                            }}
+                            //  Promise.all([refreshGameOnly(id)])
+                            //       .then(() => refreshCommentsOnly(id))
+                            //       .catch(console.error)
+                            //       .finally(() => setDetailLoading(false));
+                            // }}
 
                         >
                           {/* TOP BAR */}
@@ -2108,11 +2185,32 @@ function openYandexRoute(lat, lon) {
                             
                             <div className="gameCard__topRight">
                               {g.video_url ? <span className="gameCard__pill" title="Есть видео">▶️</span> : null}
-                                {(g.comments_count ?? 0) > 0 ? (
-                                  <span className="gameCard__pill" title="Комментарии">
-                                    💬 {g.comments_count}
-                                  </span>
-                                ) : null}
+                                {(() => {
+                                  const cc = g.comments_count ?? 0;
+
+                                  return (
+                                    <span
+                                      className="gameCard__pill"
+                                      title={cc > 0 ? "Комментарии" : "Обсудить"}
+                                      style={{ cursor: "pointer" }}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openGameDetail(g.id, "comments");
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          openGameDetail(g.id, "comments");
+                                        }
+                                      }}
+                                    >
+                                      💬 {cc > 0 ? cc : "Обсудить"}
+                                    </span>
+                                  );
+                                })()}
                             </div>
                           </div>
                     
@@ -2256,8 +2354,9 @@ function openYandexRoute(lat, lon) {
                 <div className="small">Не удалось загрузить игру.</div>
               ) : (
                 (() => {
-                  const past = isPastGame(game);
-                  const lockRsvp = past && !isAdmin;
+                  const { isPast, isFinished } = gameFlags(game?.starts_at);
+                  const past = isPast; // если где-то дальше понадобится для UI
+                  const lockRsvp = isFinished && !isAdmin;
                   const bestCandidates = (rsvps || []).filter((p) => p.status === "yes");
 
                   return (
@@ -2455,7 +2554,7 @@ function openYandexRoute(lat, lon) {
                         <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
                       </div>
                       <hr />
-
+                                  <div ref={commentsBlockRef} />
                                   <div className="card">
                                     <div className="rowBetween">
                                       <h3 style={{ margin: 0 }}>💬 Комментарии</h3>
