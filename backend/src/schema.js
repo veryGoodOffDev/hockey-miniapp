@@ -40,6 +40,19 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_message_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_pin BOOLEAN NOT NULL DEFAULT TRUE;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS pinned_comment_id BIGINT;`);
+    // ===== Postgame discuss message (в командный чат) =====
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_sent_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_message_id BIGINT;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_chat_id BIGINT;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_last_count INT;`);
+
+  // быстрый поиск "кому пора отправить"
+  await q(`
+    CREATE INDEX IF NOT EXISTS idx_games_postgame_due
+    ON games (starts_at) INCLUDE (id)
+    WHERE status IS DISTINCT FROM 'cancelled' AND postgame_sent_at IS NULL;
+  `);
+
 
 
   // полезный индекс: быстро искать “к отправке”
