@@ -129,8 +129,11 @@ const [reactWhoCanView, setReactWhoCanView] = useState(true);
 
 
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
+const commentsCardRef = useRef(null);
+
 
 function openGameDetail(id, focus = null) {
+  setTab("game");                 // ✅ важно для переходов из чата
   setSelectedGameId(id);
   setGameView("detail");
 
@@ -146,6 +149,7 @@ function openGameDetail(id, focus = null) {
     .catch(console.error)
     .finally(() => setDetailLoading(false));
 }
+
 
 useEffect(() => {
   if (detailFocus !== "comments") return;
@@ -1107,32 +1111,75 @@ function clipText(s, max = 70) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-    useEffect(() => {
-    const sp = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "").trim();
-    const m = sp.match(/^teams_(\d+)$/);
-    if (!m) return;
-  
+useEffect(() => {
+  const raw = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "");
+  const sp = (() => {
+    try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
+  })();
+
+  if (!sp) return;
+
+  // 1) teams_<id>
+  let m = sp.match(/^teams_(\d+)$/);
+  if (m) {
     const gid = Number(m[1]);
     if (!Number.isFinite(gid) || gid <= 0) return;
-  
+
     setSelectedGameId(gid);
     setTab("teams");
-  
-    // если у тебя есть teamsBack и ты хочешь норм "назад"
     setTeamsBack?.({ tab: "game", gameView: "detail" });
-  
+
     (async () => {
-  setDetailLoading(true);
-  try {
-    await Promise.all([
-      refreshUpcomingGamesOnly(), // чтобы talisman_holder и статусы в списке были свежие
-      refreshGameOnly(gid),       // чтобы составы/отметки для teams были свежие
-    ]);
-  } finally {
-    setDetailLoading(false);
+      setDetailLoading(true);
+      try {
+        await Promise.all([
+          refreshUpcomingGamesOnly(),
+          refreshGameOnly(gid),
+        ]);
+      } finally {
+        setDetailLoading(false);
+      }
+    })();
+
+    return;
   }
-})();
-  }, []);
+
+  // 2) game_<id> or game_<id>_comments
+  m = sp.match(/^game_(\d+)(?:_(comments))?$/);
+  if (m) {
+    const gid = Number(m[1]);
+    const focus = m[2] ? "comments" : null;
+    if (!Number.isFinite(gid) || gid <= 0) return;
+
+    openGameDetail(gid, focus);
+    return;
+  }
+
+  // 3) просто число: "485" (у тебя reminder так делает)
+  if (/^\d+$/.test(sp)) {
+    const gid = Number(sp);
+    if (!Number.isFinite(gid) || gid <= 0) return;
+
+    openGameDetail(gid, null);
+    return;
+  }
+}, []);
+
+
+  useEffect(() => {
+  if (gameView !== "detail") return;
+  if (detailLoading) return;
+  if (!game?.id) return;
+  if (detailFocus !== "comments") return;
+
+  const t = setTimeout(() => {
+    commentsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setDetailFocus(null); // ✅ чтобы не скроллило снова при рендерах
+  }, 50);
+
+  return () => clearTimeout(t);
+}, [detailFocus, detailLoading, game?.id, gameView]);
+
 
   useEffect(() => {
     if (tab === "stats") loadAttendance(statsDays);
@@ -2593,7 +2640,8 @@ function openYandexRoute(lat, lon) {
                       </div>
                       <hr />
                                   <div ref={commentsBlockRef} />
-                                  <div className="card">
+                                  <div className="card" ref={commentsCardRef}>
+
                                     <div className="rowBetween">
                                       <h3 style={{ margin: 0 }}>💬 Комментарии</h3>
                                       <span className="badgeMini">{comments.length}</span>

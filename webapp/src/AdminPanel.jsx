@@ -806,6 +806,33 @@ async function saveGame() {
   }, { successText: "✅ Игра сохранена" });
 }
 
+async function sendVideoToChat() {
+  if (!gameDraft) return;
+
+  const url = String(gameDraft.video_url || "").trim();
+  if (!url) {
+    alert("Сначала добавь ссылку на видео.");
+    return;
+  }
+
+  const savedUrl = String(gameDraft.raw?.video_url || "").trim();
+  const dirty = savedUrl !== url;
+
+  if (dirty) {
+    const ok = confirm("Ссылка на видео ещё не сохранена. Отправить в чат то, что сейчас в поле?");
+    if (!ok) return;
+  }
+
+  await runAdminOp("Отправляю сообщение о видео в чат…", async () => {
+    await apiPost("/api/admin/games/video/send", {
+      game_id: gameDraft.id,
+      video_url: url, // ✅ отправляем явным образом
+    });
+
+    // если хочешь — обновляй историю сообщений
+    // await loadMsgHistory();
+  }, { successText: "✅ Отправлено в чат", errorText: "❌ Не удалось отправить" });
+}
 
 async function setGameStatus(status) {
   if (!gameDraft) return;
@@ -1661,6 +1688,17 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 <div className="small" style={{ opacity: 0.8 }}>
                   Оставь пустым и нажми “Сохранить” — ссылка удалится
                 </div>
+                <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                <button
+                  className="btn secondary"
+                  disabled={opBusy || !String(gameDraft.video_url || "").trim()}
+                  onClick={sendVideoToChat}
+                  title="Отправить в командный чат сообщение о добавленном видео"
+                >
+                  📣 Отправить в чат
+                </button>
+              </div>
+
               </>
             )}
           </div>

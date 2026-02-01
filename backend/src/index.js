@@ -3798,6 +3798,96 @@ app.post("/api/admin/teams/send", async (req, res) => {
   }
 });
 
+// POST /api/admin/games/video/send
+app.post("/api/admin/games/video/send", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admin = await requireAdminAsync(req, res, user);
+  if (!admin) return;
+
+  const game_id = Number(req.body?.game_id);
+  if (!Number.isFinite(game_id) || game_id <= 0) {
+    return res.status(400).json({ ok: false, reason: "bad_game_id" });
+  }
+
+  // командный чат
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  const chatId = chatIdRaw ? Number(String(chatIdRaw).trim()) : null;
+  if (!Number.isFinite(chatId)) {
+    return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
+  }
+
+  // игра
+  const gr = await q(`SELECT id, starts_at, location, video_url FROM games WHERE id=$1 LIMIT 1`, [game_id]);
+  const g = gr.rows?.[0];
+  if (!g) return res.status(404).json({ ok: false, reason: "game_not_found" });
+
+  // видео берём либо из body (если админ ещё не сохранил), либо из БД
+  const videoUrl = String(req.body?.video_url || g.video_url || "").trim();
+  if (!videoUrl) return res.status(400).json({ ok: false, reason: "video_url_empty" });
+
+  // кол-во комментариев
+  const cr = await q(`SELECT COUNT(*)::int AS cnt FROM game_comments WHERE game_id=$1`, [game_id]);
+  const cnt = Number(cr.rows?.[0]?.cnt ?? 0);
+
+  // username бота (лучше брать из getMe, чтобы не зависеть от env)
+  let botUsername = String(process.env.BOT_USERNAME || "").trim();
+  if (!botUsername) {
+    try {
+      const meBot = await bot.api.getMe();
+      botUsername = meBot.username || "";
+    } catch {}
+  }
+
+  const appLink = botUsername
+    ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(`game_${game_id}`)}`
+    : null;
+
+  const discussLink = botUsername
+    ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(`game_${game_id}_comments`)}`
+    : null;
+
+  const when = formatWhenForGame(g.starts_at);
+
+  const text =
+    `<b>🎬 Добавлено видео к игре</b>\n` +
+    `📅 <code>${escapeHtml(when)}</code>\n` +
+    `📍 <b>${escapeHtml(g.location || "—")}</b>\n\n` +
+    `Ссылка на видео (копировать):\n<code>${escapeHtml(videoUrl)}</code>\n` +
+    (appLink ? `\nСсылка на игру (копировать):\n<code>${escapeHtml(appLink)}</code>\n` : "");
+
+  const kb = new InlineKeyboard()
+    .url("▶️ Смотреть видео", videoUrl);
+
+  if (discussLink) {
+    kb.row().url(cnt > 0 ? `💬 Обсудить (${cnt})` : "💬 Обсудить", discussLink);
+  } else if (appLink) {
+    kb.row().url("🏒 Открыть игру", appLink);
+  }
+
+  const sent = await bot.api.sendMessage(chatId, text, {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: kb,
+  });
+
+  try {
+    await logBotMessage({
+      chat_id: chatId,
+      message_id: sent.message_id,
+      kind: "video",
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      reply_markup: typeof replyMarkupToJson === "function" ? replyMarkupToJson(kb) : null,
+      meta: { game_id, video_url: videoUrl, comments_count: cnt },
+      sent_by_tg_id: user.id,
+    });
+  } catch {}
+
+  return res.json({ ok: true, message_id: sent.message_id });
+});
 
 // POST /api/admin/announce/bot-profile
 app.post("/api/admin/announce/bot-profile", async (req, res) => {
