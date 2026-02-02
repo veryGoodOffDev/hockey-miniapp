@@ -3800,6 +3800,7 @@ app.post("/api/admin/teams/send", async (req, res) => {
 
 // POST /api/admin/games/video/send
 app.post("/api/admin/games/video/send", async (req, res) => {
+  const silent = !!req.body?.silent;
   const user = requireWebAppAuth(req, res);
   if (!user) return;
 
@@ -3875,6 +3876,7 @@ app.post("/api/admin/games/video/send", async (req, res) => {
   const sent = await bot.api.sendMessage(chatId, text, {
     parse_mode: "HTML",
     disable_web_page_preview: true,
+    disable_notification: silent,
     reply_markup: kb,
   });
 
