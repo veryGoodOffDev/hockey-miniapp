@@ -182,6 +182,14 @@ function askConfirm(message) {
     setInfoText(game.info_text || "");
   }, [isOpen, game?.id, game?.notice_text, game?.info_text]);
 
+  useEffect(() => {
+  if (!guestFormOpen) return;
+  const prev = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  return () => { document.body.style.overflow = prev; };
+}, [guestFormOpen]);
+
+
 //   useEffect(() => {
 //   if (!isOpen || !game) return;
 
@@ -1356,98 +1364,138 @@ async function setAttend(pOrId, nextStatus) {
           )}
 
           {guestFormOpen && (
-            <div className="card" style={{ marginTop: 10 }}>
-              <div className="rowBetween">
-                <div style={{ fontWeight: 900 }}>{guestEditingId ? "Редактировать гостя" : "Добавить гостя"}</div>
-                <button className="btn secondary" onClick={() => setGuestFormOpen(false)}>
-                  Закрыть
-                </button>
-              </div>
+                            <div
+                              role="dialog"
+                              aria-modal="true"
+                              onClick={() => setGuestFormOpen(false)}
+                              style={{
+                                position: "fixed",
+                                inset: 0,
+                                zIndex: 2000,
+                                background: "rgba(0,0,0,0.45)",
+                                padding: 14,
+                                display: "flex",
+                                alignItems: "flex-end",   // на мобиле удобно снизу
+                                justifyContent: "center",
+                              }}
+                            >
+                              <div
+                                className="card"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  width: "100%",
+                                  maxWidth: 720,
+                                  maxHeight: "85vh",
+                                  overflow: "auto",
+                                  margin: 0,
+                                }}
+                              >
+                                <div className="rowBetween">
+                                  <div style={{ fontWeight: 900 }}>
+                                    {guestEditingId ? "Редактировать гостя" : "Добавить гостя"}
+                                  </div>
+                                  <button className="btn secondary" type="button" onClick={() => setGuestFormOpen(false)}>
+                                    Закрыть
+                                  </button>
+                                </div>
 
-              <div className="guestFormGrid" style={{ marginTop: 10 }}>
-                <div className="full">
-                  <label>Имя гостя</label>
-                  <input
-                    className="input"
-                    value={guestDraft.display_name}
-                    onChange={(e) => setGuestDraft((d) => ({ ...d, display_name: e.target.value }))}
-                    placeholder="Например: Саша (гость)"
-                  />
-                </div>
+                                <div className="guestFormGrid" style={{ marginTop: 10 }}>
+                                  <div className="full">
+                                    <label>Имя гостя</label>
+                                    <input
+                                      className="input"
+                                      value={guestDraft.display_name}
+                                      onChange={(e) => setGuestDraft((d) => ({ ...d, display_name: e.target.value }))}
+                                      placeholder="Например: Саша (гость)"
+                                    />
+                                  </div>
 
-                <div>
-                  <label>Номер</label>
-                  <input
-                    className="input"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder="0–99"
-                    value={guestDraft.jersey_number}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^\d]/g, "").slice(0, 2);
-                      setGuestDraft((d) => ({ ...d, jersey_number: v }));
-                    }}
-                  />
-                </div>
+                                  <div>
+                                    <label>Номер</label>
+                                    <input
+                                      className="input"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      placeholder="0–99"
+                                      value={guestDraft.jersey_number}
+                                      onChange={(e) => {
+                                        const v = e.target.value.replace(/[^\d]/g, "").slice(0, 2);
+                                        setGuestDraft((d) => ({ ...d, jersey_number: v }));
+                                      }}
+                                    />
+                                  </div>
 
-                <div>
-                  <label>Позиция</label>
-                  <select className="input" value={guestDraft.position} onChange={(e) => setGuestDraft((d) => ({ ...d, position: e.target.value }))}>
-                    <option value="F">F (нападающий)</option>
-                    <option value="D">D (защитник)</option>
-                    <option value="G">G (вратарь)</option>
-                  </select>
-                </div>
+                                  <div>
+                                    <label>Позиция</label>
+                                    <select
+                                      className="input"
+                                      value={guestDraft.position}
+                                      onChange={(e) => setGuestDraft((d) => ({ ...d, position: e.target.value }))}
+                                    >
+                                      <option value="F">F (нападающий)</option>
+                                      <option value="D">D (защитник)</option>
+                                      <option value="G">G (вратарь)</option>
+                                    </select>
+                                  </div>
 
-                <div className="full">
-                  <label>Статус на игру</label>
-                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                    <button className={guestDraft.status === "yes" ? "btn" : "btn secondary"} onClick={() => setGuestDraft((d) => ({ ...d, status: "yes" }))}>
-                      ✅ Будет
-                    </button>
-                    <button className={guestDraft.status === "maybe" ? "btn" : "btn secondary"} onClick={() => setGuestDraft((d) => ({ ...d, status: "maybe" }))}>
-                      ❓ Под вопросом
-                    </button>
-                    <button className={guestDraft.status === "no" ? "btn" : "btn secondary"} onClick={() => setGuestDraft((d) => ({ ...d, status: "no" }))}>
-                      ❌ Не будет
-                    </button>
-                  </div>
-                </div>
+                                  <div className="full">
+                                    <label>Статус на игру</label>
+                                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                                      <button type="button" className={guestDraft.status === "yes" ? "btn" : "btn secondary"} onClick={() => setGuestDraft((d) => ({ ...d, status: "yes" }))}>
+                                        ✅ Будет
+                                      </button>
+                                      <button type="button" className={guestDraft.status === "maybe" ? "btn" : "btn secondary"} onClick={() => setGuestDraft((d) => ({ ...d, status: "maybe" }))}>
+                                        ❓ Под вопросом
+                                      </button>
+                                      <button type="button" className={guestDraft.status === "no" ? "btn" : "btn secondary"} onClick={() => setGuestDraft((d) => ({ ...d, status: "no" }))}>
+                                        ❌ Не будет
+                                      </button>
+                                    </div>
+                                  </div>
 
-                <div className="row full" style={{ gap: 10, flexWrap: "wrap" }}>
-                  {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
-                    <div key={k} style={{ flex: 1, minWidth: 130 }}>
-                      <label>{k}</label>
-                      <input className="input" type="number" min={1} max={10} value={guestDraft[k]} onChange={(e) => setGuestDraft((d) => ({ ...d, [k]: Number(e.target.value || 5) }))} />
-                    </div>
-                  ))}
-                </div>
+                                  <div className="row full" style={{ gap: 10, flexWrap: "wrap" }}>
+                                    {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
+                                      <div key={k} style={{ flex: 1, minWidth: 130 }}>
+                                        <label>{k}</label>
+                                        <input
+                                          className="input"
+                                          type="number"
+                                          min={1}
+                                          max={10}
+                                          value={guestDraft[k]}
+                                          onChange={(e) => setGuestDraft((d) => ({ ...d, [k]: Number(e.target.value || 5) }))}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
 
-                <div className="full">
-                  <label>Заметки</label>
-                  <textarea className="input" rows={2} value={guestDraft.notes} onChange={(e) => setGuestDraft((d) => ({ ...d, notes: e.target.value }))} />
-                </div>
+                                  <div className="full">
+                                    <label>Заметки</label>
+                                    <textarea className="input" rows={2} value={guestDraft.notes} onChange={(e) => setGuestDraft((d) => ({ ...d, notes: e.target.value }))} />
+                                  </div>
 
-                <div className="row full" style={{ marginTop: 6, gap: 8, flexWrap: "wrap" }}>
-                  <button className="btn" onClick={saveGuest}>
-                    {guestEditingId ? "Сохранить изменения" : "Добавить гостя"}
-                  </button>
+                                  <div className="row full" style={{ marginTop: 6, gap: 8, flexWrap: "wrap" }}>
+                                    <button className="btn" type="button" onClick={saveGuest}>
+                                      {guestEditingId ? "Сохранить изменения" : "Добавить гостя"}
+                                    </button>
 
-                  {guestEditingId && (
-                    <button className="btn secondary" onClick={() => { setGuestEditingId(null); setGuestDraft({ ...GUEST_DEFAULT }); }}>
-                      Очистить
-                    </button>
-                  )}
+                                    {guestEditingId && (
+                                      <button className="btn secondary" type="button" onClick={() => { setGuestEditingId(null); setGuestDraft({ ...GUEST_DEFAULT }); }}>
+                                        Очистить
+                                      </button>
+                                    )}
 
-                  {guestEditingId && (
-                    <button className="btn secondary" onClick={() => deleteGuest(guestEditingId)}>
-                      Удалить гостя
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+                                    {guestEditingId && (
+                                      <button className="btn secondary" type="button" onClick={() => deleteGuest(guestEditingId)}>
+                                        Удалить гостя
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
         </div>
       </Sheet>
 
