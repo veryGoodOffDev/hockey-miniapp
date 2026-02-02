@@ -951,7 +951,6 @@ async function setAttend(pOrId, nextStatus) {
           display:flex; align-items:center; justify-content:space-between;
           gap:10px; padding:10px 12px;
           border:1px solid var(--border);
-          border-radius:999px;
           background: var(--card-bg);
           margin-top:8px;
         }
