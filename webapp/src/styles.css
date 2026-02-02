@@ -1115,6 +1115,23 @@ textarea:focus{
   background: color-mix(in srgb, var(--tg-btn) 85%, black);
 }
 
+/* dark theme overrides for icon segmented buttons (admin attendance) */
+:root[data-tg="dark"] .segBtn.segIcon{
+  background: color-mix(in srgb, var(--tg-text) 14%, transparent);
+  border-color: color-mix(in srgb, var(--tg-text) 32%, transparent);
+  color: var(--tg-text);
+}
+
+:root[data-tg="dark"] .segBtn.segIcon.on{
+  background: color-mix(in srgb, var(--tg-btn) 88%, black);
+  border-color: color-mix(in srgb, var(--tg-btn) 72%, white);
+  color: var(--tg-btn-text);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tg-btn) 28%, transparent),
+    0 10px 22px rgba(0,0,0,35);
+}
+
+
 .segBtn { color: var(--tg-text); }
 .segBtn.active { color: var(--tg-btn-text); }
 

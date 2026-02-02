@@ -1869,7 +1869,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                         aria-label="Был"
                         aria-pressed={st === "yes"}
                       >
-                        👍
+                        ✅
                       </button>
 
                       <button
@@ -1880,7 +1880,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                         aria-label="Не был"
                         aria-pressed={st === "no"}
                       >
-                        👎
+                        ❌
                       </button>
 
                       <button
