@@ -386,6 +386,9 @@ const [sheetPlayer, setSheetPlayer] = useState(null);
 
 const [createGeoPickOpen, setCreateGeoPickOpen] = useState(false);
 
+const [videoNotifySilent, setVideoNotifySilent] = useState(false);
+
+
 function openPlayerSheet(p) {
   if (!p) return;
   setSheetPlayer(p);
@@ -805,6 +808,25 @@ async function saveGame() {
     await onChanged?.({ label: "✅ Игра сохранена — обновляю приложение…", gameId: gameDraft.id });
   }, { successText: "✅ Игра сохранена" });
 }
+
+async function sendVideoNotify() {
+  if (!gameDraft?.id) return;
+
+  const url = String(gameDraft.video_url || "").trim();
+  if (!url) {
+    alert("❌ Ссылка на видео пустая");
+    return;
+  }
+
+  await runAdminOp("Отправляю уведомление о видео…", async () => {
+    await apiPost("/api/admin/games/video/send", {
+      game_id: gameDraft.id,
+      video_url: url,              // чтобы можно было отправить даже до сохранения
+      silent: videoNotifySilent,   // ✅ галочка
+    });
+  }, { successText: "✅ Отправлено в чат" });
+}
+
 
 async function sendVideoToChat() {
   if (!gameDraft) return;
@@ -1688,16 +1710,27 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 <div className="small" style={{ opacity: 0.8 }}>
                   Оставь пустым и нажми “Сохранить” — ссылка удалится
                 </div>
-                <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                <div className="row" style={{ marginTop: 10, gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <label className="row" style={{ gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={videoNotifySilent}
+                    onChange={(e) => setVideoNotifySilent(e.target.checked)}
+                  />
+                  <span className="small" style={{ opacity: 0.9 }}>Отправить без звука</span>
+                </label>
+
                 <button
-                  className="btn secondary"
-                  disabled={opBusy || !String(gameDraft.video_url || "").trim()}
-                  onClick={sendVideoToChat}
-                  title="Отправить в командный чат сообщение о добавленном видео"
+                  className="btn"
+                  type="button"
+                  onClick={sendVideoNotify}
+                  disabled={!String(gameDraft.video_url || "").trim()}
+                  title="Отправить сообщение в командный чат"
                 >
-                  📣 Отправить в чат
+                  🎬 Отправить в чат
                 </button>
               </div>
+
 
               </>
             )}
@@ -1829,23 +1862,38 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                         )}
 
                         <button
-                          className={st === "yes" ? "segBtn on" : "segBtn"}
-                          onClick={() => setAttend(p.tg_id, "yes")}
-                        >
-                          ✅ Был
-                        </button>
-                        <button
-                          className={st === "no" ? "segBtn on" : "segBtn"}
-                          onClick={() => setAttend(p.tg_id, "no")}
-                        >
-                          ❌ Не был
-                        </button>
-                        <button
-                          className={st === "maybe" ? "segBtn on" : "segBtn"}
-                          onClick={() => setAttend(p.tg_id, "maybe")}
-                        >
-                          ⭕ Не отмечено
-                        </button>
+                        className={`segBtn segIcon ${st === "yes" ? "on" : ""}`}
+                        onClick={() => setAttend(p.tg_id, "yes")}
+                        type="button"
+                        title="Был"
+                        aria-label="Был"
+                        aria-pressed={st === "yes"}
+                      >
+                        👍
+                      </button>
+
+                      <button
+                        className={`segBtn segIcon ${st === "no" ? "on" : ""}`}
+                        onClick={() => setAttend(p.tg_id, "no")}
+                        type="button"
+                        title="Не был"
+                        aria-label="Не был"
+                        aria-pressed={st === "no"}
+                      >
+                        👎
+                      </button>
+
+                      <button
+                        className={`segBtn segIcon ${st === "maybe" ? "on" : ""}`}
+                        onClick={() => setAttend(p.tg_id, "maybe")}
+                        type="button"
+                        title="Не отмечено"
+                        aria-label="Не отмечено"
+                        aria-pressed={st === "maybe"}
+                      >
+                        ❓
+                      </button>
+
                       </div>
                     </div>
                   );

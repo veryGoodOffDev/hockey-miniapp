@@ -1057,6 +1057,38 @@ textarea:focus{
   flex-wrap:wrap;
 }
 
+
+.segBtn.segIcon{
+  width: 44px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--muted-bg);
+  color: var(--tg-text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .05s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
+}
+
+.segBtn.segIcon:active { transform: scale(0.98); }
+
+.segBtn.segIcon.on{
+  background: var(--tg-btn);
+  color: var(--tg-btn-text);
+  border-color: color-mix(in srgb, var(--tg-btn) 65%, var(--border));
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+}
+
+.segBtn.segIcon:focus-visible{
+  outline: 2px solid color-mix(in srgb, var(--tg-btn) 70%, transparent);
+  outline-offset: 2px;
+}
+
+
 .segBtn{
   flex: 1 1 120px;
   border: 1px solid var(--border);
