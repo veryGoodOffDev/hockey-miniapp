@@ -1030,7 +1030,7 @@ async function setAttend(pOrId, nextStatus) {
                         </div>
                       </div>
 
-                      <div className="segRow" role="radiogroup" aria-label="Посещаемость">
+                      <div className="segRow segRow--icons" role="radiogroup" aria-label="Посещаемость">
                         {tokenForId === p.tg_id && tokenUrl && (
                           <div className="card" style={{ marginTop: 10 }}>
                             <div className="small" style={{ opacity: 0.85, marginBottom: 6 }}>

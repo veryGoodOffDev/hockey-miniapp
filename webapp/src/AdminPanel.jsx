@@ -1147,20 +1147,6 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
   return (
     <div className="card">
       <style>{`
-        .segRow{ display:flex; gap:8px; margin-top:10px; }
-        .segBtn{
-          flex:1;
-          border:1px solid var(--border);
-          background: transparent;
-          padding:10px 12px;
-          border-radius:999px;
-          font-weight:900;
-          cursor:pointer;
-        }
-        .segBtn.active{
-          background: color-mix(in srgb, var(--tg-text) 10%, transparent);
-        }
-
         .listItem{
           padding:12px;
           border:1px solid var(--border);

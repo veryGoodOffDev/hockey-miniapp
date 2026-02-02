@@ -1135,6 +1135,14 @@ textarea:focus{
 .segBtn { color: var(--tg-text); }
 .segBtn.active { color: var(--tg-btn-text); }
 
+.segRow--icons{
+  flex-wrap: nowrap;
+}
+.segRow--icons .segBtn.segIcon{
+  width: auto;               /* перебиваем width:44px */
+  flex: 1 1 0;               /* ✅ 3 равные кнопки */
+  min-width: 44px;           /* чтобы иконка не сжалась в кашу */
+}
 
 .gameListItem.isNext{
   box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 10px 30px rgba(0,0,0,.18);
