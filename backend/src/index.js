@@ -3854,17 +3854,23 @@ app.post("/api/admin/games/video/send", async (req, res) => {
     `<b>🎬 Добавлено видео к игре</b>\n` +
     `📅 <code>${escapeHtml(when)}</code>\n` +
     `📍 <b>${escapeHtml(g.location || "—")}</b>\n\n` +
-    `Ссылка на видео (копировать):\n<code>${escapeHtml(videoUrl)}</code>\n` +
-    (appLink ? `\nСсылка на игру (копировать):\n<code>${escapeHtml(appLink)}</code>\n` : "");
+    `Ссылка на видео:\n<pre><code>${escapeHtml(videoUrl)}</code></pre>`;
 
-  const kb = new InlineKeyboard()
-    .url("▶️ Смотреть видео", videoUrl);
 
-  if (discussLink) {
-    kb.row().url(cnt > 0 ? `💬 Обсудить (${cnt})` : "💬 Обсудить", discussLink);
-  } else if (appLink) {
-    kb.row().url("🏒 Открыть игру", appLink);
-  }
+    const kb = new InlineKeyboard();
+
+    // Если твоя версия grammY поддерживает copyText — будет прям кнопка копирования
+    if (typeof kb.copyText === "function") {
+      kb.copyText("📋 Скопировать ссылку", videoUrl).row();
+    }
+
+    kb.url("▶️ Смотреть игру", videoUrl);
+
+    if (discussLink) {
+      kb.url(cnt > 0 ? `💬 Обсудить (${cnt})` : "💬 Обсудить", discussLink);
+    } else if (appLink) {
+      kb.url("🏒 Открыть игру", appLink);
+    }
 
   const sent = await bot.api.sendMessage(chatId, text, {
     parse_mode: "HTML",

@@ -1094,6 +1094,44 @@ function clipText(s, max = 70) {
       }
     };
 
+    const readStartParam = () => {
+  const rawA = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "").trim();
+  const rawB = String(new URLSearchParams(window.location.search).get("tgWebAppStartParam") || "").trim();
+  const raw = rawA || rawB || "";
+  try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
+};
+
+    const sp = readStartParam();
+
+    // заранее решаем, какую игру открыть (если пришли из чата)
+    let forceGameId = null;
+
+    if (sp) {
+      let m = sp.match(/^game_(\d+)(?:_(comments))?$/);
+      if (m) {
+        const gid = Number(m[1]);
+        const focus = m[2] ? "comments" : null;
+        if (Number.isFinite(gid) && gid > 0) {
+          forceGameId = gid;
+          setTab("game");
+          setGameView("detail");
+          setSelectedGameId(gid);
+          setDetailFocus(focus);
+        }
+      } else {
+        m = sp.match(/^teams_(\d+)$/);
+        if (m) {
+          const gid = Number(m[1]);
+          if (Number.isFinite(gid) && gid > 0) {
+            forceGameId = gid;
+            setSelectedGameId(gid);
+            setTab("teams");
+            setTeamsBack?.({ tab: "game", gameView: "detail" });
+          }
+        }
+      }
+    }
+
     (async () => {
       try {
         setLoading(true);
@@ -1101,7 +1139,7 @@ function clipText(s, max = 70) {
         tg?.expand?.();
         applyTheme();
         tg?.onEvent?.("themeChanged", applyTheme);
-        await refreshAll();
+        await refreshAll(forceGameId);
       } finally {
         setLoading(false);
       }
@@ -1111,59 +1149,59 @@ function clipText(s, max = 70) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-useEffect(() => {
-  const raw = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "");
-  const sp = (() => {
-    try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
-  })();
+// useEffect(() => {
+//   const raw = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "");
+//   const sp = (() => {
+//     try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
+//   })();
 
-  if (!sp) return;
+//   if (!sp) return;
 
-  // 1) teams_<id>
-  let m = sp.match(/^teams_(\d+)$/);
-  if (m) {
-    const gid = Number(m[1]);
-    if (!Number.isFinite(gid) || gid <= 0) return;
+//   // 1) teams_<id>
+//   let m = sp.match(/^teams_(\d+)$/);
+//   if (m) {
+//     const gid = Number(m[1]);
+//     if (!Number.isFinite(gid) || gid <= 0) return;
 
-    setSelectedGameId(gid);
-    setTab("teams");
-    setTeamsBack?.({ tab: "game", gameView: "detail" });
+//     setSelectedGameId(gid);
+//     setTab("teams");
+//     setTeamsBack?.({ tab: "game", gameView: "detail" });
 
-    (async () => {
-      setDetailLoading(true);
-      try {
-        await Promise.all([
-          refreshUpcomingGamesOnly(),
-          refreshGameOnly(gid),
-        ]);
-      } finally {
-        setDetailLoading(false);
-      }
-    })();
+//     (async () => {
+//       setDetailLoading(true);
+//       try {
+//         await Promise.all([
+//           refreshUpcomingGamesOnly(),
+//           refreshGameOnly(gid),
+//         ]);
+//       } finally {
+//         setDetailLoading(false);
+//       }
+//     })();
 
-    return;
-  }
+//     return;
+//   }
 
-  // 2) game_<id> or game_<id>_comments
-  m = sp.match(/^game_(\d+)(?:_(comments))?$/);
-  if (m) {
-    const gid = Number(m[1]);
-    const focus = m[2] ? "comments" : null;
-    if (!Number.isFinite(gid) || gid <= 0) return;
+//   // 2) game_<id> or game_<id>_comments
+//   m = sp.match(/^game_(\d+)(?:_(comments))?$/);
+//   if (m) {
+//     const gid = Number(m[1]);
+//     const focus = m[2] ? "comments" : null;
+//     if (!Number.isFinite(gid) || gid <= 0) return;
 
-    openGameDetail(gid, focus);
-    return;
-  }
+//     openGameDetail(gid, focus);
+//     return;
+//   }
 
-  // 3) просто число: "485" (у тебя reminder так делает)
-  if (/^\d+$/.test(sp)) {
-    const gid = Number(sp);
-    if (!Number.isFinite(gid) || gid <= 0) return;
+//   // 3) просто число: "485" (у тебя reminder так делает)
+//   if (/^\d+$/.test(sp)) {
+//     const gid = Number(sp);
+//     if (!Number.isFinite(gid) || gid <= 0) return;
 
-    openGameDetail(gid, null);
-    return;
-  }
-}, []);
+//     openGameDetail(gid, null);
+//     return;
+//   }
+// }, []);
 
 
   useEffect(() => {
