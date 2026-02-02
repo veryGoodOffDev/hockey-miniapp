@@ -40,6 +40,58 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_message_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_pin BOOLEAN NOT NULL DEFAULT TRUE;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS pinned_comment_id BIGINT;`);
+
+    /** ===================== GAME REMINDERS (MULTI) ===================== */
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS game_reminders (
+      id BIGSERIAL PRIMARY KEY,
+      game_id INT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      remind_at TIMESTAMPTZ NOT NULL,
+      pin BOOLEAN NOT NULL DEFAULT TRUE,
+
+      sent_at TIMESTAMPTZ,
+      message_id BIGINT,
+
+      attempts INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+
+      created_by BIGINT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_game_reminders_game_id ON game_reminders(game_id);`);
+
+  await q(`
+    CREATE INDEX IF NOT EXISTS idx_game_reminders_due
+    ON game_reminders (remind_at) INCLUDE (id, game_id)
+    WHERE enabled = TRUE AND sent_at IS NULL;
+  `);
+
+  // Авто-миграция старого одиночного напоминания из games.* в game_reminders
+  // (idempotent: вставляем только если для game_id ещё нет напоминаний)
+  await q(`
+    INSERT INTO game_reminders (game_id, enabled, remind_at, sent_at, message_id, pin, created_by)
+    SELECT
+      g.id,
+      COALESCE(g.reminder_enabled, FALSE),
+      g.reminder_at,
+      g.reminder_sent_at,
+      g.reminder_message_id,
+      COALESCE(g.reminder_pin, TRUE),
+      NULL
+    FROM games g
+    WHERE g.reminder_at IS NOT NULL
+      AND COALESCE(g.reminder_enabled, FALSE) = TRUE
+      AND NOT EXISTS (
+        SELECT 1 FROM game_reminders r WHERE r.game_id = g.id
+      );
+  `);
+
     // ===== Postgame discuss message (в командный чат) =====
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_sent_at TIMESTAMPTZ;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_message_id BIGINT;`);
@@ -412,5 +464,6 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
 
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_comment ON game_comment_reactions(comment_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_user ON game_comment_reactions(user_tg_id);`);
+
 
 }

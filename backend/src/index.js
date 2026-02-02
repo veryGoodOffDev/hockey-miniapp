@@ -3085,7 +3085,6 @@ app.post("/api/internal/reminders/run", async (req, res) => {
   let locked = false;
 
   try {
-    // ✅ анти-дубли: не даём двум запускам отправлять одновременно
     const lockRes = await q(`SELECT pg_try_advisory_lock($1) AS got`, [777001]);
     locked = !!lockRes.rows?.[0]?.got;
     if (!locked) {
@@ -3102,17 +3101,28 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       return res.json({ ok: false, reason: "notify_chat_id_bad" });
     }
 
-    // ✅ берём всё, что “пора”
     const dueRes = await q(`
-      SELECT *
-      FROM games
-      WHERE status IS DISTINCT FROM 'cancelled'
-        AND reminder_enabled = TRUE
-        AND reminder_at IS NOT NULL
-        AND reminder_at <= NOW()
-        AND reminder_sent_at IS NULL
-      ORDER BY reminder_at ASC
-      LIMIT 3
+      SELECT
+        r.id AS reminder_id,
+        r.game_id,
+        r.enabled,
+        r.remind_at,
+        r.pin,
+        r.sent_at,
+        r.message_id,
+        r.attempts,
+        r.last_error,
+        g.starts_at,
+        g.location,
+        g.status
+      FROM game_reminders r
+      JOIN games g ON g.id = r.game_id
+      WHERE g.status IS DISTINCT FROM 'cancelled'
+        AND r.enabled = TRUE
+        AND r.remind_at <= NOW()
+        AND r.sent_at IS NULL
+      ORDER BY r.remind_at ASC
+      LIMIT 5
     `);
 
     const due = dueRes.rows || [];
@@ -3125,17 +3135,17 @@ app.post("/api/internal/reminders/run", async (req, res) => {
     const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
     let sentCount = 0;
 
-    for (const g of due) {
-      const when = formatWhenForGame(g.starts_at);
+    for (const row of due) {
+      const when = formatWhenForGame(row.starts_at);
 
       const text = `🏒 Напоминание: отметься на игру!
 
 📅 ${when}
-📍 ${g.location || "—"}
+📍 ${row.location || "—"}
 
 Открыть мини-приложение для отметок:`;
 
-      const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(g.id))}`;
+      const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(row.game_id))}`;
       const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
 
       let sent;
@@ -3145,11 +3155,20 @@ app.post("/api/internal/reminders/run", async (req, res) => {
           disable_web_page_preview: true,
         });
       } catch (e) {
-        console.log("[reminder] send failed:", tgErrText?.(e) || e);
-        continue; // не помечаем как отправленное
+        const err = tgErrText?.(e) || String(e);
+        console.log("[reminders] send failed:", err);
+
+        await q(
+          `UPDATE game_reminders
+           SET attempts=attempts+1, last_error=$2, updated_at=NOW()
+           WHERE id=$1`,
+          [row.reminder_id, clip(err, 800)]
+        );
+
+        continue;
       }
 
-      // логируем
+      // логируем в bot_messages
       try {
         await logBotMessage({
           chat_id,
@@ -3159,26 +3178,26 @@ app.post("/api/internal/reminders/run", async (req, res) => {
           parse_mode: null,
           disable_web_page_preview: true,
           reply_markup: typeof replyMarkupToJson === "function" ? replyMarkupToJson(kb) : null,
-          meta: { game_id: g.id, type: "scheduled_reminder" },
+          meta: { game_id: row.game_id, reminder_id: row.reminder_id, type: "scheduled_game_reminder" },
           sent_by_tg_id: null,
         });
       } catch {}
 
       // закрепляем при включённом флаге
-      if (g.reminder_pin) {
+      if (row.pin) {
         try {
           await bot.api.pinChatMessage(chat_id, sent.message_id, { disable_notification: true });
         } catch (e) {
-          console.log("[reminder] pin failed:", tgErrText?.(e) || e);
+          console.log("[reminders] pin failed:", tgErrText?.(e) || e);
         }
       }
 
       // помечаем как отправленное
       await q(
-        `UPDATE games
-         SET reminder_sent_at=NOW(), reminder_message_id=$2, updated_at=NOW()
+        `UPDATE game_reminders
+         SET sent_at=NOW(), message_id=$2, attempts=attempts+1, last_error=NULL, updated_at=NOW()
          WHERE id=$1`,
-        [g.id, sent.message_id]
+        [row.reminder_id, sent.message_id]
       );
 
       sentCount += 1;
@@ -3188,7 +3207,7 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       ok: true,
       checked,
       sent: sentCount,
-      due_ids: due.map((x) => x.id),
+      reminder_ids: due.map((x) => x.reminder_id),
     });
   } catch (e) {
     console.error("reminders.run failed:", e);
@@ -3201,6 +3220,7 @@ app.post("/api/internal/reminders/run", async (req, res) => {
     }
   }
 });
+
 
 app.post("/api/internal/postgame/send", async (req, res) => {
   if (!checkInternalToken(req)) {
@@ -3942,6 +3962,146 @@ app.post("/api/admin/announce/bot-profile", async (req, res) => {
   }
 });
 
+/** ====== ADMIN: game reminders (list CRUD) ====== */
+app.get("/api/admin/games/:id/reminders", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) return res.status(403).json({ ok: false, reason: "not_admin" });
+
+  const gameId = Number(req.params.id);
+  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const r = await q(
+    `SELECT id, game_id, enabled, remind_at, pin, sent_at, message_id, attempts, last_error, created_at, updated_at
+     FROM game_reminders
+     WHERE game_id=$1
+     ORDER BY remind_at ASC`,
+    [gameId]
+  );
+
+  res.json({ ok: true, reminders: r.rows || [] });
+});
+
+app.post("/api/admin/games/:id/reminders", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) return res.status(403).json({ ok: false, reason: "not_admin" });
+
+  const gameId = Number(req.params.id);
+  if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
+
+  const b = req.body || {};
+  const enabled = b.enabled === undefined ? true : !!b.enabled;
+  const pin = b.pin === undefined ? true : !!b.pin;
+
+  if (!b.remind_at) return res.status(400).json({ ok: false, reason: "remind_at_required" });
+
+  const d = new Date(String(b.remind_at));
+  if (!Number.isFinite(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_remind_at" });
+
+  const remindAt = d.toISOString();
+
+  // если включили — remind_at обязателен (и у нас он всегда есть)
+  const ins = await q(
+    `INSERT INTO game_reminders (game_id, enabled, remind_at, pin, created_by, updated_at)
+     VALUES ($1,$2,$3,$4,$5,NOW())
+     RETURNING id, game_id, enabled, remind_at, pin, sent_at, message_id, attempts, last_error, created_at, updated_at`,
+    [gameId, enabled, remindAt, pin, user.id]
+  );
+
+  res.json({ ok: true, reminder: ins.rows?.[0] ?? null });
+});
+
+app.patch("/api/admin/reminders/:rid", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) return res.status(403).json({ ok: false, reason: "not_admin" });
+
+  const rid = Number(req.params.rid);
+  if (!Number.isFinite(rid)) return res.status(400).json({ ok: false, reason: "bad_reminder_id" });
+
+  const curR = await q(
+    `SELECT id, enabled, remind_at, pin, sent_at
+     FROM game_reminders
+     WHERE id=$1`,
+    [rid]
+  );
+  const cur = curR.rows?.[0];
+  if (!cur) return res.status(404).json({ ok: false, reason: "reminder_not_found" });
+
+  const b = req.body || {};
+
+  // вычисляем "следующее" состояние для валидации enabled+remind_at
+  const nextEnabled = b.enabled === undefined ? !!cur.enabled : !!b.enabled;
+
+  let nextRemindAt = cur.remind_at;
+  if ("remind_at" in b) {
+    if (!b.remind_at) nextRemindAt = null;
+    else {
+      const d = new Date(String(b.remind_at));
+      if (!Number.isFinite(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_remind_at" });
+      nextRemindAt = d.toISOString();
+    }
+  }
+
+  if (nextEnabled && !nextRemindAt) {
+    return res.status(400).json({ ok: false, reason: "remind_at_required" });
+  }
+
+  const resetSent = b.reset_sent === true;
+
+  const sets = [];
+  const params = [rid];
+
+  const add = (col, val) => {
+    params.push(val);
+    sets.push(`${col}=$${params.length}`);
+  };
+
+  if (b.enabled !== undefined) add("enabled", !!b.enabled);
+  if (b.pin !== undefined) add("pin", !!b.pin);
+  if ("remind_at" in b) add("remind_at", nextRemindAt);
+
+  if (resetSent) {
+    sets.push(`sent_at=NULL`);
+    sets.push(`message_id=NULL`);
+    sets.push(`last_error=NULL`);
+  }
+
+  sets.push(`updated_at=NOW()`);
+
+  if (!sets.length) return res.json({ ok: true, reminder: cur });
+
+  const upd = await q(
+    `UPDATE game_reminders
+     SET ${sets.join(", ")}
+     WHERE id=$1
+     RETURNING id, game_id, enabled, remind_at, pin, sent_at, message_id, attempts, last_error, created_at, updated_at`,
+    params
+  );
+
+  res.json({ ok: true, reminder: upd.rows?.[0] ?? null });
+});
+
+app.delete("/api/admin/reminders/:rid", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) return res.status(403).json({ ok: false, reason: "not_admin" });
+
+  const rid = Number(req.params.rid);
+  if (!Number.isFinite(rid)) return res.status(400).json({ ok: false, reason: "bad_reminder_id" });
+
+  await q(`DELETE FROM game_reminders WHERE id=$1`, [rid]);
+  res.json({ ok: true });
+});
 
 /** ====== ADMIN: SET GAME REMINDER ====== */
 app.patch("/api/admin/games/reminder", async (req, res) => {

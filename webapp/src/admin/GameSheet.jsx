@@ -23,10 +23,37 @@ export default function GameSheet({
   const [infoSaving, setInfoSaving] = useState(false);
 
   // reminder
-const [remEnabled, setRemEnabled] = useState(false);
-const [remAt, setRemAt] = useState("");
-const [remPin, setRemPin] = useState(true);
-const [remSaving, setRemSaving] = useState(false);
+// reminders (list)
+const [reminders, setReminders] = useState([]);
+const [remLoading, setRemLoading] = useState(false);
+
+function isoToLocalDT(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
+function localDTToIso(local) {
+  if (!local) return null;
+  const [date, time] = String(local).split("T");
+  if (!date || !time) return null;
+  return toIsoFromLocal(date, time);
+}
+
+function keyOfRem(r) {
+  return r.id ?? r._key;
+}
+
+function updateReminderRow(row, patch) {
+  const k = keyOfRem(row);
+  setReminders((prev) => prev.map((x) => (keyOfRem(x) === k ? { ...x, ...patch } : x)));
+}
+
 
 
   // guests
@@ -145,6 +172,7 @@ function askConfirm(message) {
     // загрузки
     loadGuestsForGame(game.id);
     loadAttendanceForGame(game.id);
+    loadRemindersForGame(game.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, game?.id]);
 
@@ -154,30 +182,30 @@ function askConfirm(message) {
     setInfoText(game.info_text || "");
   }, [isOpen, game?.id, game?.notice_text, game?.info_text]);
 
-  useEffect(() => {
-  if (!isOpen || !game) return;
+//   useEffect(() => {
+//   if (!isOpen || !game) return;
 
-  setRemEnabled(!!game.reminder_enabled);
-  setRemPin(game.reminder_pin !== false);
+//   setRemEnabled(!!game.reminder_enabled);
+//   setRemPin(game.reminder_pin !== false);
 
-  // reminder_at (timestamptz) -> datetime-local
-  if (game.reminder_at) {
-    const d = new Date(game.reminder_at);
-    const pad = (n) => String(n).padStart(2, "0");
-    const local =
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-      `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    setRemAt(local);
-  } else {
-    setRemAt("");
-  }
-}, [
-  isOpen,
-  game?.id,
-  game?.reminder_enabled,
-  game?.reminder_pin,
-  game?.reminder_at,
-]);
+//   // reminder_at (timestamptz) -> datetime-local
+//   if (game.reminder_at) {
+//     const d = new Date(game.reminder_at);
+//     const pad = (n) => String(n).padStart(2, "0");
+//     const local =
+//       `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+//       `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+//     setRemAt(local);
+//   } else {
+//     setRemAt("");
+//   }
+// }, [
+//   isOpen,
+//   game?.id,
+//   game?.reminder_enabled,
+//   game?.reminder_pin,
+//   game?.reminder_at,
+// ]);
 
 function formatWhen(starts_at) {
   const s = new Date(starts_at).toLocaleString("ru-RU", {
@@ -286,6 +314,132 @@ async function saveInfoBlocks() {
     setInfoSaving(false);
   }
 }
+
+async function loadRemindersForGame(gameId) {
+  setRemLoading(true);
+  try {
+    const r = await apiGet(`/api/admin/games/${gameId}/reminders`);
+    if (!r?.ok) throw new Error(r?.reason || "reminders_load_failed");
+
+    const list = (r.reminders || []).map((x) => ({
+      ...x,
+      _key: x.id, // для React key
+      local_at: isoToLocalDT(x.remind_at),
+      __orig: { enabled: !!x.enabled, pin: !!x.pin, remind_at: x.remind_at },
+      saving: false,
+    }));
+
+    setReminders(list);
+  } catch (e) {
+    console.error(e);
+    pushToast("❌ Не удалось загрузить напоминания", "err");
+    setReminders([]);
+  } finally {
+    setRemLoading(false);
+  }
+}
+
+function addReminderRow() {
+  const k = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  setReminders((prev) => [
+    ...prev,
+    {
+      id: null,
+      _key: k,
+      enabled: true,
+      pin: true,
+      remind_at: null,
+      local_at: "",
+      sent_at: null,
+      message_id: null,
+      attempts: 0,
+      last_error: null,
+      __orig: { enabled: true, pin: true, remind_at: null },
+      saving: false,
+    },
+  ]);
+}
+
+async function saveReminderRow(row) {
+  if (row.enabled && !row.local_at) {
+    notify("Укажи дату/время напоминания");
+    return;
+  }
+
+  const remind_at = row.local_at ? localDTToIso(row.local_at) : null;
+  if (row.enabled && !remind_at) {
+    notify("Некорректная дата/время");
+    return;
+  }
+
+  // reset_sent только если уже было отправлено и ты реально меняешь время/вкл
+  const changedTime = remind_at !== row.__orig?.remind_at;
+  const changedEnabled = !!row.enabled !== !!row.__orig?.enabled;
+  const reset_sent = !!row.sent_at && (changedTime || changedEnabled);
+
+  updateReminderRow(row, { saving: true });
+
+  const ok = await runOp("save reminder row", async () => {
+    if (!row.id) {
+      const r = await apiPost(`/api/admin/games/${gameDraft.id}/reminders`, {
+        enabled: !!row.enabled,
+        pin: !!row.pin,
+        remind_at,
+      });
+      if (!r?.ok) throw new Error(r?.reason || "reminder_create_failed");
+    } else {
+      const r = await apiPatch(`/api/admin/reminders/${row.id}`, {
+        enabled: !!row.enabled,
+        pin: !!row.pin,
+        remind_at,
+        reset_sent,
+      });
+      if (!r?.ok) throw new Error(r?.reason || "reminder_update_failed");
+    }
+  });
+
+  updateReminderRow(row, { saving: false });
+
+  if (ok) {
+    pushToast("✅ Напоминание сохранено");
+    await loadRemindersForGame(gameDraft.id);
+  }
+}
+
+async function deleteReminderRow(row) {
+  const confirmed = await askConfirm("Удалить напоминание?");
+  if (!confirmed) return;
+
+  if (!row.id) {
+    setReminders((prev) => prev.filter((x) => keyOfRem(x) !== keyOfRem(row)));
+    return;
+  }
+
+  const ok = await runOp("delete reminder row", async () => {
+    const r = await apiDelete(`/api/admin/reminders/${row.id}`);
+    if (!r?.ok) throw new Error(r?.reason || "reminder_delete_failed");
+  });
+
+  if (ok) {
+    pushToast("🗑️ Удалено");
+    await loadRemindersForGame(gameDraft.id);
+  }
+}
+
+async function resetReminderSent(row) {
+  if (!row?.id) return;
+
+  const ok = await runOp("reset reminder sent", async () => {
+    const r = await apiPatch(`/api/admin/reminders/${row.id}`, { reset_sent: true });
+    if (!r?.ok) throw new Error(r?.reason || "reminder_reset_failed");
+  });
+
+  if (ok) {
+    pushToast("↻ Сброшено");
+    await loadRemindersForGame(gameDraft.id);
+  }
+}
+
 
 
   function close() {
@@ -761,49 +915,105 @@ async function setAttend(pOrId, nextStatus) {
         ) : null}
 
         <div className="card">
-  <div className="card" style={{ marginTop: 12 }}>
-    <h3 style={{ margin: 0 }}>⏰ Напоминание по этой игре</h3>
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="rowBetween">
+              <h3 style={{ margin: 0 }}>⏰ Напоминания по этой игре</h3>
 
-    <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-      <label className="row" style={{ gap: 8, alignItems: "center" }}>
-        <input
-          type="checkbox"
-          checked={remEnabled}
-          onChange={(e) => setRemEnabled(e.target.checked)}
-        />
-        <span>Включено</span>
-      </label>
+              <button
+                className="iconBtn"
+                type="button"
+                title="Добавить напоминание"
+                onClick={addReminderRow}
+                disabled={opBusy}
+              >
+                ➕
+              </button>
+            </div>
 
-      <input
-        className="input"
-        type="datetime-local"
-        value={remAt}
-        onChange={(e) => setRemAt(e.target.value)}
-        style={{ minWidth: 220 }}
-        disabled={!remEnabled}
-      />
+            {remLoading ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>Загрузка…</div>
+            ) : null}
 
-      <label className="row" style={{ gap: 8, alignItems: "center" }}>
-        <input
-          type="checkbox"
-          checked={remPin}
-          onChange={(e) => setRemPin(e.target.checked)}
-          disabled={!remEnabled}
-        />
-        <span>Закрепить</span>
-      </label>
+            {!remLoading && reminders.length === 0 ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+                Пока нет напоминаний
+              </div>
+            ) : null}
 
-      <button className="btn" onClick={saveReminderSettings} disabled={remSaving}>
-        {remSaving ? "…" : "Сохранить"}
-      </button>
-    </div>
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              {reminders.map((r) => (
+                <div
+                  key={keyOfRem(r)}
+                  className="row"
+                  style={{
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    padding: 10,
+                    background: "var(--card-bg)",
+                  }}
+                >
+                  <label className="row" style={{ gap: 8, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!r.enabled}
+                      onChange={(e) => updateReminderRow(r, { enabled: e.target.checked })}
+                    />
+                    <span>Вкл</span>
+                  </label>
 
-    {game.reminder_sent_at ? (
-      <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
-        Уже отправлено: <b>{formatWhen(game.reminder_sent_at)}</b>
-      </div>
-    ) : null}
-  </div>
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    value={r.local_at || ""}
+                    onChange={(e) => updateReminderRow(r, { local_at: e.target.value })}
+                    style={{ minWidth: 220 }}
+                    disabled={!r.enabled}
+                  />
+
+                  <label className="row" style={{ gap: 8, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={r.pin !== false}
+                      onChange={(e) => updateReminderRow(r, { pin: e.target.checked })}
+                      disabled={!r.enabled}
+                    />
+                    <span>Закрепить</span>
+                  </label>
+
+                  <div className="small" style={{ opacity: 0.85 }}>
+                    {r.sent_at ? (
+                      <>✅ Отправлено: <b>{formatWhen(r.sent_at)}</b></>
+                    ) : (
+                      <>⏳ Не отправлено</>
+                    )}
+                    {r.last_error ? (
+                      <div style={{ marginTop: 4, opacity: 0.9 }}>⚠️ {String(r.last_error).slice(0, 140)}</div>
+                    ) : null}
+                  </div>
+
+                  <div className="row" style={{ gap: 8, marginLeft: "auto" }}>
+                    {r.id && r.sent_at ? (
+                      <button className="btn secondary" type="button" onClick={() => resetReminderSent(r)} disabled={r.saving || opBusy}>
+                        ↻ Сбросить
+                      </button>
+                    ) : null}
+
+                    <button className="btn" type="button" onClick={() => saveReminderRow(r)} disabled={r.saving || opBusy}>
+                      {r.saving ? "…" : "Сохранить"}
+                    </button>
+
+                    <button className="iconBtn" type="button" title="Удалить" onClick={() => deleteReminderRow(r)} disabled={r.saving || opBusy}>
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
 
           <div className="rowBetween">
             <div className="small" style={{ opacity: 0.9 }}>
