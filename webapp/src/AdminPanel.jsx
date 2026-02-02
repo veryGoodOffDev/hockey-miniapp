@@ -728,7 +728,7 @@ async function createSeries() {
 
 
 
-function openGameSheet(g) {
+function openGameSheetLegacy(g) {
   // ✅ защита от null/undefined
   if (!g) {
     console.warn("openGameSheet: game is null");
@@ -764,7 +764,7 @@ function openGameSheet(g) {
 }
 
 
-  function closeGameSheet() {
+  function closeGameSheetLegacy() {
     setOpenGameId(null);
     setGameDraft(null);
     setGuestsState({ loading: false, list: [] });
