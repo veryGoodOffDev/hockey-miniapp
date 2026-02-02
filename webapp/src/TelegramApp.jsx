@@ -72,6 +72,9 @@ export default function TelegramApp() {
   const [pastTotal, setPastTotal] = useState(0);
   const [pastOffset, setPastOffset] = useState(0);
   const [pastLoading, setPastLoading] = useState(false);
+  const pastSentinelRef = useRef(null);
+  const pastLoadLockRef = useRef(false);
+
 
   const [pastFrom, setPastFrom] = useState("");
   const [pastTo, setPastTo] = useState("");
@@ -986,6 +989,9 @@ async function refreshAll(forceGameId) {
 }
   async function loadPast(reset = false) {
     try {
+      if (pastLoadLockRef.current) return;
+      pastLoadLockRef.current = true;
+
       setPastLoading(true);
 
       const nextOffset = reset ? 0 : pastOffset;
@@ -1017,9 +1023,40 @@ async function refreshAll(forceGameId) {
     } catch (e) {
       console.error("loadPast failed", e);
     } finally {
+      pastLoadLockRef.current = false;
       setPastLoading(false);
     }
   }
+
+  useEffect(() => {
+  if (!showPast) return;
+  const el = pastSentinelRef.current;
+  if (!el) return;
+
+  const hasMore = pastPage.length < pastTotal;
+  if (!hasMore) return;
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      const hit = entries.some((e) => e.isIntersecting);
+      if (!hit) return;
+
+      if (pastLoadLockRef.current) return;
+      if (pastPage.length >= pastTotal) return;
+
+      loadPast(false);
+    },
+    {
+      root: null,
+      rootMargin: "400px 0px", // начинаем грузить заранее, пока не “упёрся” в низ
+      threshold: 0,
+    }
+  );
+
+  io.observe(el);
+  return () => io.disconnect();
+}, [showPast, pastTotal, pastPage.length, pastFrom, pastTo, pastQ]);
+
 
   function openPhotoModal(p) {
   const src = getAvatarSrc(p);
@@ -2150,18 +2187,6 @@ function openYandexRoute(lat, lon) {
                       Сбросить
                     </button>
                   </div>
-
-                  {pastPage.length < pastTotal && (
-                    <div className="row" style={{ marginTop: 10 }}>
-                      <button
-                        className="btn secondary"
-                        disabled={pastLoading}
-                        onClick={() => loadPast(false)}
-                      >
-                        {pastLoading ? "..." : "Показать ещё 10"}
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -2445,6 +2470,35 @@ function openYandexRoute(lat, lon) {
                         </div>
                       );
                     })}
+                      {showPast ? (
+                        <div style={{ marginTop: 8 }}>
+                          {/* Лоадер снизу при автоподгрузке */}
+                          {pastLoading ? (
+                            <div className="small" style={{ opacity: 0.8, textAlign: "center", padding: "6px 0" }}>
+                              Загружаю…
+                            </div>
+                          ) : null}
+
+                          {/* Кнопка как fallback (если auto-load не сработал/не хочется скроллить) */}
+                          {!pastLoading && pastPage.length < pastTotal ? (
+                            <div className="row" style={{ justifyContent: "center" }}>
+                              <button className="btn secondary" onClick={() => loadPast(false)}>
+                                Показать ещё 10
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {/* Сообщение “больше нет” */}
+                          {!pastLoading && pastTotal > 0 && pastPage.length >= pastTotal ? (
+                            <div className="small" style={{ opacity: 0.7, textAlign: "center", padding: "8px 0" }}>
+                              Игр больше нет.
+                            </div>
+                          ) : null}
+
+                          {/* Sentinel для IntersectionObserver */}
+                          <div ref={pastSentinelRef} style={{ height: 1 }} />
+                        </div>
+                      ) : null}
 
                 </div>
               )}
