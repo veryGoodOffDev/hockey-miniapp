@@ -38,6 +38,9 @@ const [remSaving, setRemSaving] = useState(false);
   // video
   const [videoOpen, setVideoOpen] = useState(false);
 
+  const [videoNotifySilent, setVideoNotifySilent] = useState(false);
+
+
   // attendance
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [attLoading, setAttLoading] = useState(false);
@@ -208,6 +211,24 @@ async function saveReminderSettings() {
   }
 }
 
+async function sendVideoNotify() {
+  if (!gameDraft?.id) return;
+
+  const videoUrl = String(gameDraft.video_url || "").trim();
+  if (!videoUrl) return notify("Ссылка на видео пустая");
+
+  const ok = await runOp("send video notify", async () => {
+    const r = await apiPost("/api/admin/games/video/send", {
+      game_id: gameDraft.id,
+      video_url: videoUrl,
+      silent: !!videoNotifySilent,
+    });
+    if (!r?.ok) throw new Error(r?.reason || "video_send_failed");
+  });
+
+  if (ok) notify("✅ Отправлено в чат");
+}
+
 
 async function saveInfoBlocks() {
   if (!gameDraft?.id) return;
@@ -249,6 +270,7 @@ async function saveInfoBlocks() {
     setGuestEditingId(null);
     setGuestDraft({ ...GUEST_DEFAULT });
     setVideoOpen(false);
+    setVideoNotifySilent(false);
 
     setAttendanceRows([]);
     setAttLoading(false);
@@ -867,6 +889,27 @@ async function saveInfoBlocks() {
               <div className="small" style={{ opacity: 0.8 }}>
                 Оставь пустым и нажми “Сохранить” — ссылка удалится
               </div>
+              <div className="row" style={{ marginTop: 10, gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <label className="row" style={{ gap: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={videoNotifySilent}
+                  onChange={(e) => setVideoNotifySilent(e.target.checked)}
+                />
+                <span className="small" style={{ opacity: 0.9 }}>Отправить без звука</span>
+              </label>
+
+              <button
+                className="btn"
+                type="button"
+                onClick={sendVideoNotify}
+                disabled={!String(gameDraft.video_url || "").trim()}
+                title="Отправить сообщение в командный чат"
+              >
+                🎬 Отправить в чат
+              </button>
+            </div>
+
             </>
           )}
         </div>
@@ -981,15 +1024,38 @@ async function saveInfoBlocks() {
                           </div>
                         )}
 
-                        <button className={st === "yes" ? "segBtn on" : "segBtn"} onClick={() => setAttend(p.tg_id, "yes")}>
-                          ✅ Был
-                        </button>
-                        <button className={st === "no" ? "segBtn on" : "segBtn"} onClick={() => setAttend(p.tg_id, "no")}>
-                          ❌ Не был
-                        </button>
-                        <button className={st === "maybe" ? "segBtn on" : "segBtn"} onClick={() => setAttend(p.tg_id, "maybe")}>
-                          ⭕ Не отмечено
-                        </button>
+                      <button
+                        className={`segBtn segIcon ${st === "yes" ? "on" : ""}`}
+                        onClick={() => setAttend(p.tg_id, "yes")}
+                        type="button"
+                        title="Был"
+                        aria-label="Был"
+                        aria-pressed={st === "yes"}
+                      >
+                        ✅
+                      </button>
+
+                      <button
+                        className={`segBtn segIcon ${st === "no" ? "on" : ""}`}
+                        onClick={() => setAttend(p.tg_id, "no")}
+                        type="button"
+                        title="Не был"
+                        aria-label="Не был"
+                        aria-pressed={st === "no"}
+                      >
+                        ❌
+                      </button>
+
+                      <button
+                        className={`segBtn segIcon ${st === "maybe" ? "on" : ""}`}
+                        onClick={() => setAttend(p.tg_id, "maybe")}
+                        type="button"
+                        title="Не отмечено"
+                        aria-label="Не отмечено"
+                        aria-pressed={st === "maybe"}
+                      >
+                        ❓
+                      </button>
                       </div>
                     </div>
                   );

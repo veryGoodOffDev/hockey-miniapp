@@ -1608,7 +1608,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </div>
       )}
 
-      {/* ====== GAME SHEET ====== */}
+      {/* ====== GAME SHEET ======
       {openGameId && gameDraft && (
         <Sheet title={`Игра #${gameDraft.id}`} onClose={closeGameSheet}>
           <div className="card">
@@ -2038,7 +2038,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             )}
           </div>
         </Sheet>
-      )}
+      )} */}
 
       {/* ====== PLAYER SHEET ====== */}
       {/* {openPlayerId && playerDraft && (
