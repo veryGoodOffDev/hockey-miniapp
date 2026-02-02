@@ -1,5 +1,5 @@
 // src/admin/GameSheet.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Sheet from "./Sheet.jsx";
 import MapPickModal from "./MapPickModal.jsx";
 import { toLocal, toIsoFromLocal, showName, showNum, posLabel, GUEST_DEFAULT } from "./adminUtils.js";
@@ -58,6 +58,29 @@ const [remSaving, setRemSaving] = useState(false);
   // busy
   const [opBusy, setOpBusy] = useState(false);
 
+
+
+  const [toast, setToast] = useState(null); // { text, kind }
+const toastTimerRef = useRef(null);
+
+function pushToast(text, kind = "ok") {
+  setToast({ text, kind });
+  if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  toastTimerRef.current = setTimeout(() => setToast(null), 1800);
+}
+
+function askConfirm(message) {
+  const tg = window.Telegram?.WebApp;
+  if (tg?.showConfirm) {
+    return new Promise((resolve) => {
+      try { tg.showConfirm(String(message || ""), (ok) => resolve(!!ok)); }
+      catch { resolve(false); }
+    });
+  }
+  return Promise.resolve(window.confirm(String(message || "")));
+}
+
+
   const isOpen = !!open && !!game;
 
   function notify(text) {
@@ -73,7 +96,9 @@ const [remSaving, setRemSaving] = useState(false);
       return true;
     } catch (e) {
       console.error(label, e);
-      notify("❌ Ошибка");
+      pushToast("❌ Ошибка", "err");
+      notify("❌ Ошибка"); // можешь потом убрать, если не хочешь модалки
+
       return false;
     } finally {
       setOpBusy(false);
@@ -282,6 +307,9 @@ async function saveInfoBlocks() {
     setTokenForId(null);
 
     setGeoPickOpen(false);
+    setToast(null);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = null;
 
     onClose?.();
   }
@@ -298,16 +326,47 @@ async function saveInfoBlocks() {
     }
   }
 
-  async function setAttend(tg_id, status) {
-    if (!gameDraft?.id) return;
+function attendLabel(st) {
+  if (st === "yes") return "✅ был";
+  if (st === "no") return "❌ не был";
+  return "⭕ не отмечено";
+}
 
-    await runOp("save attend", async () => {
-      await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id, status });
+async function setAttend(pOrId, nextStatus) {
+  if (!gameDraft?.id) return;
 
-      setAttendanceRows((prev) => prev.map((x) => (String(x.tg_id) === String(tg_id) ? { ...x, status } : x)));
-      await onChanged?.({ label: "✅ Посещаемость сохранена — обновляю приложение…", gameId: gameDraft.id });
-    });
+  const tg_id = typeof pOrId === "object" ? pOrId.tg_id : pOrId;
+  const row = typeof pOrId === "object"
+    ? pOrId
+    : attendanceRows.find(x => String(x.tg_id) === String(tg_id));
+
+  const cur = (row?.status || "maybe");
+  if (cur === nextStatus) {
+    pushToast(`Уже: ${attendLabel(cur)}`, "warn");
+    return;
   }
+
+  const name = row ? `${showName(row)}${showNum(row) ? ` #${showNum(row)}` : ""}` : `ID ${tg_id}`;
+
+  const ok = await askConfirm(`Изменить статус для ${name} на "${attendLabel(nextStatus)}"?`);
+  if (!ok) return;
+
+  const success = await runOp("save attend", async () => {
+    await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id, status: nextStatus });
+
+    setAttendanceRows((prev) =>
+      prev.map((x) => (String(x.tg_id) === String(tg_id) ? { ...x, status: nextStatus } : x))
+    );
+  });
+
+  if (success) {
+    pushToast(`✅ ${name}: ${attendLabel(nextStatus)}`, "ok");
+    // sheet НЕ закрываем
+    // если нужно обновлять внешние данные — лучше onReload, а не onChanged (чтобы не закрывало)
+    await onReload?.(gameDraft.id);
+  }
+}
+
 
   /** tokens */
   async function createRsvpLink(tg_id) {
@@ -695,6 +754,12 @@ async function saveInfoBlocks() {
       `}</style>
 
       <Sheet title={title} onClose={close}>
+        {toast ? (
+          <div className={`gsToast ${toast.kind}`} role="status" aria-live="polite">
+            {toast.text}
+          </div>
+        ) : null}
+
         <div className="card">
   <div className="card" style={{ marginTop: 12 }}>
     <h3 style={{ margin: 0 }}>⏰ Напоминание по этой игре</h3>
@@ -1026,7 +1091,7 @@ async function saveInfoBlocks() {
 
                       <button
                         className={`segBtn segIcon ${st === "yes" ? "on" : ""}`}
-                        onClick={() => setAttend(p.tg_id, "yes")}
+                        onClick={() => setAttend(p, "yes")}
                         type="button"
                         title="Был"
                         aria-label="Был"
@@ -1037,7 +1102,7 @@ async function saveInfoBlocks() {
 
                       <button
                         className={`segBtn segIcon ${st === "no" ? "on" : ""}`}
-                        onClick={() => setAttend(p.tg_id, "no")}
+                        onClick={() => setAttend(p, "no")}
                         type="button"
                         title="Не был"
                         aria-label="Не был"
@@ -1048,7 +1113,7 @@ async function saveInfoBlocks() {
 
                       <button
                         className={`segBtn segIcon ${st === "maybe" ? "on" : ""}`}
-                        onClick={() => setAttend(p.tg_id, "maybe")}
+                        onClick={() => setAttend(p, "maybe")}
                         type="button"
                         title="Не отмечено"
                         aria-label="Не отмечено"

@@ -195,7 +195,7 @@ function tgSafeAlert(text) {
 const onChanged = async ({ label, gameId, action } = {}) => {
   if (label) console.log(label);
 
-  closeGameSheet();
+  if (action !== "keep_open") closeGameSheet();
 
   if (gameId) {
     setSelectedGameId(gameId);
