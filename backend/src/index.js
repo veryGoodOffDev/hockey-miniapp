@@ -126,6 +126,27 @@ function schedulePostgameCounterSync(gameId) {
   postgameSyncTimers.set(id, t);
 }
 
+const syncTimers = new Map();
+
+function scheduleDiscussSync(gameId) {
+  const id = Number(gameId);
+  if (!Number.isFinite(id)) return;
+
+  if (syncTimers.has(id)) return;
+
+  const t = setTimeout(async () => {
+    syncTimers.delete(id);
+    try {
+      await syncDiscussCountersForGame(id);
+    } catch (e) {
+      console.log("[sync] failed", e?.message || e);
+    }
+  }, 1200);
+
+  syncTimers.set(id, t);
+}
+
+
 
 function formatGameWhen(startsAtIso) {
   const tz = process.env.TZ_NAME || "Europe/Moscow";
@@ -705,6 +726,20 @@ function buildDiscussKb(gameId, count) {
   return new InlineKeyboard().url(label, buildDiscussDeepLink(gameId));
 }
 
+function buildVideoKb(gameId, count, videoUrl) {
+  const kb = new InlineKeyboard().url("▶️ Смотреть видео", videoUrl);
+
+  // второй ряд — кнопка обсудить (счётчик)
+  const discussKb = buildDiscussKb(gameId, count);
+
+  // InlineKeyboard нельзя "вставить" как есть, поэтому повторяем url:
+  const label = count > 0 ? `💬 Обсудить (${count})` : "💬 Обсудить";
+  kb.row().url(label, buildDiscussDeepLink(gameId));
+
+  return kb;
+}
+
+
 function buildPostgameText(g) {
   const when = formatWhenForGame(g.starts_at);
   return (
@@ -764,6 +799,63 @@ async function sendPostgameMessageForGame(g, chat_id) {
   return { ok: true, message_id: sent.message_id, count: cnt };
 }
 
+async function syncDiscussCountersForGame(gameId) {
+  const count = await getGameCommentsCount(gameId);
+
+  // 1) обновляем postgame-сообщения
+  const postRows = await q(
+    `SELECT chat_id, message_id
+     FROM bot_messages
+     WHERE kind='postgame'
+       AND (meta->>'game_id')::int = $1
+     ORDER BY created_at DESC`,
+    [gameId]
+  );
+
+  for (const r of postRows.rows || []) {
+    const chatId = Number(r.chat_id);
+    const msgId = Number(r.message_id);
+    if (!Number.isFinite(chatId) || !Number.isFinite(msgId)) continue;
+
+    const kb = buildDiscussKb(gameId, count);
+
+    try {
+      await bot.api.editMessageReplyMarkup(chatId, msgId, { reply_markup: kb });
+    } catch (e) {
+      // можно логнуть и продолжить
+      console.log("[sync postgame] edit failed", e?.description || e?.message || e);
+    }
+  }
+
+  // 2) обновляем video-сообщения
+  const videoRows = await q(
+    `SELECT chat_id, message_id, meta
+     FROM bot_messages
+     WHERE kind='video'
+       AND (meta->>'game_id')::int = $1
+     ORDER BY created_at DESC`,
+    [gameId]
+  );
+
+  for (const r of videoRows.rows || []) {
+    const chatId = Number(r.chat_id);
+    const msgId = Number(r.message_id);
+    const meta = r.meta || {};
+    const videoUrl = String(meta.video_url || "").trim();
+
+    if (!Number.isFinite(chatId) || !Number.isFinite(msgId) || !videoUrl) continue;
+
+    const kb = buildVideoKb(gameId, count, videoUrl);
+
+    try {
+      await bot.api.editMessageReplyMarkup(chatId, msgId, { reply_markup: kb });
+    } catch (e) {
+      console.log("[sync video] edit failed", e?.description || e?.message || e);
+    }
+  }
+
+  return { ok: true, count };
+}
 
 
 async function syncPostgameCounter(gameId) {
@@ -4270,6 +4362,8 @@ app.post("/api/game-comments", async (req, res) => {
   const baseUrl = getPublicBaseUrl(req);
   const comments = await loadGameComments(gameId, user.id, baseUrl);
   schedulePostgameCounterSync(gameId);
+  scheduleDiscussSync(gameId);
+
 
   res.json({ ok: true, comments });
 });
@@ -4337,6 +4431,7 @@ app.delete("/api/game-comments/:id", async (req, res) => {
     await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
 
     schedulePostgameCounterSync(gameId);
+    scheduleDiscussSync(gameId);
 
     const gameId = Number(row.game_id);              // ✅ ВАЖНО
     const baseUrl = getPublicBaseUrl(req);
