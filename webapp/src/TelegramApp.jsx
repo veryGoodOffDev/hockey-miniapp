@@ -2833,7 +2833,7 @@ function openYandexRoute(lat, lon) {
                                           // Telegram-like: аватар + хвостик на последнем сообщении блока
                                           const showAvatar = !prevSame;
                                           const showHead = !prevSame; // имя/время показываем только в начале блока
-                                          const showTail = !nextSame;
+                                          const showTail = !prevSame;
 
                                           const reactions = Array.isArray(c.reactions) ? c.reactions : [];
 
