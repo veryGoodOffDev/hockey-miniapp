@@ -726,15 +726,33 @@ function buildDiscussKb(gameId, count) {
   return new InlineKeyboard().url(label, buildDiscussDeepLink(gameId));
 }
 
+// function buildVideoKb(gameId, count, videoUrl) {
+//   const kb = new InlineKeyboard().url("▶️ Смотреть видео", videoUrl);
+
+//   // второй ряд — кнопка обсудить (счётчик)
+//   const discussKb = buildDiscussKb(gameId, count);
+
+//   // InlineKeyboard нельзя "вставить" как есть, поэтому повторяем url:
+//   const label = count > 0 ? `💬 Обсудить (${count})` : "💬 Обсудить";
+//   kb.row().url(label, buildDiscussDeepLink(gameId));
+
+//   return kb;
+// }
+
 function buildVideoKb(gameId, count, videoUrl) {
-  const kb = new InlineKeyboard().url("▶️ Смотреть видео", videoUrl);
-
-  // второй ряд — кнопка обсудить (счётчик)
-  const discussKb = buildDiscussKb(gameId, count);
-
-  // InlineKeyboard нельзя "вставить" как есть, поэтому повторяем url:
   const label = count > 0 ? `💬 Обсудить (${count})` : "💬 Обсудить";
-  kb.row().url(label, buildDiscussDeepLink(gameId));
+  const kb = new InlineKeyboard();
+
+  // 1) Кнопка "скопировать" (если поддерживается)
+  if (typeof kb.copyText === "function") {
+    kb.copyText("📋 Скопировать ссылку", videoUrl).row();
+  }
+
+  // 2) Кнопка "смотреть"
+  kb.url("▶️ Смотреть видео", videoUrl);
+
+  // 3) Кнопка "обсудить" со счётчиком
+  kb.url(label, buildDiscussDeepLink(gameId));
 
   return kb;
 }
