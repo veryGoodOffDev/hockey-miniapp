@@ -2787,7 +2787,7 @@ function openYandexRoute(lat, lon) {
                                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                                       {!commentsLoading && comments.length === 0 ? (
                                         <div className="small" style={{ opacity: 0.8 }}>Комментариев пока нет.</div>
-                                      ) : comments.map((c) => {
+                                      ) : comments.map((c, idx) => {
                                           const myId = String(me?.id ?? me?.tg_id ?? "");
                                           const isMine = String(c.author_tg_id) === myId;
                                           const author = c.author || {};
@@ -2806,36 +2806,79 @@ function openYandexRoute(lat, lon) {
                                           const createdMs = c.created_at ? new Date(c.created_at).getTime() : 0;
                                           const updatedMs = c.updated_at ? new Date(c.updated_at).getTime() : 0;
                                           const edited = !!(updatedMs && createdMs && updatedMs - createdMs > 5000);
+                                          const GROUP_MS = 5 * 60 * 1000; // окно группировки (5 минут)
+
+                                          const prev = comments[idx - 1];
+                                          const next = comments[idx + 1];
+
+                                          const canGroupWith = (a, b) => {
+                                            if (!a || !b) return false;
+                                            // закреплённые не группируем, чтобы не ломать логику
+                                            if (a.is_pinned || b.is_pinned) return false;
+
+                                            const aId = String(a.author_tg_id ?? "");
+                                            const bId = String(b.author_tg_id ?? "");
+                                            if (!aId || aId !== bId) return false;
+
+                                            const am = a.created_at ? new Date(a.created_at).getTime() : 0;
+                                            const bm = b.created_at ? new Date(b.created_at).getTime() : 0;
+                                            if (!am || !bm) return false;
+
+                                            return Math.abs(am - bm) <= GROUP_MS;
+                                          };
+
+                                          const prevSame = canGroupWith(prev, c);
+                                          const nextSame = canGroupWith(c, next);
+
+                                          // Telegram-like: аватар + хвостик на последнем сообщении блока
+                                          const showAvatar = !prevSame;
+                                          const showHead = !prevSame; // имя/время показываем только в начале блока
+                                          const showTail = !nextSame;
 
                                           const reactions = Array.isArray(c.reactions) ? c.reactions : [];
 
                                           return (
                                             <div
                                               key={c.id}
-                                              className={`cmtRow ${isMine ? "mine" : ""} ${c._pending ? "pending" : ""} ${flashId === c.id ? "flash" : ""} ${c.is_pinned ? "pinned" : ""}`}
+                                              className={`cmtRow ${isMine ? "mine" : ""} ${prevSame ? "contPrev" : ""} ${nextSame ? "contNext" : ""} ${showTail ? "tail" : ""} ${c._pending ? "pending" : ""} ${flashId === c.id ? "flash" : ""} ${c.is_pinned ? "pinned" : ""}`}
+
                                             >
                                               {/* AVATAR LEFT for others */}
                                               {!isMine ? (
-                                                <div className="cmtAvatar">
-                                                  <AvatarCircle url={avatarUrl} name={authorName} />
+                                                <div className={`cmtAvatar ${showAvatar ? "" : "ghost"}`}>
+                                                  {showAvatar ? <AvatarCircle url={avatarUrl} name={authorName} /> : null}
                                                 </div>
                                               ) : null}
+
 
                                               {/* BUBBLE */}
                                               <div className="cmtBubble">
                                                 {c.is_pinned ? <span className="cmtPinTag">📌 закреплено</span> : null}
-                                                <div className="cmtHead">
-                                                  <div className="cmtAuthor">{isMine ? "Я" : authorName}</div>
-                                                  <div className="cmtMeta">
-                                                    {new Date(c.created_at).toLocaleString("ru-RU", {
-                                                      day: "2-digit",
-                                                      month: "2-digit",
-                                                      hour: "2-digit",
-                                                      minute: "2-digit",
-                                                    })}
-                                                    {edited ? " · изменено" : ""}
-                                                  </div>
-                                                </div>
+                                                  {showHead || c.is_pinned ? (
+                                                    <div className="cmtHead">
+                                                      <div className="cmtAuthor">{isMine ? "Я" : authorName}</div>
+                                                      <div className="cmtMeta">
+                                                        {new Date(c.created_at).toLocaleString("ru-RU", {
+                                                          day: "2-digit",
+                                                          month: "2-digit",
+                                                          hour: "2-digit",
+                                                          minute: "2-digit",
+                                                        })}
+                                                        {edited ? " · изменено" : ""}
+                                                      </div>
+                                                    </div>
+                                                  ) : (
+                                                    <div className="cmtMetaOnly">
+                                                      {new Date(c.created_at).toLocaleString("ru-RU", {
+                                                        day: "2-digit",
+                                                        month: "2-digit",
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                      })}
+                                                      {edited ? " · изменено" : ""}
+                                                    </div>
+                                                  )}
+
 
                                                 <div className="cmtText">{c.body}</div>
 
@@ -2904,13 +2947,18 @@ function openYandexRoute(lat, lon) {
                                               </div>
 
                                               {/* AVATAR RIGHT for mine */}
-                                              {isMine ? (
-                                                <div className="cmtAvatar">
-                                                  <AvatarCircle url={avatarUrl} fallbackUrl={(author?.photo_url_fallback || "").trim()} name={authorName} />
-                                                  
+                                                {isMine ? (
+                                                  <div className={`cmtAvatar ${showAvatar ? "" : "ghost"}`}>
+                                                    {showAvatar ? (
+                                                      <AvatarCircle
+                                                        url={avatarUrl}
+                                                        fallbackUrl={(author?.photo_url_fallback || "").trim()}
+                                                        name={authorName}
+                                                      />
+                                                    ) : null}
+                                                  </div>
+                                                ) : null}
 
-                                                </div>
-                                              ) : null}
                                             </div>
                                           );
                                         })}

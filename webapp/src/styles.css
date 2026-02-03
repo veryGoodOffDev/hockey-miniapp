@@ -2398,6 +2398,37 @@ html[data-theme="light"] .btn.outline.active{
   border-top-right-radius: 3px;
 }
 
+/* Резерв места под аватар, чтобы пузыри не прыгали */
+.cmtAvatar{ width: 38px; }
+.cmtAvatar.ghost{
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* плотнее между сообщениями одного автора */
+.cmtRow.contPrev{ margin-top: 4px; }
+
+/* хвостик только у последнего сообщения в группе */
+.cmtRow .cmtBubble::after{ display: none; }
+.cmtRow.tail:not(.mine) .cmtBubble::after{ display: block; }
+.cmtRow.tail.mine .cmtBubble::after{ display: block; }
+
+/* “склейка” пузырей в группе */
+.cmtRow.contPrev:not(.mine) .cmtBubble{ border-top-left-radius: 10px; }
+.cmtRow.contNext:not(.mine) .cmtBubble{ border-bottom-left-radius: 10px; }
+
+.cmtRow.contPrev.mine .cmtBubble{ border-top-right-radius: 10px; }
+.cmtRow.contNext.mine .cmtBubble{ border-bottom-right-radius: 10px; }
+
+/* мета когда скрыли заголовок */
+.cmtMetaOnly{
+  font-size: 12px;
+  opacity: .75;
+  text-align: right;
+  margin-bottom: 6px;
+}
+
+
 
 .commentComposer{
   display:flex;
