@@ -350,6 +350,9 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [jerseyLoading, setJerseyLoading] = useState(false);
   const [jerseyOrdersLoading, setJerseyOrdersLoading] = useState(false);
   const [jerseyErr, setJerseyErr] = useState("");
+  // (добавь после строки 346)
+const [jerseySelectedId, setJerseySelectedId] = useState(null);
+
 
 
 
@@ -670,6 +673,13 @@ function closePlayerSheet() {
     );
   }, [players, q]);
 
+  const jerseySelected = useMemo(() => {
+  if (!jerseyBatches?.length) return null;
+  const byId = jerseyBatches.find((b) => String(b.id) === String(jerseySelectedId));
+  return byId || (jerseyOpen?.id ? jerseyOpen : null) || jerseyBatches[0] || null;
+}, [jerseyBatches, jerseySelectedId, jerseyOpen]);
+
+
   async function sendReminderNow() {
     await runAdminOp("Отправляю напоминание…", async () => {
       setReminderMsg("");
@@ -714,8 +724,15 @@ async function loadJerseyBatches({ silent = false } = {}) {
     const open = list.find((b) => b.status === "open") || null;
     setJerseyOpen(open);
 
-    if (open?.id) {
-      await loadJerseyOrders(open.id, { silent: true });
+    const keep =
+      (jerseySelectedId && list.some((b) => String(b.id) === String(jerseySelectedId)))
+        ? jerseySelectedId
+        : (open?.id ?? list[0]?.id ?? null);
+
+    setJerseySelectedId(keep);
+
+    if (keep) {
+      await loadJerseyOrders(keep, { silent: true });
     } else {
       setJerseyOrders([]);
     }
@@ -729,6 +746,7 @@ async function loadJerseyBatches({ silent = false } = {}) {
     setJerseyLoading(false);
   }
 }
+
 
 async function loadJerseyOrders(batchId, { silent = false } = {}) {
   setJerseyOrdersLoading(true);
@@ -1503,52 +1521,65 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
     {jerseyErr ? <div className="small" style={{ marginTop: 8 }}>❌ {jerseyErr}</div> : null}
 
-    {!jerseyOpen ? (
-      <>
-        <div className="small" style={{ opacity: 0.85 }}>
-          Сейчас сбор закрыт. Открой сбор — и игроки смогут отправлять заявки.
-        </div>
+    <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="small" style={{ opacity: 0.8 }}>Сбор:</div>
 
-        <div style={{ marginTop: 10 }}>
-          <label>Название сбора (необязательно)</label>
-          <input
-            className="input"
-            value={jerseyTitle}
-            onChange={(e) => setJerseyTitle(e.target.value)}
-            placeholder="Например: Весна 2026"
-          />
+      <select
+        className="input"
+        style={{ maxWidth: 320 }}
+        value={jerseySelectedId ?? ""}
+        onChange={async (e) => {
+          const id = Number(e.target.value);
+          if (!id) return;
+          setJerseySelectedId(id);
+          await loadJerseyOrders(id, { silent: true });
+        }}
+        disabled={jerseyLoading}
+      >
+        <option value="" disabled>— выбрать —</option>
+        {jerseyBatches.map((b) => (
+          <option key={b.id} value={b.id}>
+            {(b.status === "open" ? "🟢" : "⚪️")} {b.title ? b.title : `Сбор #${b.id}`}
+          </option>
+        ))}
+      </select>
+
+      <button
+        className="btn secondary"
+        onClick={() => loadJerseyBatches({ silent: false })}
+        disabled={jerseyLoading}
+      >
+        Обновить
+      </button>
+    </div>
+
+    {jerseySelected ? (
+      <>
+        <div className="badge" style={{ marginTop: 10 }}>
+          {jerseySelected.status === "open" ? "🟢 Сбор открыт" : "⚪️ Сбор закрыт"}
+          {jerseySelected.title ? `: ${jerseySelected.title}` : ""}
+          {" · "}
+          заявок: {jerseySelected.orders_count ?? 0}
         </div>
 
         <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-          <button className="btn" onClick={openJerseyBatch} disabled={jerseyLoading}>
-            Открыть сбор
-          </button>
-          <button className="btn secondary" onClick={() => loadJerseyBatches({ silent: false })} disabled={jerseyLoading}>
-            Обновить
-          </button>
-        </div>
-      </>
-    ) : (
-      <>
-        <div className="badge" style={{ marginTop: 6 }}>
-          🟢 Сбор открыт{jerseyOpen.title ? `: ${jerseyOpen.title}` : ""} · заявок: {jerseyOpen.orders_count ?? 0}
-        </div>
+          {jerseySelected.status === "open" ? (
+            <>
+              <button className="btn" onClick={() => announceJerseyBatch(jerseySelected.id)} disabled={jerseyLoading}>
+                Отправить сообщение в чат
+              </button>
+              <button className="btn secondary" onClick={() => closeJerseyBatch(jerseySelected.id)} disabled={jerseyLoading}>
+                Закрыть сбор
+              </button>
+            </>
+          ) : null}
 
-        <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => announceJerseyBatch(jerseyOpen.id)} disabled={jerseyLoading}>
-            Отправить сообщение в чат
-          </button>
-
-          <button className="btn secondary" onClick={() => exportJerseyCsv(jerseyOpen.id)} disabled={jerseyLoading}>
+          <button className="btn secondary" onClick={() => exportJerseyCsv(jerseySelected.id)} disabled={jerseyLoading}>
             Скачать CSV
           </button>
 
-          <button className="btn secondary" onClick={() => loadJerseyOrders(jerseyOpen.id)} disabled={jerseyOrdersLoading}>
+          <button className="btn secondary" onClick={() => loadJerseyOrders(jerseySelected.id)} disabled={jerseyOrdersLoading}>
             Обновить заявки
-          </button>
-
-          <button className="btn secondary" onClick={() => closeJerseyBatch(jerseyOpen.id)} disabled={jerseyLoading}>
-            Закрыть сбор
           </button>
         </div>
 
@@ -1565,6 +1596,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 <div key={o.id} className="card" style={{ margin: 0 }}>
                   <div style={{ fontWeight: 700 }}>
                     {adminName(o)} {o.username ? <span style={{ opacity: 0.7 }}>({`@${o.username}`})</span> : null}
+                    {o.status ? <span style={{ marginLeft: 10, opacity: 0.75 }}>· {o.status}</span> : null}
                   </div>
 
                   <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
@@ -1579,7 +1611,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                         <br/>Размер гамаш: <b>{o.socks_size || "adult"}</b>
                       </>
                     ) : null}
-                    <br/>Отправлено: <b>{String(o.updated_at || "")}</b>
+                    <br/>Отправлено: <b>{String(o.sent_at || o.updated_at || "")}</b>
                   </div>
                 </div>
               ))}
@@ -1587,9 +1619,45 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           )}
         </div>
       </>
+    ) : (
+      <div className="small" style={{ marginTop: 10, opacity: 0.8 }}>
+        Сборов ещё нет. Открой первый сбор ниже.
+      </div>
     )}
+
+    {/* Блок открытия нового сбора */}
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+      {jerseyOpen ? (
+        <div className="small" style={{ opacity: 0.8 }}>
+          Сейчас уже есть открытый сбор: <b>{jerseyOpen.title || `#${jerseyOpen.id}`}</b>. Сначала закрой его.
+        </div>
+      ) : (
+        <>
+          <div className="small" style={{ opacity: 0.85 }}>
+            Открой сбор — и игроки смогут отправлять заявки.
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <label>Название сбора (необязательно)</label>
+            <input
+              className="input"
+              value={jerseyTitle}
+              onChange={(e) => setJerseyTitle(e.target.value)}
+              placeholder="Например: Весна 2026"
+            />
+          </div>
+
+          <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
+            <button className="btn" onClick={openJerseyBatch} disabled={jerseyLoading}>
+              Открыть сбор
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   </div>
 )}
+
 
      {/* ====== GAMES ====== */}
 {section === "games" && (

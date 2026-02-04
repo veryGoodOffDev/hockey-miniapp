@@ -1473,7 +1473,7 @@ app.post("/api/me", async (req, res) => {
 
 /** ===================== JERSEY ORDERS (PLAYER) ===================== */
 
-const JERSEY_ALLOWED_COLORS = new Set(["white", "blue", "black"]);
+// const JERSEY_ALLOWED_COLORS = new Set(["white", "blue", "black"]);
 
 function uniq(arr) {
   const out = [];
@@ -1698,6 +1698,527 @@ app.post("/api/jersey/send", async (req, res) => {
 
   return res.json({ ok: true, batch, sent_at: ins.rows?.[0]?.updated_at ?? null });
 });
+
+
+/** ===================== JERSEY (MULTI REQUESTS) ===================== */
+
+const JERSEY_ALLOWED_COLORS = new Set(["white", "blue", "black"]);
+
+function uniq(arr) {
+  const out = [];
+  const seen = new Set();
+  for (const x of arr || []) {
+    const s = String(x || "").trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+function cleanColors(v) {
+  const a = Array.isArray(v) ? v : [];
+  return uniq(a).map((x) => x.toLowerCase()).filter((x) => JERSEY_ALLOWED_COLORS.has(x)).slice(0, 3);
+}
+function cleanText(v, max = 40) {
+  return String(v ?? "").trim().slice(0, max);
+}
+function cleanSocksSize(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "junior" ? "junior" : "adult";
+}
+
+async function authUserForApp(req, res) {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return null;
+
+  const admin = await isAdminId(user.id);
+  if (!admin) {
+    if (!(await requireGroupMember(req, res, user))) return null;
+  }
+
+  await ensurePlayer(user);
+  return { user, admin };
+}
+
+async function getOpenJerseyBatch() {
+  const r = await q(
+    `SELECT id, status, title, opened_at, announced_at
+     FROM jersey_batches
+     WHERE status='open'
+     ORDER BY id DESC
+     LIMIT 1`
+  );
+  return r.rows?.[0] ?? null;
+}
+
+/** PLAYER: state (open batch + my drafts + history) */
+app.get("/api/jersey/state", async (req, res) => {
+  try {
+    const auth = await authUserForApp(req, res);
+    if (!auth) return;
+
+    const batch = await getOpenJerseyBatch();
+
+    const drafts = await q(
+      `SELECT id, name_on_jersey, jersey_colors, jersey_number, jersey_size,
+              socks_needed, socks_colors, socks_size,
+              created_at, updated_at
+       FROM jersey_requests
+       WHERE tg_id=$1 AND status='draft'
+       ORDER BY updated_at DESC`,
+      [auth.user.id]
+    );
+
+    const history = await q(
+      `SELECT r.id, r.batch_id, r.sent_at, r.updated_at,
+              r.name_on_jersey, r.jersey_colors, r.jersey_number, r.jersey_size,
+              r.socks_needed, r.socks_colors, r.socks_size,
+              b.title, b.opened_at, b.closed_at
+       FROM jersey_requests r
+       LEFT JOIN jersey_batches b ON b.id=r.batch_id
+       WHERE r.tg_id=$1 AND r.status='sent'
+       ORDER BY r.sent_at DESC
+       LIMIT 50`,
+      [auth.user.id]
+    );
+
+    return res.json({
+      ok: true,
+      batch,
+      drafts: drafts.rows || [],
+      history: history.rows || [],
+    });
+  } catch (e) {
+    console.error("GET /api/jersey/state failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+/** PLAYER: create draft (new request) */
+app.post("/api/jersey/requests", async (req, res) => {
+  try {
+    const auth = await authUserForApp(req, res);
+    if (!auth) return;
+
+    const b = req.body || {};
+
+    const name_on_jersey = cleanText(b.name_on_jersey, 24);
+    const jersey_colors = cleanColors(b.jersey_colors);
+    const jersey_number = jersey(b.jersey_number);
+    const jersey_size = cleanText(b.jersey_size, 20);
+
+    const socks_needed = b.socks_needed === true;
+    const socks_colors = socks_needed ? cleanColors(b.socks_colors) : [];
+    const socks_size = socks_needed ? cleanSocksSize(b.socks_size) : "adult";
+
+    const ins = await q(
+      `INSERT INTO jersey_requests (
+        tg_id, status,
+        name_on_jersey, jersey_colors, jersey_number, jersey_size,
+        socks_needed, socks_colors, socks_size,
+        created_at, updated_at
+      )
+      VALUES ($1,'draft',$2,$3,$4,$5,$6,$7,$8, NOW(), NOW())
+      RETURNING id, name_on_jersey, jersey_colors, jersey_number, jersey_size, socks_needed, socks_colors, socks_size, created_at, updated_at`,
+      [
+        auth.user.id,
+        name_on_jersey,
+        jersey_colors,
+        jersey_number,
+        jersey_size,
+        socks_needed,
+        socks_colors,
+        socks_size,
+      ]
+    );
+
+    return res.json({ ok: true, draft: ins.rows?.[0] ?? null });
+  } catch (e) {
+    console.error("POST /api/jersey/requests failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+/** PLAYER: update draft */
+app.put("/api/jersey/requests/:id", async (req, res) => {
+  try {
+    const auth = await authUserForApp(req, res);
+    if (!auth) return;
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const row = await q(
+      `SELECT id, tg_id, status FROM jersey_requests WHERE id=$1`,
+      [id]
+    );
+    const r0 = row.rows?.[0];
+    if (!r0) return res.status(404).json({ ok: false, reason: "not_found" });
+    if (Number(r0.tg_id) !== Number(auth.user.id)) return res.status(403).json({ ok: false, reason: "forbidden" });
+    if (r0.status !== "draft") return res.status(409).json({ ok: false, reason: "not_editable" });
+
+    const b = req.body || {};
+
+    const name_on_jersey = cleanText(b.name_on_jersey, 24);
+    const jersey_colors = cleanColors(b.jersey_colors);
+    const jersey_number = jersey(b.jersey_number);
+    const jersey_size = cleanText(b.jersey_size, 20);
+
+    const socks_needed = b.socks_needed === true;
+    const socks_colors = socks_needed ? cleanColors(b.socks_colors) : [];
+    const socks_size = socks_needed ? cleanSocksSize(b.socks_size) : "adult";
+
+    const upd = await q(
+      `UPDATE jersey_requests
+       SET name_on_jersey=$2, jersey_colors=$3, jersey_number=$4, jersey_size=$5,
+           socks_needed=$6, socks_colors=$7, socks_size=$8,
+           updated_at=NOW()
+       WHERE id=$1
+       RETURNING id, name_on_jersey, jersey_colors, jersey_number, jersey_size, socks_needed, socks_colors, socks_size, created_at, updated_at`,
+      [id, name_on_jersey, jersey_colors, jersey_number, jersey_size, socks_needed, socks_colors, socks_size]
+    );
+
+    return res.json({ ok: true, draft: upd.rows?.[0] ?? null });
+  } catch (e) {
+    console.error("PUT /api/jersey/requests/:id failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+/** PLAYER: delete draft (only if not sent) */
+app.delete("/api/jersey/requests/:id", async (req, res) => {
+  try {
+    const auth = await authUserForApp(req, res);
+    if (!auth) return;
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const row = await q(`SELECT id, tg_id, status FROM jersey_requests WHERE id=$1`, [id]);
+    const r0 = row.rows?.[0];
+    if (!r0) return res.status(404).json({ ok: false, reason: "not_found" });
+    if (Number(r0.tg_id) !== Number(auth.user.id)) return res.status(403).json({ ok: false, reason: "forbidden" });
+    if (r0.status !== "draft") return res.status(409).json({ ok: false, reason: "not_deletable" });
+
+    await q(`UPDATE jersey_requests SET status='deleted', deleted_at=NOW(), updated_at=NOW() WHERE id=$1`, [id]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /api/jersey/requests/:id failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+/** PLAYER: send one draft (only when batch open) */
+app.post("/api/jersey/requests/:id/send", async (req, res) => {
+  try {
+    const auth = await authUserForApp(req, res);
+    if (!auth) return;
+
+    const batch = await getOpenJerseyBatch();
+    if (!batch?.id) return res.status(400).json({ ok: false, reason: "collection_closed" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const row = await q(
+      `SELECT *
+       FROM jersey_requests
+       WHERE id=$1`,
+      [id]
+    );
+    const r0 = row.rows?.[0];
+    if (!r0) return res.status(404).json({ ok: false, reason: "not_found" });
+    if (Number(r0.tg_id) !== Number(auth.user.id)) return res.status(403).json({ ok: false, reason: "forbidden" });
+    if (r0.status !== "draft") return res.status(409).json({ ok: false, reason: "not_sendable" });
+
+    // validate required
+    if (!String(r0.name_on_jersey || "").trim()) return res.status(400).json({ ok: false, reason: "name_required" });
+    if (!String(r0.jersey_size || "").trim()) return res.status(400).json({ ok: false, reason: "size_required" });
+    if (!Array.isArray(r0.jersey_colors) || r0.jersey_colors.length === 0)
+      return res.status(400).json({ ok: false, reason: "colors_required" });
+
+    const upd = await q(
+      `UPDATE jersey_requests
+       SET status='sent',
+           batch_id=$2,
+           sent_at=NOW(),
+           updated_at=NOW()
+       WHERE id=$1
+       RETURNING id, batch_id, sent_at`,
+      [id, batch.id]
+    );
+
+    return res.json({ ok: true, batch, sent: upd.rows?.[0] ?? null });
+  } catch (e) {
+    console.error("POST /api/jersey/requests/:id/send failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+/** BACKCOMPAT (если старый фронт ещё дергает) */
+app.get("/api/jersey/draft", async (req, res) => {
+  const auth = await authUserForApp(req, res);
+  if (!auth) return;
+
+  const batch = await getOpenJerseyBatch();
+  const d = await q(
+    `SELECT id, name_on_jersey, jersey_colors, jersey_number, jersey_size, socks_needed, socks_colors, socks_size, updated_at
+     FROM jersey_requests
+     WHERE tg_id=$1 AND status='draft'
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [auth.user.id]
+  );
+
+  let sent_at = null;
+  if (batch?.id) {
+    const s = await q(
+      `SELECT sent_at
+       FROM jersey_requests
+       WHERE tg_id=$1 AND status='sent' AND batch_id=$2
+       ORDER BY sent_at DESC
+       LIMIT 1`,
+      [auth.user.id, batch.id]
+    );
+    sent_at = s.rows?.[0]?.sent_at ?? null;
+  }
+
+  return res.json({ ok: true, batch, draft: d.rows?.[0] ?? null, sent_at });
+});
+
+app.post("/api/jersey/draft", async (req, res) => {
+  const auth = await authUserForApp(req, res);
+  if (!auth) return;
+
+  const id = req.body?.id ? Number(req.body.id) : null;
+  if (id) {
+    req.params.id = String(id);
+    return app._router.handle(req, res, () => {});
+  }
+  // create new draft
+  const b = req.body || {};
+  const name_on_jersey = cleanText(b.name_on_jersey, 24);
+  const jersey_colors = cleanColors(b.jersey_colors);
+  const jersey_number = jersey(b.jersey_number);
+  const jersey_size = cleanText(b.jersey_size, 20);
+
+  const socks_needed = b.socks_needed === true;
+  const socks_colors = socks_needed ? cleanColors(b.socks_colors) : [];
+  const socks_size = socks_needed ? cleanSocksSize(b.socks_size) : "adult";
+
+  const ins = await q(
+    `INSERT INTO jersey_requests (
+      tg_id, status,
+      name_on_jersey, jersey_colors, jersey_number, jersey_size,
+      socks_needed, socks_colors, socks_size,
+      created_at, updated_at
+    )
+    VALUES ($1,'draft',$2,$3,$4,$5,$6,$7,$8, NOW(), NOW())
+    RETURNING id, name_on_jersey, jersey_colors, jersey_number, jersey_size, socks_needed, socks_colors, socks_size, updated_at`,
+    [auth.user.id, name_on_jersey, jersey_colors, jersey_number, jersey_size, socks_needed, socks_colors, socks_size]
+  );
+
+  return res.json({ ok: true, draft: ins.rows?.[0] ?? null });
+});
+
+app.post("/api/jersey/send", async (req, res) => {
+  const auth = await authUserForApp(req, res);
+  if (!auth) return;
+
+  const batch = await getOpenJerseyBatch();
+  if (!batch?.id) return res.status(400).json({ ok: false, reason: "collection_closed" });
+
+  const id = req.body?.id ? Number(req.body.id) : null;
+
+  // если id не передали — отправляем последний черновик
+  const pick = await q(
+    `SELECT id FROM jersey_requests
+     WHERE tg_id=$1 AND status='draft'
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [auth.user.id]
+  );
+
+  const draftId = id || pick.rows?.[0]?.id;
+  if (!draftId) return res.status(400).json({ ok: false, reason: "no_draft" });
+
+  // переиспользуем логику send
+  req.params.id = String(draftId);
+  return app._router.handle(req, res, () => {});
+});
+
+/** ===================== ADMIN: JERSEY BATCHES ===================== */
+
+app.get("/api/admin/jersey/batches", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+
+  const r = await q(
+    `SELECT b.*,
+            COALESCE(x.sent_count,0)::int AS sent_count
+     FROM jersey_batches b
+     LEFT JOIN (
+       SELECT batch_id, COUNT(*) AS sent_count
+       FROM jersey_requests
+       WHERE status='sent'
+       GROUP BY batch_id
+     ) x ON x.batch_id=b.id
+     ORDER BY b.id DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  res.json({ ok: true, batches: r.rows || [] });
+});
+
+app.post("/api/admin/jersey/batches/open", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const title = cleanText(req.body?.title, 80);
+
+  await q(`UPDATE jersey_batches SET status='closed', closed_at=NOW() WHERE status='open'`);
+
+  const ins = await q(
+    `INSERT INTO jersey_batches(status, title, opened_by, opened_at)
+     VALUES('open', $1, $2, NOW())
+     RETURNING *`,
+    [title, user.id]
+  );
+
+  res.json({ ok: true, batch: ins.rows?.[0] ?? null });
+});
+
+app.post("/api/admin/jersey/batches/:id/close", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+  await q(`UPDATE jersey_batches SET status='closed', closed_at=NOW() WHERE id=$1`, [id]);
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/jersey/batches/:id/requests", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+  const r = await q(
+    `SELECT r.id, r.tg_id, r.sent_at,
+            r.name_on_jersey, r.jersey_colors, r.jersey_number, r.jersey_size,
+            r.socks_needed, r.socks_colors, r.socks_size,
+            p.display_name, p.first_name, p.last_name, p.username
+     FROM jersey_requests r
+     LEFT JOIN players p ON p.tg_id=r.tg_id
+     WHERE r.status='sent' AND r.batch_id=$1
+     ORDER BY r.sent_at ASC`,
+    [id]
+  );
+
+  res.json({ ok: true, requests: r.rows || [] });
+});
+
+function joinPlusCapLower(colors, cap, low) {
+  const a = Array.isArray(colors) ? colors : [];
+  if (!a.length) return "";
+  const out = [];
+  for (let i = 0; i < a.length; i++) {
+    const c = String(a[i] || "").toLowerCase();
+    if (!cap[c]) continue;
+    out.push(i === 0 ? cap[c] : (low[c] || cap[c]).toLowerCase());
+  }
+  return out.join(" + ");
+}
+
+const JERSEY_CAP = { white: "Белый", blue: "Синий", black: "Чёрный" };
+const JERSEY_LOW = { white: "белый", blue: "синий", black: "чёрный" };
+
+const SOCKS_CAP = { white: "Белые", blue: "Синие", black: "Чёрные" };
+const SOCKS_LOW = { white: "белые", blue: "синие", black: "чёрные" };
+
+app.get("/api/admin/jersey/batches/:id/export.csv", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+  const br = await q(`SELECT id, title FROM jersey_batches WHERE id=$1`, [id]);
+  const batch = br.rows?.[0];
+  if (!batch) return res.status(404).json({ ok: false, reason: "batch_not_found" });
+
+  const r = await q(
+    `SELECT r.*
+     FROM jersey_requests r
+     WHERE r.status='sent' AND r.batch_id=$1
+     ORDER BY r.sent_at ASC`,
+    [id]
+  );
+
+  const rows = r.rows || [];
+
+  const header = ["№", "Надпись", "Номер", "Размер", "Цвет", "Гамаши", "Цена"];
+
+  const lines = [];
+  lines.push(header.join(";"));
+
+  for (let i = 0; i < rows.length; i++) {
+    const x = rows[i];
+
+    const name = String(x.name_on_jersey || "").trim() || "без надписи";
+    const num = (x.jersey_number === null || x.jersey_number === undefined) ? "без номера" : String(x.jersey_number);
+    const size = String(x.jersey_size || "").trim();
+    const color = joinPlusCapLower(x.jersey_colors, JERSEY_CAP, JERSEY_LOW);
+
+    let socks = "";
+    if (x.socks_needed) {
+      socks = joinPlusCapLower(x.socks_colors, SOCKS_CAP, SOCKS_LOW);
+      if (String(x.socks_size || "adult") === "junior") socks = socks ? `${socks} jr` : "jr";
+    }
+
+    // цена пустая — админ заполнит вручную
+    const price = "";
+
+    const row = [
+      String(i + 1),
+      name.replaceAll(";", ","),
+      num.replaceAll(";", ","),
+      size.replaceAll(";", ","),
+      color.replaceAll(";", ","),
+      socks.replaceAll(";", ","),
+      price,
+    ];
+
+    lines.push(row.join(";"));
+  }
+
+  const titleSafe = String(batch.title || `batch_${id}`).replace(/[^\w\-а-яА-Я]+/g, "_").slice(0, 60);
+  const filename = `jersey_${id}_${titleSafe}.csv`;
+
+  // BOM чтобы Excel нормально открыл кириллицу
+  const csv = "\ufeff" + lines.join("\n");
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.status(200).send(csv);
+});
+
 
 
       /** ====== FUN (profile jokes) ====== */

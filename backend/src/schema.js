@@ -336,6 +336,116 @@ await q(`ALTER TABLE jersey_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
   // ✅ последовательность для гостевых id (tg_id будет отрицательным)
   await q(`CREATE SEQUENCE IF NOT EXISTS guest_seq START 1`);
 
+    /** ===================== JERSEY (BATCHES + REQUESTS) ===================== */
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_batches (
+      id BIGSERIAL PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status IN ('open','closed')) DEFAULT 'open',
+      title TEXT NOT NULL DEFAULT '',
+      opened_by BIGINT,
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ,
+      announced_at TIMESTAMPTZ
+    );
+  `);
+
+  // если таблица уже есть, но колонок не было
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS opened_by BIGINT;`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS announced_at TIMESTAMPTZ;`);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_batches_status ON jersey_batches(status);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_batches_opened_at ON jersey_batches(opened_at DESC);`);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_requests (
+      id BIGSERIAL PRIMARY KEY,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+
+      status TEXT NOT NULL CHECK (status IN ('draft','sent','deleted')) DEFAULT 'draft',
+      batch_id BIGINT REFERENCES jersey_batches(id) ON DELETE SET NULL,
+
+      name_on_jersey TEXT NOT NULL DEFAULT '',
+      jersey_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+      jersey_number INT,
+      jersey_size TEXT NOT NULL DEFAULT '',
+
+      socks_needed BOOLEAN NOT NULL DEFAULT FALSE,
+      socks_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+      socks_size TEXT NOT NULL DEFAULT 'adult' CHECK (socks_size IN ('adult','junior')),
+
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      sent_at TIMESTAMPTZ,
+      deleted_at TIMESTAMPTZ
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_requests_tg_status ON jersey_requests(tg_id, status);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_requests_batch ON jersey_requests(batch_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_requests_updated_at ON jersey_requests(updated_at DESC);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_requests_sent_at ON jersey_requests(sent_at DESC);`);
+
+  // ---- МИГРАЦИЯ из старых таблиц (если они есть) ----
+  await q(`
+    DO $$
+    BEGIN
+      IF to_regclass('public.jersey_drafts') IS NOT NULL THEN
+        INSERT INTO jersey_requests(
+          tg_id, status, batch_id,
+          name_on_jersey, jersey_colors, jersey_number, jersey_size,
+          socks_needed, socks_colors, socks_size,
+          created_at, updated_at
+        )
+        SELECT
+          d.tg_id, 'draft', NULL,
+          COALESCE(d.name_on_jersey,''), COALESCE(d.jersey_colors,'{}'::text[]), d.jersey_number, COALESCE(d.jersey_size,''),
+          COALESCE(d.socks_needed,false), COALESCE(d.socks_colors,'{}'::text[]), COALESCE(d.socks_size,'adult'),
+          COALESCE(d.updated_at, NOW()), COALESCE(d.updated_at, NOW())
+        FROM jersey_drafts d
+        WHERE NOT EXISTS (
+          SELECT 1 FROM jersey_requests r
+          WHERE r.tg_id = d.tg_id AND r.status='draft'
+        );
+      END IF;
+    END $$;
+  `);
+
+  await q(`
+    DO $$
+    BEGIN
+      IF to_regclass('public.jersey_orders') IS NOT NULL THEN
+        INSERT INTO jersey_requests(
+          tg_id, status, batch_id,
+          name_on_jersey, jersey_colors, jersey_number, jersey_size,
+          socks_needed, socks_colors, socks_size,
+          created_at, updated_at,
+          sent_at
+        )
+        SELECT
+          o.tg_id, 'sent', o.batch_id,
+          COALESCE(o.name_on_jersey,''), COALESCE(o.jersey_colors,'{}'::text[]), o.jersey_number, COALESCE(o.jersey_size,''),
+          COALESCE(o.socks_needed,false), COALESCE(o.socks_colors,'{}'::text[]), COALESCE(o.socks_size,'adult'),
+          COALESCE(o.created_at, NOW()), COALESCE(o.updated_at, o.created_at, NOW()),
+          COALESCE(o.updated_at, o.created_at, NOW())
+        FROM jersey_orders o
+        WHERE NOT EXISTS (
+          SELECT 1 FROM jersey_requests r
+          WHERE r.status='sent' AND r.batch_id=o.batch_id AND r.tg_id=o.tg_id
+            AND r.name_on_jersey = o.name_on_jersey
+            AND COALESCE(r.jersey_number,-9999) = COALESCE(o.jersey_number,-9999)
+            AND r.jersey_size = o.jersey_size
+        );
+      END IF;
+    END $$;
+  `);
+
+
   /** ===================== FEEDBACK ===================== */
   await q(`
     CREATE TABLE IF NOT EXISTS feedback (
