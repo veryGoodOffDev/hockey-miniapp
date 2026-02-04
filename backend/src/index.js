@@ -1475,17 +1475,17 @@ app.post("/api/me", async (req, res) => {
 
 // const JERSEY_ALLOWED_COLORS = new Set(["white", "blue", "black"]);
 
-function uniq(arr) {
-  const out = [];
-  const seen = new Set();
-  for (const x of arr || []) {
-    const s = String(x || "").trim();
-    if (!s || seen.has(s)) continue;
-    seen.add(s);
-    out.push(s);
-  }
-  return out;
-}
+// function uniq(arr) {
+//   const out = [];
+//   const seen = new Set();
+//   for (const x of arr || []) {
+//     const s = String(x || "").trim();
+//     if (!s || seen.has(s)) continue;
+//     seen.add(s);
+//     out.push(s);
+//   }
+//   return out;
+// }
 
 function cleanColors(v) {
   const a = Array.isArray(v) ? v : [];
