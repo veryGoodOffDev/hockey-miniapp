@@ -50,7 +50,7 @@ function verifyToken(tok) {
 }
 function apiBaseFromReq(req) {
   // лучше задать в env PUBLIC_API_BASE="https://api.apihockeyteamru.ru:8443"
-  const base = process.env.PUBLIC_API_BASE;
+  const base = process.env.PUBLIC_API_URL;
   if (base) return base.replace(/\/+$/, "");
   const proto = (req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim();
   return `${proto}://${req.get("host")}`;
