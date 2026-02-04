@@ -272,17 +272,27 @@ await q(`CREATE INDEX IF NOT EXISTS idx_best_votes_game_candidate ON best_player
   await q(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
 
   /** ===================== JERSEY ORDERS ===================== */
-  await q(`
-    CREATE TABLE IF NOT EXISTS jersey_batches (
-      id BIGSERIAL PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
-      title TEXT NOT NULL DEFAULT '',
-      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      opened_by BIGINT,
-      announced_at TIMESTAMPTZ,
-      closed_at TIMESTAMPTZ
-    );
-  `);
+await q(`
+  CREATE TABLE IF NOT EXISTS jersey_orders (
+    id BIGSERIAL PRIMARY KEY,
+    batch_id BIGINT NOT NULL REFERENCES jersey_batches(id) ON DELETE CASCADE,
+    tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+    name_on_jersey TEXT NOT NULL,
+    jersey_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+    jersey_number INT,
+    jersey_size TEXT NOT NULL,
+    socks_needed BOOLEAN NOT NULL DEFAULT FALSE,
+    socks_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+    socks_size TEXT NOT NULL DEFAULT 'adult',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(batch_id, tg_id)
+  );
+`);
+
+// миграция для старых БД, где jersey_orders уже была создана без updated_at
+await q(`ALTER TABLE jersey_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+
 
   await q(`CREATE INDEX IF NOT EXISTS idx_jersey_batches_status ON jersey_batches(status);`);
 
