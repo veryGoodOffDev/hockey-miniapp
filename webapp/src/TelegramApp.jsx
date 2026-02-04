@@ -3521,7 +3521,7 @@ function openYandexRoute(lat, lon) {
       value={jerseyDraft.name_on_jersey}
       onChange={(e) => setJerseyDraft((s) => ({ ...s, name_on_jersey: e.target.value }))}
       disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-      placeholder="Например: FILIPPOV"
+      placeholder="Например: OVECHKIN"
     />
 
     <div style={{ marginTop: 10 }}>
@@ -3551,7 +3551,7 @@ function openYandexRoute(lat, lon) {
           value={jerseyDraft.jersey_number}
           onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_number: e.target.value }))}
           disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-          placeholder="Например: 15"
+          placeholder="Например: 8"
         />
       </div>
       <div style={{ flex: "1 1 160px" }}>
@@ -3561,7 +3561,7 @@ function openYandexRoute(lat, lon) {
           value={jerseyDraft.jersey_size}
           onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_size: e.target.value }))}
           disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-          placeholder="Например: 52"
+          placeholder="Например: 50"
         />
       </div>
     </div>
