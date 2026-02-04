@@ -1487,46 +1487,46 @@ app.post("/api/me", async (req, res) => {
 //   return out;
 // }
 
-function cleanColors(v) {
-  const a = Array.isArray(v) ? v : [];
-  return uniq(a)
-    .map((x) => x.toLowerCase())
-    .filter((x) => JERSEY_ALLOWED_COLORS.has(x))
-    .slice(0, 3);
-}
+// function cleanColors(v) {
+//   const a = Array.isArray(v) ? v : [];
+//   return uniq(a)
+//     .map((x) => x.toLowerCase())
+//     .filter((x) => JERSEY_ALLOWED_COLORS.has(x))
+//     .slice(0, 3);
+// }
 
-function cleanText(v, max = 40) {
-  return String(v ?? "").trim().slice(0, max);
-}
+// function cleanText(v, max = 40) {
+//   return String(v ?? "").trim().slice(0, max);
+// }
 
-function cleanSocksSize(v) {
-  const s = String(v ?? "").trim().toLowerCase();
-  return s === "junior" ? "junior" : "adult";
-}
+// function cleanSocksSize(v) {
+//   const s = String(v ?? "").trim().toLowerCase();
+//   return s === "junior" ? "junior" : "adult";
+// }
 
-async function authUserForApp(req, res) {
-  const user = requireWebAppAuth(req, res);
-  if (!user) return null;
+// async function authUserForApp(req, res) {
+//   const user = requireWebAppAuth(req, res);
+//   if (!user) return null;
 
-  const admin = await isAdminId(user.id);
-  if (!admin) {
-    if (!(await requireGroupMember(req, res, user))) return null;
-  }
+//   const admin = await isAdminId(user.id);
+//   if (!admin) {
+//     if (!(await requireGroupMember(req, res, user))) return null;
+//   }
 
-  await ensurePlayer(user);
-  return { user, admin };
-}
+//   await ensurePlayer(user);
+//   return { user, admin };
+// }
 
-async function getOpenJerseyBatch() {
-  const r = await q(
-    `SELECT id, status, title, opened_at, announced_at
-     FROM jersey_batches
-     WHERE status='open'
-     ORDER BY id DESC
-     LIMIT 1`
-  );
-  return r.rows?.[0] ?? null;
-}
+// async function getOpenJerseyBatch() {
+//   const r = await q(
+//     `SELECT id, status, title, opened_at, announced_at
+//      FROM jersey_batches
+//      WHERE status='open'
+//      ORDER BY id DESC
+//      LIMIT 1`
+//   );
+//   return r.rows?.[0] ?? null;
+// }
 
 // GET current batch + my draft + whether already sent in this batch
 app.get("/api/jersey/draft", async (req, res) => {
