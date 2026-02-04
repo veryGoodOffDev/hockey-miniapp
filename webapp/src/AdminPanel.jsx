@@ -788,20 +788,18 @@ async function announceJerseyBatch(id) {
 }
 
 async function exportJerseyCsv(id) {
-  await runAdminOp("Открываю CSV…", async () => {
-    const url = `/api/admin/jersey/batches/${id}/export.csv`;
+  await runAdminOp("Готовлю CSV…", async () => {
+    const r = await apiGet(`/api/admin/jersey/batches/${id}/export-link`);
+    if (!r?.ok) throw new Error(r?.reason || "export_link_failed");
 
-    // Внутри Telegram WebApp это самый стабильный способ
+    const url = r.url; // абсолютный URL на API с токеном
     const tg = window?.Telegram?.WebApp;
-    if (tg?.openLink) {
-      tg.openLink(url);
-      return;
-    }
 
-    // обычный браузер
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, { successText: "✅ CSV открыт", errorText: "❌ Не удалось открыть CSV" });
+    if (tg?.openLink) tg.openLink(url);
+    else window.location.assign(url);
+  }, { successText: "✅ CSV открыт", errorText: "❌ Не удалось выгрузить" });
 }
+
 
 
 

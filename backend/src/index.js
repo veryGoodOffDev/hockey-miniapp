@@ -22,6 +22,39 @@ const REMINDER_MINUTE = Number(process.env.REMINDER_MINUTE ?? 0);
 
 const INTERNAL_CRON_TOKEN = process.env.INTERNAL_CRON_TOKEN || "";
 
+const DOWNLOAD_SECRET = process.env.DOWNLOAD_SECRET || process.env.SESSION_SECRET || "change_me";
+
+function b64url(input) {
+  const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
+  return buf.toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+function b64urlDecode(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  return Buffer.from(s, "base64").toString("utf8");
+}
+function signToken(obj) {
+  const payload = b64url(JSON.stringify(obj));
+  const sig = b64url(require("crypto").createHmac("sha256", DOWNLOAD_SECRET).update(payload).digest());
+  return `${payload}.${sig}`;
+}
+function verifyToken(tok) {
+  if (!tok || typeof tok !== "string") return null;
+  const [payload, sig] = tok.split(".");
+  if (!payload || !sig) return null;
+  const sig2 = b64url(require("crypto").createHmac("sha256", DOWNLOAD_SECRET).update(payload).digest());
+  if (sig !== sig2) return null;
+  const obj = JSON.parse(b64urlDecode(payload));
+  if (!obj?.exp || Date.now() > obj.exp) return null;
+  return obj;
+}
+function apiBaseFromReq(req) {
+  // лучше задать в env PUBLIC_API_BASE="https://api.apihockeyteamru.ru:8443"
+  const base = process.env.PUBLIC_API_BASE;
+  if (base) return base.replace(/\/+$/, "");
+  const proto = (req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim();
+  return `${proto}://${req.get("host")}`;
+}
 
 
 
@@ -2228,30 +2261,29 @@ app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
 
 app.get("/api/admin/jersey/batches/:id/export.csv", async (req, res) => {
   try {
-    const user = requireWebAppAuth(req, res);
-    if (!user) return;
-    if (!(await requireGroupMember(req, res, user))) return;
-
-    const is_admin = await isAdminId(user.id);
-    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
-
     const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+    if (!Number.isFinite(id)) return res.status(400).send("bad_id");
+
+    const tok = verifyToken(req.query.token);
+    if (!tok) return res.status(403).send("bad_token");
+
+    if (Number(tok.bid) !== id) return res.status(403).send("bad_token_scope");
+
+    // доп.страховка: пользователь из токена всё ещё админ
+    const stillAdmin = await isAdminId(tok.uid);
+    if (!stillAdmin) return res.status(403).send("admin_only");
 
     const br = await q(`SELECT * FROM jersey_batches WHERE id=$1`, [id]);
     const batch = br.rows?.[0];
-    if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
+    if (!batch) return res.status(404).send("not_found");
 
     const r = await q(
-      `SELECT *
-       FROM jersey_requests
-       WHERE batch_id=$1 AND status='sent'
-       ORDER BY id ASC`,
+      `SELECT * FROM jersey_requests WHERE batch_id=$1 AND status='sent' ORDER BY id ASC`,
       [id]
     );
 
     const rows = [];
-    rows.push(["sep=;"]);
+    rows.push(["sep=;"]); // помогает Excel/Numbers на мобиле
     rows.push(["№", "Надпись", "Номер", "Размер", "Цвет", "Гамаши", "Цена"]);
 
     let i = 1;
@@ -2270,14 +2302,14 @@ app.get("/api/admin/jersey/batches/:id/export.csv", async (req, res) => {
       rows.push([String(i++), title, num, size, color, socks, ""]);
     }
 
-    const escapeCell = (cell) => {
+    const esc = (cell) => {
       const s = String(cell ?? "");
       return (s.includes(";") || s.includes('"') || s.includes("\n") || s.includes("\r"))
         ? `"${s.replace(/"/g, '""')}"`
         : s;
     };
 
-    const csv = "\uFEFF" + rows.map((r) => r.map(escapeCell).join(";")).join("\r\n");
+    const csv = "\uFEFF" + rows.map((r) => r.map(esc).join(";")).join("\r\n");
 
     const safeTitle = (batch.title || `batch_${id}`)
       .replace(/[^\w\-а-яА-Я ]+/g, "")
@@ -2290,11 +2322,41 @@ app.get("/api/admin/jersey/batches/:id/export.csv", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).send(csv);
   } catch (e) {
-    console.error("GET /api/admin/jersey/batches/:id/export.csv failed:", e);
-    return res.status(500).json({ ok: false, reason: "server_error" });
+    console.error("GET /export.csv failed:", e);
+    return res.status(500).send("server_error");
   }
 });
 
+
+app.get("/api/admin/jersey/batches/:id/export-link", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    // токен на 60 секунд
+    const token = signToken({
+      uid: user.id,
+      bid: id,
+      exp: Date.now() + 60_000,
+      jti: b64url(require("crypto").randomBytes(8)),
+    });
+
+    const base = apiBaseFromReq(req);
+    const url = `${base}/api/admin/jersey/batches/${id}/export.csv?token=${encodeURIComponent(token)}`;
+
+    return res.json({ ok: true, url });
+  } catch (e) {
+    console.error("GET /export-link failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
 
 
       /** ====== FUN (profile jokes) ====== */
