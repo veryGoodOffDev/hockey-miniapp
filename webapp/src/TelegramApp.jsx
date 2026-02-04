@@ -19,6 +19,18 @@ const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 
+const JERSEY_COLOR_OPTS = [
+  { code: "white", label: "Белый" },
+  { code: "blue", label: "Синий" },
+  { code: "black", label: "Черный" },
+];
+
+const SOCKS_SIZE_OPTS = [
+  { code: "adult", label: "Обычный" },
+  { code: "junior", label: "Junior" },
+];
+
+
 export default function TelegramApp() {
   const tg = window.Telegram?.WebApp;
   const initData = tg?.initData || "";
@@ -90,6 +102,24 @@ export default function TelegramApp() {
 
   // profile sub-tabs
   const [profileView, setProfileView] = useState("me"); // me | support | about
+
+    // ===== jersey order (profile) =====
+  const jerseyCardRef = useRef(null);
+  const [jerseyOpenBatch, setJerseyOpenBatch] = useState(null);
+  const [jerseyDraft, setJerseyDraft] = useState({
+    name_on_jersey: "",
+    jersey_colors: [],
+    jersey_number: "",
+    jersey_size: "",
+    socks_needed: false,
+    socks_colors: [],
+    socks_size: "adult",
+  });
+  const [jerseyUpdatedAt, setJerseyUpdatedAt] = useState(null);
+  const [jerseySentAt, setJerseySentAt] = useState(null);
+  const [jerseyBusy, setJerseyBusy] = useState(false);
+  const [jerseyMsg, setJerseyMsg] = useState("");
+
 
   const [teamsBack, setTeamsBack] = useState({ tab: "game", gameView: "list" });
 
@@ -1144,30 +1174,39 @@ function clipText(s, max = 70) {
     let forceGameId = null;
 
     if (sp) {
-      let m = sp.match(/^game_(\d+)(?:_(comments))?$/);
-      if (m) {
-        const gid = Number(m[1]);
-        const focus = m[2] ? "comments" : null;
-        if (Number.isFinite(gid) && gid > 0) {
-          forceGameId = gid;
-          setTab("game");
-          setGameView("detail");
-          setSelectedGameId(gid);
-          setDetailFocus(focus);
-        }
+      if (sp === "jersey") {
+        setTab("profile");
+        setProfileView("me");
+        setTimeout(() => {
+          jerseyCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 50);
       } else {
-        m = sp.match(/^teams_(\d+)$/);
+        let m = sp.match(/^game_(\d+)(?:_(comments))?$/);
         if (m) {
           const gid = Number(m[1]);
+          const focus = m[2] ? "comments" : null;
           if (Number.isFinite(gid) && gid > 0) {
             forceGameId = gid;
+            setTab("game");
+            setGameView("detail");
             setSelectedGameId(gid);
-            setTab("teams");
-            setTeamsBack?.({ tab: "game", gameView: "detail" });
+            setDetailFocus(focus);
+          }
+        } else {
+          m = sp.match(/^teams_(\d+)$/);
+          if (m) {
+            const gid = Number(m[1]);
+            if (Number.isFinite(gid) && gid > 0) {
+              forceGameId = gid;
+              setSelectedGameId(gid);
+              setTab("teams");
+              setTeamsBack?.({ tab: "game", gameView: "detail" });
+            }
           }
         }
       }
     }
+
 
     (async () => {
       try {
@@ -1283,6 +1322,12 @@ function clipText(s, max = 70) {
 useEffect(() => {
   if (tab === "profile" && profileView === "thanks") loadFunStatus();
 }, [tab, profileView]);
+
+useEffect(() => {
+  if (tab === "profile" && profileView === "me") loadJerseyDraft();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [tab, profileView]);
+
 
 useEffect(() => {
   if (!game) return;
@@ -1484,6 +1529,121 @@ async function saveProfile() {
       sync: { refreshPlayers: true, refreshGames: true, refreshGame: true },
     }
   );
+}
+
+
+function fmtDt(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toggleArr(arr, val) {
+  const a = Array.isArray(arr) ? [...arr] : [];
+  const i = a.indexOf(val);
+  if (i >= 0) a.splice(i, 1);
+  else a.push(val);
+  return a;
+}
+
+async function loadJerseyDraft() {
+  try {
+    setJerseyBusy(true);
+    setJerseyMsg("");
+
+    const r = await apiGet("/api/jersey/draft");
+    if (!r?.ok) return;
+
+    setJerseyOpenBatch(r.batch || null);
+
+    if (r.draft) {
+      setJerseyDraft({
+        name_on_jersey: r.draft.name_on_jersey || "",
+        jersey_colors: r.draft.jersey_colors || [],
+        jersey_number: r.draft.jersey_number == null ? "" : String(r.draft.jersey_number),
+        jersey_size: r.draft.jersey_size || "",
+        socks_needed: r.draft.socks_needed === true,
+        socks_colors: r.draft.socks_colors || [],
+        socks_size: r.draft.socks_size || "adult",
+      });
+      setJerseyUpdatedAt(r.draft.updated_at || null);
+    } else {
+      // пустой черновик
+      setJerseyDraft((s) => ({
+        ...s,
+        name_on_jersey: "",
+        jersey_colors: [],
+        jersey_number: "",
+        jersey_size: "",
+        socks_needed: false,
+        socks_colors: [],
+        socks_size: "adult",
+      }));
+      setJerseyUpdatedAt(null);
+    }
+
+    setJerseySentAt(r.sent_at || null);
+  } catch (e) {
+    console.error("loadJerseyDraft failed", e);
+  } finally {
+    setJerseyBusy(false);
+  }
+}
+
+async function saveJerseyDraft() {
+  try {
+    setJerseyBusy(true);
+    setJerseyMsg("");
+
+    const payload = {
+      ...jerseyDraft,
+      jersey_number: jerseyDraft.jersey_number === "" ? null : Number(jerseyDraft.jersey_number),
+    };
+
+    const r = await apiPost("/api/jersey/draft", payload);
+    if (r?.ok) {
+      setJerseyUpdatedAt(r?.draft?.updated_at || new Date().toISOString());
+      setJerseyMsg("✅ Черновик сохранён");
+    } else {
+      setJerseyMsg(`❌ Ошибка: ${r?.reason || r?.error || "unknown"}`);
+    }
+  } finally {
+    setJerseyBusy(false);
+  }
+}
+
+async function sendJerseyOrder() {
+  try {
+    setJerseyBusy(true);
+    setJerseyMsg("");
+
+    if (!jerseyOpenBatch?.id) {
+      setJerseyMsg("🔒 Сбор закрыт — отправка недоступна");
+      return;
+    }
+
+    const payload = {
+      ...jerseyDraft,
+      jersey_number: jerseyDraft.jersey_number === "" ? null : Number(jerseyDraft.jersey_number),
+    };
+
+    const r = await apiPost("/api/jersey/send", payload);
+    if (r?.ok) {
+      setJerseySentAt(r.sent_at || new Date().toISOString());
+      setJerseyMsg("✅ Заявка отправлена");
+    } else {
+      const map = {
+        collection_closed: "🔒 Сбор закрыт",
+        name_required: "❌ Укажи имя на джерси",
+        size_required: "❌ Укажи размер джерси",
+        colors_required: "❌ Выбери цвет(а) джерси",
+      };
+      setJerseyMsg(map[r?.reason] || `❌ Ошибка: ${r?.reason || r?.error || "unknown"}`);
+    }
+  } finally {
+    setJerseyBusy(false);
+  }
 }
 
 
@@ -3191,7 +3351,156 @@ function openYandexRoute(lat, lon) {
                   {saving ? "Сохраняю..." : "Сохранить"}
                 </button>
               </div>
+              <div className="card" ref={jerseyCardRef}>
+                <h2>👕 Заявка на командную форму</h2>
+
+                {jerseyOpenBatch?.id ? (
+                  <div className="badge" style={{ background: "rgba(16,185,129,.18)", borderColor: "rgba(16,185,129,.35)" }}>
+                    🟢 Сбор открыт{jerseyOpenBatch.title ? `: ${jerseyOpenBatch.title}` : ""}
+                  </div>
+                ) : (
+                  <div className="badge" style={{ background: "rgba(239,68,68,.12)", borderColor: "rgba(239,68,68,.25)" }}>
+                    🔒 Сбор закрыт — можно заполнить черновик, но отправка недоступна
+                  </div>
+                )}
+
+                <div style={{ marginTop: 10 }}>
+                  <label>Имя на джерси</label>
+                  <input
+                    className="input"
+                    value={jerseyDraft.name_on_jersey}
+                    onChange={(e) => setJerseyDraft((s) => ({ ...s, name_on_jersey: e.target.value }))}
+                    placeholder="Например: PEREGUDOV"
+                  />
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label>Цвет(а) джерси</label>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                    {JERSEY_COLOR_OPTS.map((c) => {
+                      const on = (jerseyDraft.jersey_colors || []).includes(c.code);
+                      return (
+                        <button
+                          key={c.code}
+                          className={on ? "btn" : "btn secondary"}
+                          type="button"
+                          onClick={() => setJerseyDraft((s) => ({ ...s, jersey_colors: toggleArr(s.jersey_colors, c.code) }))}
+                        >
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="row" style={{ gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <label>Номер на джерси</label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={jerseyDraft.jersey_number}
+                      onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_number: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))}
+                      placeholder="0–99"
+                    />
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <label>Размер джерси</label>
+                    <input
+                      className="input"
+                      value={jerseyDraft.jersey_size}
+                      onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_size: e.target.value }))}
+                      placeholder="Например: L / XL / 54"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label>Гамаши</label>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                    <button
+                      className={jerseyDraft.socks_needed ? "btn" : "btn secondary"}
+                      type="button"
+                      onClick={() => setJerseyDraft((s) => ({ ...s, socks_needed: true }))}
+                    >
+                      Да
+                    </button>
+                    <button
+                      className={!jerseyDraft.socks_needed ? "btn" : "btn secondary"}
+                      type="button"
+                      onClick={() => setJerseyDraft((s) => ({ ...s, socks_needed: false, socks_colors: [], socks_size: "adult" }))}
+                    >
+                      Нет
+                    </button>
+                  </div>
+                </div>
+
+                {jerseyDraft.socks_needed ? (
+                  <>
+                    <div style={{ marginTop: 10 }}>
+                      <label>Цвет(а) гамаш</label>
+                      <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                        {JERSEY_COLOR_OPTS.map((c) => {
+                          const on = (jerseyDraft.socks_colors || []).includes(c.code);
+                          return (
+                            <button
+                              key={c.code}
+                              className={on ? "btn" : "btn secondary"}
+                              type="button"
+                              onClick={() => setJerseyDraft((s) => ({ ...s, socks_colors: toggleArr(s.socks_colors, c.code) }))}
+                            >
+                              {c.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <label>Размер гамаш</label>
+                      <select
+                        value={jerseyDraft.socks_size}
+                        onChange={(e) => setJerseyDraft((s) => ({ ...s, socks_size: e.target.value }))}
+                      >
+                        {SOCKS_SIZE_OPTS.map((x) => (
+                          <option key={x.code} value={x.code}>
+                            {x.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : null}
+
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                  <button className="btn secondary" type="button" onClick={saveJerseyDraft} disabled={jerseyBusy}>
+                    {jerseyBusy ? "…" : "Сохранить черновик"}
+                  </button>
+
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={sendJerseyOrder}
+                    disabled={jerseyBusy || !jerseyOpenBatch?.id}
+                    title={!jerseyOpenBatch?.id ? "Сбор закрыт" : ""}
+                  >
+                    {jerseyBusy ? "…" : "Отправить заявку"}
+                  </button>
+                </div>
+
+                <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+                  {jerseyUpdatedAt ? <>🕓 Черновик обновлён: <b>{fmtDt(jerseyUpdatedAt)}</b><br /></> : null}
+                  {jerseySentAt ? <>✅ Отправлено в текущий сбор: <b>{fmtDt(jerseySentAt)}</b></> : null}
+                </div>
+
+                {jerseyMsg ? <div className="small" style={{ marginTop: 8 }}>{jerseyMsg}</div> : null}
+              </div>
+
             </div>
+            
+            
           )}
 
           {profileView === "support" && <SupportForm />}

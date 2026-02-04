@@ -342,6 +342,17 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   // reminders
   const [reminderMsg, setReminderMsg] = useState("");
 
+  // ===== jersey =====
+  const [jerseyBatches, setJerseyBatches] = useState([]);
+  const [jerseyOpen, setJerseyOpen] = useState(null);
+  const [jerseyTitle, setJerseyTitle] = useState("");
+  const [jerseyOrders, setJerseyOrders] = useState([]);
+  const [jerseyLoading, setJerseyLoading] = useState(false);
+  const [jerseyOrdersLoading, setJerseyOrdersLoading] = useState(false);
+  const [jerseyErr, setJerseyErr] = useState("");
+
+
+
   // players search
   const [q, setQ] = useState("");
 
@@ -640,6 +651,13 @@ function closePlayerSheet() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+  if (section !== "jersey") return;
+  loadJerseyBatches({ silent: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [section]);
+
+
   const filteredPlayers = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return players;
@@ -660,6 +678,105 @@ function closePlayerSheet() {
       else setReminderMsg(`❌ Ошибка: ${r?.reason || r?.error || "unknown"}`);
     });
   }
+
+  function adminName(p) {
+  const dn = (p.display_name || "").trim();
+  if (dn) return dn;
+  const fn = (p.first_name || "").trim();
+  if (fn) return fn;
+  if (p.username) return `@${p.username}`;
+  return String(p.tg_id || "");
+}
+
+function downloadTextFile(filename, text, mime = "text/plain") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function loadJerseyBatches({ silent = false } = {}) {
+  if (!silent) flashAdmin("Загружаю сборы формы…", "info", true, 0);
+  setJerseyErr("");
+  setJerseyLoading(true);
+  try {
+    const r = await apiGet("/api/admin/jersey/batches");
+    if (!r?.ok) throw new Error(r?.reason || "load_failed");
+
+    const list = r.batches || [];
+    setJerseyBatches(list);
+
+    const open = list.find((b) => b.status === "open") || null;
+    setJerseyOpen(open);
+
+    if (open?.id) {
+      await loadJerseyOrders(open.id, { silent: true });
+    } else {
+      setJerseyOrders([]);
+    }
+
+    if (!silent) flashAdmin("✅ Готово", "success", false, 1200);
+  } catch (e) {
+    console.error("loadJerseyBatches failed", e);
+    setJerseyErr("Не удалось загрузить");
+    if (!silent) flashAdmin("❌ Не удалось загрузить", "error", false, 2200);
+  } finally {
+    setJerseyLoading(false);
+  }
+}
+
+async function loadJerseyOrders(batchId, { silent = false } = {}) {
+  setJerseyOrdersLoading(true);
+  try {
+    const r = await apiGet(`/api/admin/jersey/batches/${batchId}/orders`);
+    if (!r?.ok) throw new Error(r?.reason || "orders_failed");
+    setJerseyOrders(r.orders || []);
+  } catch (e) {
+    console.error("loadJerseyOrders failed", e);
+    if (!silent) flashAdmin("❌ Не удалось загрузить заявки", "error", false, 2200);
+  } finally {
+    setJerseyOrdersLoading(false);
+  }
+}
+
+async function openJerseyBatch() {
+  await runAdminOp("Открываю сбор…", async () => {
+    const r = await apiPost("/api/admin/jersey/batches/open", { title: jerseyTitle.trim() });
+    if (!r?.ok) throw new Error(r?.reason || "open_failed");
+    setJerseyTitle("");
+    await loadJerseyBatches({ silent: true });
+  }, { successText: "✅ Сбор открыт", errorText: "❌ Не удалось открыть сбор" });
+}
+
+async function closeJerseyBatch(id) {
+  await runAdminOp("Закрываю сбор…", async () => {
+    const r = await apiPost(`/api/admin/jersey/batches/${id}/close`, {});
+    if (!r?.ok) throw new Error(r?.reason || "close_failed");
+    await loadJerseyBatches({ silent: true });
+  }, { successText: "✅ Сбор закрыт", errorText: "❌ Не удалось закрыть" });
+}
+
+async function announceJerseyBatch(id) {
+  await runAdminOp("Отправляю сообщение в чат…", async () => {
+    const r = await apiPost(`/api/admin/jersey/batches/${id}/announce`, {});
+    if (!r?.ok) throw new Error(r?.reason || "announce_failed");
+    await loadJerseyBatches({ silent: true });
+  }, { successText: "✅ Отправлено в чат", errorText: "❌ Не удалось отправить" });
+}
+
+async function exportJerseyCsv(id) {
+  await runAdminOp("Готовлю CSV…", async () => {
+    const r = await apiGet(`/api/admin/jersey/batches/${id}/export`);
+    if (!r?.ok) throw new Error(r?.reason || "export_failed");
+    downloadTextFile(r.filename || `jersey_batch_${id}.csv`, r.csv || "", "text/csv;charset=utf-8");
+  }, { successText: "✅ CSV скачан", errorText: "❌ Не удалось выгрузить" });
+}
+
 
 async function createOne() {
   if (!date || !time) return;
@@ -1274,6 +1391,10 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         <button className={`segBtn ${section === "players" ? "active" : ""}`} onClick={() => setSection("players")}>
           Игроки
         </button>
+        <button className={`segBtn ${section === "jersey" ? "active" : ""}`} onClick={() => setSection("jersey")}>
+          Форма
+        </button>
+
         <button className={`segBtn ${section === "reminders" ? "active" : ""}`} onClick={() => setSection("reminders")}>
           Напоминания
         </button>
@@ -1375,6 +1496,100 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           {reminderMsg && <div className="small" style={{ marginTop: 8 }}>{reminderMsg}</div>}
         </div>
       )}
+{/* ====== JERSEY ====== */}
+{section === "jersey" && (
+  <div className="card" style={{ marginTop: 12 }}>
+    <h2>👕 Командная форма</h2>
+
+    {jerseyErr ? <div className="small" style={{ marginTop: 8 }}>❌ {jerseyErr}</div> : null}
+
+    {!jerseyOpen ? (
+      <>
+        <div className="small" style={{ opacity: 0.85 }}>
+          Сейчас сбор закрыт. Открой сбор — и игроки смогут отправлять заявки.
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <label>Название сбора (необязательно)</label>
+          <input
+            className="input"
+            value={jerseyTitle}
+            onChange={(e) => setJerseyTitle(e.target.value)}
+            placeholder="Например: Весна 2026"
+          />
+        </div>
+
+        <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
+          <button className="btn" onClick={openJerseyBatch} disabled={jerseyLoading}>
+            Открыть сбор
+          </button>
+          <button className="btn secondary" onClick={() => loadJerseyBatches({ silent: false })} disabled={jerseyLoading}>
+            Обновить
+          </button>
+        </div>
+      </>
+    ) : (
+      <>
+        <div className="badge" style={{ marginTop: 6 }}>
+          🟢 Сбор открыт{jerseyOpen.title ? `: ${jerseyOpen.title}` : ""} · заявок: {jerseyOpen.orders_count ?? 0}
+        </div>
+
+        <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
+          <button className="btn" onClick={() => announceJerseyBatch(jerseyOpen.id)} disabled={jerseyLoading}>
+            Отправить сообщение в чат
+          </button>
+
+          <button className="btn secondary" onClick={() => exportJerseyCsv(jerseyOpen.id)} disabled={jerseyLoading}>
+            Скачать CSV
+          </button>
+
+          <button className="btn secondary" onClick={() => loadJerseyOrders(jerseyOpen.id)} disabled={jerseyOrdersLoading}>
+            Обновить заявки
+          </button>
+
+          <button className="btn secondary" onClick={() => closeJerseyBatch(jerseyOpen.id)} disabled={jerseyLoading}>
+            Закрыть сбор
+          </button>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <h3 style={{ margin: "10px 0" }}>Заявки</h3>
+
+          {jerseyOrdersLoading ? (
+            <div className="small" style={{ opacity: 0.8 }}>Загружаю…</div>
+          ) : jerseyOrders.length === 0 ? (
+            <div className="small" style={{ opacity: 0.8 }}>Пока нет заявок.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {jerseyOrders.map((o) => (
+                <div key={o.id} className="card" style={{ margin: 0 }}>
+                  <div style={{ fontWeight: 700 }}>
+                    {adminName(o)} {o.username ? <span style={{ opacity: 0.7 }}>({`@${o.username}`})</span> : null}
+                  </div>
+
+                  <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                    Имя на джерси: <b>{o.name_on_jersey}</b><br/>
+                    Цвета: <b>{(o.jersey_colors || []).join(", ") || "—"}</b><br/>
+                    Номер: <b>{o.jersey_number ?? "—"}</b><br/>
+                    Размер: <b>{o.jersey_size || "—"}</b><br/>
+                    Гамаши: <b>{o.socks_needed ? "Да" : "Нет"}</b>
+                    {o.socks_needed ? (
+                      <>
+                        <br/>Цвета гамаш: <b>{(o.socks_colors || []).join(", ") || "—"}</b>
+                        <br/>Размер гамаш: <b>{o.socks_size || "adult"}</b>
+                      </>
+                    ) : null}
+                    <br/>Отправлено: <b>{String(o.updated_at || "")}</b>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </div>
+)}
 
      {/* ====== GAMES ====== */}
 {section === "games" && (

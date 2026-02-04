@@ -271,6 +271,58 @@ await q(`CREATE INDEX IF NOT EXISTS idx_best_votes_game_candidate ON best_player
   /** ===================== SETTINGS ===================== */
   await q(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
 
+  /** ===================== JERSEY ORDERS ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_batches (
+      id BIGSERIAL PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+      title TEXT NOT NULL DEFAULT '',
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      opened_by BIGINT,
+      announced_at TIMESTAMPTZ,
+      closed_at TIMESTAMPTZ
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_batches_status ON jersey_batches(status);`);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_drafts (
+      tg_id BIGINT PRIMARY KEY REFERENCES players(tg_id) ON DELETE CASCADE,
+      name_on_jersey TEXT NOT NULL DEFAULT '',
+      jersey_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+      jersey_number INT,
+      jersey_size TEXT NOT NULL DEFAULT '',
+      socks_needed BOOLEAN NOT NULL DEFAULT FALSE,
+      socks_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+      socks_size TEXT NOT NULL DEFAULT 'adult',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_drafts_updated_at ON jersey_drafts(updated_at DESC);`);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_orders (
+      id BIGSERIAL PRIMARY KEY,
+      batch_id BIGINT NOT NULL REFERENCES jersey_batches(id) ON DELETE CASCADE,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      name_on_jersey TEXT NOT NULL,
+      jersey_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+      jersey_number INT,
+      jersey_size TEXT NOT NULL,
+      socks_needed BOOLEAN NOT NULL DEFAULT FALSE,
+      socks_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+      socks_size TEXT NOT NULL DEFAULT 'adult',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(batch_id, tg_id)
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_orders_batch_id ON jersey_orders(batch_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_orders_tg_id ON jersey_orders(tg_id);`);
+
+
   // ✅ последовательность для гостевых id (tg_id будет отрицательным)
   await q(`CREATE SEQUENCE IF NOT EXISTS guest_seq START 1`);
 
