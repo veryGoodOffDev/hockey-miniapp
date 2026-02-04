@@ -637,5 +637,52 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_comment ON game_comment_reactions(comment_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_user ON game_comment_reactions(user_tg_id);`);
 
+  /** ===================== JERSEY (BATCHES + REQUESTS) ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_batches (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open', -- open|closed
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ,
+      created_by BIGINT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // один открытый сбор одновременно
+  await q(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_jersey_batches_open
+    ON jersey_batches(status)
+    WHERE status='open';
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_requests (
+      id BIGSERIAL PRIMARY KEY,
+      batch_id INT NOT NULL REFERENCES jersey_batches(id) ON DELETE CASCADE,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+
+      status TEXT NOT NULL DEFAULT 'draft', -- draft|sent
+
+      name_on_jersey TEXT NOT NULL DEFAULT '',
+      jersey_colors TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      jersey_number INT,
+      jersey_size TEXT NOT NULL DEFAULT '',
+
+      socks_needed BOOLEAN NOT NULL DEFAULT FALSE,
+      socks_colors TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      socks_size TEXT NOT NULL DEFAULT 'adult',
+
+      sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_req_batch ON jersey_requests(batch_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_req_tg_batch ON jersey_requests(tg_id, batch_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_req_batch_status ON jersey_requests(batch_id, status);`);
 
 }
