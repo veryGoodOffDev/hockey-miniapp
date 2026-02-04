@@ -2226,6 +2226,76 @@ app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
 });
 
 
+app.get("/api/admin/jersey/batches/:id/export.csv", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const br = await q(`SELECT * FROM jersey_batches WHERE id=$1`, [id]);
+    const batch = br.rows?.[0];
+    if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    const r = await q(
+      `SELECT *
+       FROM jersey_requests
+       WHERE batch_id=$1 AND status='sent'
+       ORDER BY id ASC`,
+      [id]
+    );
+
+    const rows = [];
+    rows.push(["sep=;"]);
+    rows.push(["№", "Надпись", "Номер", "Размер", "Цвет", "Гамаши", "Цена"]);
+
+    let i = 1;
+    for (const o of r.rows || []) {
+      const title = o.name_on_jersey?.trim() ? o.name_on_jersey.trim() : "без надписи";
+      const num = o.jersey_number == null ? "без номера" : String(o.jersey_number);
+      const size = o.jersey_size || "";
+      const color = ruJoin(o.jersey_colors, "jersey");
+
+      let socks = "";
+      if (o.socks_needed) {
+        socks = ruJoin(o.socks_colors, "socks");
+        if (String(o.socks_size) === "junior") socks = (socks ? socks + " " : "") + "jr";
+      }
+
+      rows.push([String(i++), title, num, size, color, socks, ""]);
+    }
+
+    const escapeCell = (cell) => {
+      const s = String(cell ?? "");
+      return (s.includes(";") || s.includes('"') || s.includes("\n") || s.includes("\r"))
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    const csv = "\uFEFF" + rows.map((r) => r.map(escapeCell).join(";")).join("\r\n");
+
+    const safeTitle = (batch.title || `batch_${id}`)
+      .replace(/[^\w\-а-яА-Я ]+/g, "")
+      .trim()
+      .replace(/\s+/g, "_");
+    const filename = `jersey_${safeTitle || id}.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).send(csv);
+  } catch (e) {
+    console.error("GET /api/admin/jersey/batches/:id/export.csv failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+
 
       /** ====== FUN (profile jokes) ====== */
 /** ====== FUN (profile jokes) ====== */

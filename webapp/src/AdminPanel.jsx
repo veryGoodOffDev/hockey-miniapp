@@ -788,12 +788,21 @@ async function announceJerseyBatch(id) {
 }
 
 async function exportJerseyCsv(id) {
-  await runAdminOp("Готовлю CSV…", async () => {
-    const r = await apiGet(`/api/admin/jersey/batches/${id}/export`);
-    if (!r?.ok) throw new Error(r?.reason || "export_failed");
-    downloadTextFile(r.filename || `jersey_batch_${id}.csv`, r.csv || "", "text/csv;charset=utf-8");
-  }, { successText: "✅ CSV скачан", errorText: "❌ Не удалось выгрузить" });
+  await runAdminOp("Открываю CSV…", async () => {
+    const url = `/api/admin/jersey/batches/${id}/export.csv`;
+
+    // Внутри Telegram WebApp это самый стабильный способ
+    const tg = window?.Telegram?.WebApp;
+    if (tg?.openLink) {
+      tg.openLink(url);
+      return;
+    }
+
+    // обычный браузер
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, { successText: "✅ CSV открыт", errorText: "❌ Не удалось открыть CSV" });
 }
+
 
 
 async function createOne() {
