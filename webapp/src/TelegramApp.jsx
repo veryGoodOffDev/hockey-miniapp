@@ -12,6 +12,7 @@ import bg3 from "./bg3.webp";
 import bg4 from "./bg4.webp";
 import bg5 from "./bg5.webp";
 import bg6 from "./bg6.webp";
+import player from "./player.pmg";
 import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
 
@@ -4185,7 +4186,13 @@ function openYandexRoute(lat, lon) {
                       >
                         <div className="row" style={{ alignItems: "center", gap: 12, marginTop: 2 }}>
                           <JerseyBadge number={showNum(p)} variant="modern" striped size={52} />
-                          <Avatar p={p} big onClick={() => openPhotoModal(p)} />
+                          <Avatar
+                            p={p}
+                            big
+                            fallbackUrl={player}
+                            onClick={() => openPhotoModal(p)}
+                          />
+
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 900 }}>{showName(p)}</div>
                             <div className="small" style={{ opacity: 0.8 }}>
@@ -4499,14 +4506,91 @@ function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, 
 }
 
 
-function Avatar({ p, big = false, onClick }) {
-  const size = big ? 84 : 52; // было 72/44 — чуть крупнее
+// function Avatar({ p, big = false, onClick }) {
+//   const size = big ? 84 : 52; // было 72/44 — чуть крупнее
+//   const url = (p?.photo_url || "").trim();
+//   const clickable = typeof onClick === "function";
+
+//   const handleClick = (e) => {
+//     if (!clickable) return;
+//     e.stopPropagation(); // важно: не даём сработать клику по карточке игрока
+//     onClick(e);
+//   };
+
+//   const handleKeyDown = (e) => {
+//     if (!clickable) return;
+//     if (e.key === "Enter" || e.key === " ") {
+//       e.preventDefault();
+//       handleClick(e);
+//     }
+//   };
+
+//   const wrapStyle = {
+//     width: size,
+//     height: size,
+//     borderRadius: 999,
+//     overflow: "hidden",
+//     display: "grid",
+//     placeItems: "center",
+//     cursor: clickable ? "zoom-in" : "default",
+//     border: "1px solid rgba(255,255,255,0.10)",
+//     background: "rgba(255,255,255,0.06)",
+//     flex: "0 0 auto",
+//   };
+
+//   if (url) {
+//     return (
+//       <div
+//         style={wrapStyle}
+//         onClick={handleClick}
+//         onKeyDown={handleKeyDown}
+//         role={clickable ? "button" : undefined}
+//         tabIndex={clickable ? 0 : undefined}
+//         title={clickable ? "Открыть фото" : ""}
+//       >
+//         <img
+//           src={url}
+//           alt=""
+//           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+//           draggable={false}
+//         />
+//       </div>
+//     );
+//   }
+
+//   const letter = (showName(p)[0] || "•").toUpperCase();
+//   return (
+//     <div
+//       style={{
+//         ...wrapStyle,
+//         fontWeight: 900,
+//       }}
+//       onClick={handleClick}
+//       onKeyDown={handleKeyDown}
+//       role={clickable ? "button" : undefined}
+//       tabIndex={clickable ? 0 : undefined}
+//       title={clickable ? "Открыть фото" : ""}
+//     >
+//       {letter}
+//     </div>
+//   );
+// }
+
+function Avatar({ p, big = false, onClick, fallbackUrl = player }) {
+  const size = big ? 84 : 52;
   const url = (p?.photo_url || "").trim();
   const clickable = typeof onClick === "function";
+  const [broken, setBroken] = useState(false);
+
+  const letter = useMemo(() => (showName(p)?.[0] || "•").toUpperCase(), [p]);
+
+  // если photo_url нет -> используем заглушку
+  // если заглушка не загрузилась -> покажем букву
+  const src = !broken ? (url || fallbackUrl) : "";
 
   const handleClick = (e) => {
     if (!clickable) return;
-    e.stopPropagation(); // важно: не даём сработать клику по карточке игрока
+    e.stopPropagation();
     onClick(e);
   };
 
@@ -4518,57 +4602,31 @@ function Avatar({ p, big = false, onClick }) {
     }
   };
 
-  const wrapStyle = {
-    width: size,
-    height: size,
-    borderRadius: 999,
-    overflow: "hidden",
-    display: "grid",
-    placeItems: "center",
-    cursor: clickable ? "zoom-in" : "default",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.06)",
-    flex: "0 0 auto",
-  };
-
-  if (url) {
-    return (
-      <div
-        style={wrapStyle}
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
-        role={clickable ? "button" : undefined}
-        tabIndex={clickable ? 0 : undefined}
-        title={clickable ? "Открыть фото" : ""}
-      >
-        <img
-          src={url}
-          alt=""
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-          draggable={false}
-        />
-      </div>
-    );
-  }
-
-  const letter = (showName(p)[0] || "•").toUpperCase();
   return (
     <div
-      style={{
-        ...wrapStyle,
-        fontWeight: 900,
-      }}
+      className={`avatar ${clickable ? "isClickable" : ""}`}
+      style={{ "--av-size": `${size}px` }}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
       title={clickable ? "Открыть фото" : ""}
     >
-      {letter}
+      {src ? (
+        <img
+          className="avatarImg"
+          src={src}
+          alt=""
+          draggable={false}
+          loading="lazy"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <span className="avatarLetter">{letter}</span>
+      )}
     </div>
   );
 }
-
 
 function AvatarCircle({ tgId = "", fallbackUrl = "", url = "", name = "", size = 34 }) {
   const primary = tgId ? `/api/players/${tgId}/avatar` : (url || "");
