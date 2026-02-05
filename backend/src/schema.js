@@ -637,52 +637,78 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_comment ON game_comment_reactions(comment_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_user ON game_comment_reactions(user_tg_id);`);
 
-  /** ===================== JERSEY (BATCHES + REQUESTS) ===================== */
+    /** ===================== JERSEY ORDERS (BATCHES) ===================== */
+
   await q(`
     CREATE TABLE IF NOT EXISTS jersey_batches (
       id SERIAL PRIMARY KEY,
       title TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'open', -- open|closed
+
+      opened_by BIGINT,
       opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      closed_by BIGINT,
       closed_at TIMESTAMPTZ,
-      created_by BIGINT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+      announced_at TIMESTAMPTZ,
+      announce_message_id BIGINT
     );
   `);
 
-  // один открытый сбор одновременно
-  await q(`
-    CREATE UNIQUE INDEX IF NOT EXISTS uniq_jersey_batches_open
-    ON jersey_batches(status)
-    WHERE status='open';
-  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_batches_status ON jersey_batches(status);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_batches_opened_at ON jersey_batches(opened_at DESC);`);
+
+  // на случай если таблица уже была, но без колонок
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS opened_by BIGINT;`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS closed_by BIGINT;`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS announced_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS announce_message_id BIGINT;`);
 
   await q(`
     CREATE TABLE IF NOT EXISTS jersey_requests (
       id BIGSERIAL PRIMARY KEY,
-      batch_id INT NOT NULL REFERENCES jersey_batches(id) ON DELETE CASCADE,
+
       tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      batch_id INT NOT NULL REFERENCES jersey_batches(id) ON DELETE CASCADE,
 
       status TEXT NOT NULL DEFAULT 'draft', -- draft|sent
 
-      name_on_jersey TEXT NOT NULL DEFAULT '',
-      jersey_colors TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      name_on_jersey TEXT,
       jersey_number INT,
-      jersey_size TEXT NOT NULL DEFAULT '',
+      jersey_size TEXT,
+      jersey_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
 
       socks_needed BOOLEAN NOT NULL DEFAULT FALSE,
-      socks_colors TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-      socks_size TEXT NOT NULL DEFAULT 'adult',
+      socks_colors TEXT[] NOT NULL DEFAULT '{}'::text[],
+      socks_size TEXT, -- normal|junior
 
-      sent_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent_at TIMESTAMPTZ
     );
   `);
 
-  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_req_batch ON jersey_requests(batch_id);`);
-  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_req_tg_batch ON jersey_requests(tg_id, batch_id);`);
-  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_req_batch_status ON jersey_requests(batch_id, status);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_requests_batch_status ON jersey_requests(batch_id, status);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_jersey_requests_tg ON jersey_requests(tg_id);`);
+
+  // на случай если таблица уже была, но без колонок
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS tg_id BIGINT;`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS batch_id INT;`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS name_on_jersey TEXT;`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS jersey_number INT;`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS jersey_size TEXT;`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS jersey_colors TEXT[] NOT NULL DEFAULT '{}'::text[];`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS socks_needed BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS socks_colors TEXT[] NOT NULL DEFAULT '{}'::text[];`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS socks_size TEXT;`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+  await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;`);
 
 }

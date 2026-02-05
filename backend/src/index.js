@@ -2203,6 +2203,9 @@ app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
     const batch = br.rows?.[0];
     if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
 
+    // ВАЖНО:
+    // если у тебя таблица jersey_requests -> оставь так
+    // если у тебя jersey_orders -> замени FROM jersey_requests на FROM jersey_orders
     const r = await q(
       `SELECT *
        FROM jersey_requests
@@ -2211,8 +2214,8 @@ app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
       [id]
     );
 
-    // CSV как на скрине (№, Надпись, Номер, Размер, Цвет, Гамаши, Цена)
     const rows = [];
+    rows.push(["sep=;"]);
     rows.push(["№", "Надпись", "Номер", "Размер", "Цвет", "Гамаши", "Цена"]);
 
     let i = 1;
@@ -2231,24 +2234,19 @@ app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
       rows.push([String(i++), title, num, size, color, socks, ""]);
     }
 
-    // Excel-friendly: BOM + ;
-    const csv =
-      "\uFEFF" +
-      rows
-        .map((r) =>
-          r
-            .map((cell) => {
-              const s = String(cell ?? "");
-              const escaped = s.includes(";") || s.includes('"') || s.includes("\n")
-                ? `"${s.replace(/"/g, '""')}"`
-                : s;
-              return escaped;
-            })
-            .join(";")
-        )
-        .join("\n");
+    const esc = (cell) => {
+      const s = String(cell ?? "");
+      return (s.includes(";") || s.includes('"') || s.includes("\n") || s.includes("\r"))
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
 
-    const safeTitle = (batch.title || `batch_${id}`).replace(/[^\w\-а-яА-Я ]+/g, "").trim().replace(/\s+/g, "_");
+    const csv = "\uFEFF" + rows.map((r) => r.map(esc).join(";")).join("\r\n");
+
+    const safeTitle = (batch.title || `batch_${id}`)
+      .replace(/[^\w\-а-яА-Я ]+/g, "")
+      .trim()
+      .replace(/\s+/g, "_");
     const filename = `jersey_${safeTitle || id}.csv`;
 
     return res.json({ ok: true, filename, csv });
@@ -2257,6 +2255,7 @@ app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 
 
 app.get("/api/admin/jersey/batches/:id/export.csv", async (req, res) => {
@@ -5749,6 +5748,255 @@ app.get("/api/game-comments/:id/reactors", async (req, res) => {
     return res.json({ ok: true, can_view: true, reactors });
   } catch (e) {
     console.error("GET /api/game-comments/:id/reactors failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+
+// ===================== JERSEY: batches + export (BACK AS BEFORE) =====================
+
+function ruJoin(colors, kind) {
+  const mapJ = { white: "Белый", blue: "Синий", black: "Чёрный" };
+  const mapS = { white: "Белые", blue: "Синие", black: "Чёрные" };
+  const map = kind === "socks" ? mapS : mapJ;
+  return (colors || []).map((c) => map[c] || c).join(" + ");
+}
+
+async function getOpenJerseyBatch() {
+  const r = await q(`SELECT * FROM jersey_batches WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+  return r.rows?.[0] || null;
+}
+
+// список батчей (НЕ пропадает после close)
+app.get("/api/admin/jersey/batches", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const r = await q(`
+      SELECT
+        b.*,
+        COALESCE(s.sent_count, 0)::int AS sent_count
+      FROM jersey_batches b
+      LEFT JOIN (
+        SELECT batch_id, COUNT(*)::int AS sent_count
+        FROM jersey_requests
+        WHERE status='sent'
+        GROUP BY batch_id
+      ) s ON s.batch_id = b.id
+      ORDER BY b.opened_at DESC
+      LIMIT 200
+    `);
+
+    const batches = r.rows || [];
+    const open_batch = batches.find((x) => x.status === "open") || null;
+
+    return res.json({ ok: true, open_batch, batches });
+  } catch (e) {
+    console.error("GET /api/admin/jersey/batches failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.post("/api/admin/jersey/batches/open", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const title = String(req.body?.title || "").trim();
+
+    const open = await getOpenJerseyBatch();
+    if (open) {
+      return res.json({ ok: true, batch: open, already_open: true });
+    }
+
+    const ins = await q(
+      `INSERT INTO jersey_batches(title, status, opened_by, opened_at)
+       VALUES($1,'open',$2,NOW())
+       RETURNING *`,
+      [title, user.id]
+    );
+
+    return res.json({ ok: true, batch: ins.rows?.[0] || null });
+  } catch (e) {
+    console.error("POST /api/admin/jersey/batches/open failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.post("/api/admin/jersey/batches/:id/close", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const up = await q(
+      `UPDATE jersey_batches
+       SET status='closed', closed_at=NOW(), closed_by=$2
+       WHERE id=$1 AND status='open'
+       RETURNING *`,
+      [id, user.id]
+    );
+
+    if (!up.rows?.[0]) {
+      const ex = await q(`SELECT * FROM jersey_batches WHERE id=$1`, [id]);
+      const batch = ex.rows?.[0];
+      if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
+      return res.json({ ok: true, batch, already_closed: true });
+    }
+
+    return res.json({ ok: true, batch: up.rows[0] });
+  } catch (e) {
+    console.error("POST /api/admin/jersey/batches/:id/close failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+// (если кнопка есть в UI — пусть просто помечает announced_at; отправку в чат ты можешь делать отдельным роутом позже)
+app.post("/api/admin/jersey/batches/:id/announce", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const up = await q(
+      `UPDATE jersey_batches
+       SET announced_at=NOW()
+       WHERE id=$1
+       RETURNING *`,
+      [id]
+    );
+
+    const batch = up.rows?.[0];
+    if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    return res.json({ ok: true, batch });
+  } catch (e) {
+    console.error("POST /api/admin/jersey/batches/:id/announce failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.get("/api/admin/jersey/batches/:id/orders", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const r = await q(
+      `SELECT
+         r.*,
+         p.display_name, p.first_name, p.username, p.tg_id
+       FROM jersey_requests r
+       JOIN players p ON p.tg_id = r.tg_id
+       WHERE r.batch_id=$1 AND r.status='sent'
+       ORDER BY p.display_name NULLS LAST, r.id ASC`,
+      [id]
+    );
+
+    return res.json({ ok: true, orders: r.rows || [] });
+  } catch (e) {
+    console.error("GET /api/admin/jersey/batches/:id/orders failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+// EXPORT (как раньше): JSON { filename, csv }
+app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const br = await q(`SELECT * FROM jersey_batches WHERE id=$1`, [id]);
+    const batch = br.rows?.[0];
+    if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    const r = await q(
+      `SELECT *
+       FROM jersey_requests
+       WHERE batch_id=$1 AND status='sent'
+       ORDER BY id ASC`,
+      [id]
+    );
+
+    const rows = [];
+    rows.push(["№", "Надпись", "Номер", "Размер", "Цвет", "Гамаши", "Цена"]);
+
+    let i = 1;
+    for (const o of r.rows || []) {
+      const title = o.name_on_jersey?.trim() ? o.name_on_jersey.trim() : "без надписи";
+      const num = o.jersey_number == null ? "без номера" : String(o.jersey_number);
+      const size = o.jersey_size || "";
+      const color = ruJoin(o.jersey_colors, "jersey");
+
+      let socks = "";
+      if (o.socks_needed) {
+        socks = ruJoin(o.socks_colors, "socks");
+        if (String(o.socks_size) === "junior") socks = (socks ? socks + " " : "") + "jr";
+      }
+
+      rows.push([String(i++), title, num, size, color, socks, ""]);
+    }
+
+    const csv =
+      "\uFEFF" +
+      rows
+        .map((r) =>
+          r
+            .map((cell) => {
+              const s = String(cell ?? "");
+              const escaped =
+                s.includes(";") || s.includes('"') || s.includes("\n")
+                  ? `"${s.replace(/"/g, '""')}"`
+                  : s;
+              return escaped;
+            })
+            .join(";")
+        )
+        .join("\n");
+
+    const safeTitle = (batch.title || `batch_${id}`)
+      .replace(/[^\w\-а-яА-Я ]+/g, "")
+      .trim()
+      .replace(/\s+/g, "_");
+    const filename = `jersey_${safeTitle || id}.csv`;
+
+    return res.json({ ok: true, filename, csv });
+  } catch (e) {
+    console.error("GET /api/admin/jersey/batches/:id/export failed:", e);
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
