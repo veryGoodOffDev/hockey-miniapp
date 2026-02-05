@@ -12,7 +12,7 @@ import bg3 from "./bg3.webp";
 import bg4 from "./bg4.webp";
 import bg5 from "./bg5.webp";
 import bg6 from "./bg6.webp";
-import player from "./player.pmg";
+import player from "./player.png";
 import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
 
