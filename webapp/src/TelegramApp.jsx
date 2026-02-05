@@ -3552,22 +3552,31 @@ function openYandexRoute(lat, lon) {
 
                               <div className="field">
                                 <label>Цвет джерси</label>
-                                <div className="pillGroup">
-                                  {JERSEY_COLOR_OPTS.map((c) => (
-                                    <label key={c.code} className="pill">
-                                      <input
-                                        type="checkbox"
-                                        checked={jerseyDraft.jersey_colors.includes(c.code)}
-                                        onChange={() =>
-                                          setJerseyDraft((s) => ({ ...s, jersey_colors: toggleArr(s.jersey_colors, c.code) }))
+
+                                <div className="colorBtns">
+                                  {JERSEY_COLOR_OPTS.map((c) => {
+                                    const on = jerseyDraft.jersey_colors.includes(c.code);
+                                    return (
+                                      <button
+                                        key={c.code}
+                                        type="button"
+                                        className={`colorBtn ${on ? "isActive" : ""}`}
+                                        aria-pressed={on}
+                                        onClick={() =>
+                                          setJerseyDraft((s) => ({
+                                            ...s,
+                                            jersey_colors: toggleArr(s.jersey_colors, c.code),
+                                          }))
                                         }
                                         disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-                                      />
-                                      {c.label}
-                                    </label>
-                                  ))}
+                                      >
+                                        {c.label}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </div>
+
 
                               <div className="form2">
                                 <div className="field">
@@ -3609,22 +3618,31 @@ function openYandexRoute(lat, lon) {
                                 <>
                                   <div className="field">
                                     <label>Цвет гамаш</label>
-                                    <div className="pillGroup">
-                                      {JERSEY_COLOR_OPTS.map((c) => (
-                                        <label key={c.code} className="pill">
-                                          <input
-                                            type="checkbox"
-                                            checked={jerseyDraft.socks_colors.includes(c.code)}
-                                            onChange={() =>
-                                              setJerseyDraft((s) => ({ ...s, socks_colors: toggleArr(s.socks_colors, c.code) }))
+
+                                    <div className="colorBtns">
+                                      {JERSEY_COLOR_OPTS.map((c) => {
+                                        const on = jerseyDraft.socks_colors.includes(c.code);
+                                        return (
+                                          <button
+                                            key={c.code}
+                                            type="button"
+                                            className={`colorBtn ${on ? "isActive" : ""}`}
+                                            aria-pressed={on}
+                                            onClick={() =>
+                                              setJerseyDraft((s) => ({
+                                                ...s,
+                                                socks_colors: toggleArr(s.socks_colors, c.code),
+                                              }))
                                             }
                                             disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-                                          />
-                                          {c.label}
-                                        </label>
-                                      ))}
+                                          >
+                                            {c.label}
+                                          </button>
+                                        );
+                                      })}
                                     </div>
                                   </div>
+
 
                                   <div className="field">
                                     <label>Размер гамаш</label>
