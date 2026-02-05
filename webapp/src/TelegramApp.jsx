@@ -4221,7 +4221,7 @@ function openYandexRoute(lat, lon) {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 900, fontSize: 18 }}>
                         {showName(selectedPlayer)}{" "}
-                        <JerseyBadge number={showNum(selectedPlayer)} variant={"goalie"} striped size={34} />
+                        <JerseyBadge number={showNum(selectedPlayer)} variant={selectedPlayer.position === "goalie" ? "goalie" : "classic"} striped size={34} />
                       </div>
                       <div className="small" style={{ opacity: 0.8 }}>
                         {posHuman(selectedPlayer.position)}
