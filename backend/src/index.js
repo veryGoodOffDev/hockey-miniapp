@@ -2007,6 +2007,19 @@ app.post("/api/jersey/requests/:id/send", async (req, res) => {
     if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
     if (row.status !== "draft") return res.status(400).json({ ok: false, reason: "already_sent" });
     if (Number(row.batch_id) !== Number(open.id)) return res.status(400).json({ ok: false, reason: "batch_closed" });
+    // запрет отправки пустого
+    const name = String(row.name_on_jersey || "").trim();
+    const size = String(row.jersey_size || "").trim();
+    const colors = Array.isArray(row.jersey_colors) ? row.jersey_colors : [];
+
+    if (!name) return res.status(400).json({ ok: false, reason: "name_required" });
+    if (!size) return res.status(400).json({ ok: false, reason: "size_required" });
+    if (colors.length === 0) return res.status(400).json({ ok: false, reason: "colors_required" });
+
+    if (row.socks_needed) {
+      const sc = Array.isArray(row.socks_colors) ? row.socks_colors : [];
+      if (sc.length === 0) return res.status(400).json({ ok: false, reason: "socks_colors_required" });
+    }
 
     const upd = await q(
       `UPDATE jersey_requests SET status='sent', sent_at=NOW(), updated_at=NOW()
@@ -2231,6 +2244,30 @@ app.get("/api/admin/jersey/batches/:id/export-link", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
+app.delete("/api/admin/jersey/requests/:id", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const del = await q(`DELETE FROM jersey_requests WHERE id=$1 RETURNING id, batch_id, tg_id, status`, [id]);
+    const row = del.rows?.[0];
+    if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    return res.json({ ok: true, deleted: row });
+  } catch (e) {
+    console.error("DELETE /api/admin/jersey/requests/:id failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
 
 
       /** ====== FUN (profile jokes) ====== */

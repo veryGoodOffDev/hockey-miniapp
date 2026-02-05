@@ -1690,38 +1690,89 @@ async function deleteActiveJersey() {
   }
 }
 
+// async function sendActiveJersey() {
+//   if (!jerseyOpenBatch?.id) {
+//     setJerseyMsg("⚠️ Сбор закрыт — заявки не принимаются");
+//     return;
+//   }
+//   if (jerseyActiveStatus === "sent") return;
+
+//   setJerseyBusy(true);
+//   setJerseyMsg("");
+//   try {
+//     // если новая — сначала создаём, потом отправляем
+//     let id = jerseyActiveId;
+//     if (id === "new") {
+//       const payload = jerseyPayloadFromDraft(jerseyDraft);
+//       const cr = await apiPost("/api/jersey/requests", payload);
+//       if (!cr?.ok) throw new Error(cr?.reason || "create_failed");
+//       id = cr.request?.id;
+//       if (!id) throw new Error("no_request_id");
+//     }
+
+//     const r = await apiPost(`/api/jersey/requests/${id}/send`, {});
+//     if (!r?.ok) throw new Error(r?.reason || "send_failed");
+
+//     setJerseyMsg("📨 Заявка отправлена!");
+//     await loadJerseyRequests();
+//   } catch (e) {
+//     console.error(e);
+//     setJerseyMsg("❌ Не удалось отправить");
+//   } finally {
+//     setJerseyBusy(false);
+//   }
+// }
+
 async function sendActiveJersey() {
   if (!jerseyOpenBatch?.id) {
-    setJerseyMsg("⚠️ Сбор закрыт — заявки не принимаются");
+    await tgAlert({ title: "Сбор закрыт", message: "Сейчас заявки не принимаются." });
     return;
   }
-  if (jerseyActiveStatus === "sent") return;
 
-  setJerseyBusy(true);
-  setJerseyMsg("");
-  try {
-    // если новая — сначала создаём, потом отправляем
-    let id = jerseyActiveId;
-    if (id === "new") {
-      const payload = jerseyPayloadFromDraft(jerseyDraft);
-      const cr = await apiPost("/api/jersey/requests", payload);
-      if (!cr?.ok) throw new Error(cr?.reason || "create_failed");
-      id = cr.request?.id;
-      if (!id) throw new Error("no_request_id");
-    }
+  if (!jerseyActiveId || jerseyActiveId === "new") {
+    await tgAlert({ title: "Нет заявки", message: "Сначала создай заявку и заполни данные." });
+    return;
+  }
 
-    const r = await apiPost(`/api/jersey/requests/${id}/send`, {});
-    if (!r?.ok) throw new Error(r?.reason || "send_failed");
+  // 1) confirm
+  const ok = await tgConfirm({
+    title: "Отправить заявку?",
+    message: "Проверь данные:\n\n" + formatJerseySummary(jerseyDraft),
+    okText: "📨 Отправить",
+    cancelText: "Не отправлять",
+  });
+  if (!ok) return;
 
-    setJerseyMsg("📨 Заявка отправлена!");
-    await loadJerseyRequests();
-  } catch (e) {
-    console.error(e);
-    setJerseyMsg("❌ Не удалось отправить");
-  } finally {
-    setJerseyBusy(false);
+  // 2) send + success message
+  await runOp(
+    "Отправляю заявку…",
+    async () => {
+      const r = await apiPost(`/api/jersey/requests/${jerseyActiveId}/send`, {});
+      if (!r?.ok) throw new Error(r?.reason || "send_failed");
+
+      // обновим список, чтобы статус стал sent и появилось время
+      await loadJerseyRequests();
+
+      setJerseyMsg("✅ Заявка успешно отправлена");
+      // если у тебя есть jerseySentAt / jerseyActiveStatus — они подтянутся после loadJerseyRequests()
+    },
+    { successText: "✅ Отправлено", errorText: "❌ Не удалось отправить" }
+  );
+
+  // 3) “ещё одну?”
+  const more = await tgConfirm({
+    title: "Сделать ещё одну заявку?",
+    message: "Можно создать ещё одну заявку в этом сборе.",
+    okText: "➕ Да, новая",
+    cancelText: "Нет",
+  });
+
+  if (more) {
+    await newJerseyReq();
+    setJerseyMsg("📝 Создана новая заявка (черновик). Заполни и отправь.");
   }
 }
+
 
 
 
@@ -2015,6 +2066,55 @@ const teamsPosStaleInfo = React.useMemo(() => {
       </>
     );
   }
+
+
+
+  function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
+  return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showPopup) {
+      tg.showPopup(
+        {
+          title,
+          message,
+          buttons: [
+            { id: "cancel", type: "cancel", text: cancelText },
+            { id: "ok", type: "default", text: okText },
+          ],
+        },
+        (id) => resolve(id === "ok")
+      );
+      return;
+    }
+    resolve(window.confirm(`${title}\n\n${message}`));
+  });
+}
+
+function tgAlert({ title, message, okText = "OK" }) {
+  return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showPopup) {
+      tg.showPopup(
+        { title, message, buttons: [{ id: "ok", type: "ok", text: okText }] },
+        () => resolve()
+      );
+      return;
+    }
+    window.alert(`${title}\n\n${message}`);
+    resolve();
+  });
+}
+
+function formatJerseySummary(d) {
+  const name = (d?.name_on_jersey || "").trim() || "без надписи";
+  const num = d?.jersey_number ?? "без номера";
+  const size = (d?.jersey_size || "").trim() || "—";
+  const colors = (d?.jersey_colors || []).join(" + ") || "—";
+  const socks = d?.socks_needed
+    ? `\nГамаши: ${(d?.socks_colors || []).join(" + ") || "—"} · ${d?.socks_size || "adult"}`
+    : "";
+  return `Надпись: ${name}\nНомер: ${num}\nРазмер: ${size}\nЦвет: ${colors}${socks}`;
+}
 
   function renderTeam(teamKey, title, list) {
     const g = groupByPos(list || []);

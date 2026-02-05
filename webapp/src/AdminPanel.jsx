@@ -1051,6 +1051,27 @@ async function deleteGame() {
     setPlayerDraft(null);
   }
 
+async function adminDeleteJerseyReq(id) {
+  const ok = await tgConfirm({
+    title: "Удалить заявку?",
+    message: `Заявка #${id} будет удалена навсегда.`,
+    okText: "Удалить",
+    cancelText: "Отмена",
+  });
+  if (!ok) return;
+
+  await runAdminOp(
+    "Удаляю…",
+    async () => {
+      const r = await apiDelete(`/api/admin/jersey/requests/${id}`); // если у тебя apiDelete нет — скажи, дам 3 строки реализации
+      if (!r?.ok) throw new Error(r?.reason || "delete_failed");
+
+      // перезагрузи список заявок текущего батча
+      await loadBatchOrders();
+    },
+    { successText: "✅ Удалено", errorText: "❌ Не удалось удалить" }
+  );
+}
 
 
     async function savePlayer() {
@@ -1616,6 +1637,14 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                     ) : null}
                     <br/>Отправлено: <b>{String(o.sent_at || o.updated_at || "")}</b>
                   </div>
+                  <button
+                    className="btn secondary"
+                    onClick={() => adminDeleteJerseyReq(o.id)}
+                    title="Удалить заявку"
+                  >
+                    🗑
+                  </button>
+
                 </div>
               ))}
             </div>
