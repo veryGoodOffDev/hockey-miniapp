@@ -2934,3 +2934,114 @@ html[data-theme="light"] .btn.outline.active{
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* =========================
+   Jersey UI: theme-safe colors
+   (append to end of styles.css)
+   ========================= */
+
+/* Чуть подтянем контраст внутри jersey-блока в обеих темах */
+.jerseyCard .jerseyNotice,
+.jerseyCard .pill,
+.jerseyCard .jerseyReqItem {
+  border: 1px solid var(--border) !important;
+  background: color-mix(in srgb, var(--tg-text) 5%, transparent) !important;
+}
+
+:root[data-tg="dark"] .jerseyCard .jerseyNotice,
+:root[data-tg="dark"] .jerseyCard .pill,
+:root[data-tg="dark"] .jerseyCard .jerseyReqItem {
+  background: color-mix(in srgb, var(--tg-text) 9%, transparent) !important;
+}
+
+.jerseyCard .jerseyReqItem:hover {
+  border-color: color-mix(in srgb, var(--tg-text) 28%, transparent) !important;
+  background: color-mix(in srgb, var(--tg-text) 7%, transparent) !important;
+}
+:root[data-tg="dark"] .jerseyCard .jerseyReqItem:hover {
+  background: color-mix(in srgb, var(--tg-text) 12%, transparent) !important;
+}
+
+.jerseyCard .jerseyReqItem.isActive {
+  border-color: color-mix(in srgb, var(--tg-btn) 55%, var(--border)) !important;
+  background: color-mix(in srgb, var(--tg-btn) 12%, transparent) !important;
+}
+
+/* ===== Кнопки выбора цветов (вместо чекбоксов) ===== */
+.colorBtns {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.colorBtn {
+  width: 100%;
+  min-width: 0;
+  appearance: none;
+  border: 1px solid var(--border) !important;
+  background: color-mix(in srgb, var(--tg-text) 6%, transparent) !important;
+  color: var(--tg-text);
+  padding: 10px 10px;
+  border-radius: 14px;
+  font-weight: 900;
+  font-size: 12.5px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform .06s ease, border-color .12s ease, background .12s ease, filter .12s ease;
+}
+
+:root[data-tg="dark"] .colorBtn {
+  background: color-mix(in srgb, var(--tg-text) 11%, transparent) !important;
+}
+
+.colorBtn:hover {
+  border-color: color-mix(in srgb, var(--tg-text) 30%, transparent) !important;
+}
+
+.colorBtn:active { transform: scale(0.985); }
+
+.colorBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-btn) 20%, transparent);
+}
+
+.colorBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* кружок-индикатор */
+.colorBtn .colorDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--chip, #999);
+  border: 1px solid color-mix(in srgb, var(--tg-text) 22%, transparent);
+}
+
+/* базовые цвета */
+.colorBtn.c-white { --chip: #ffffff; --chipText: #111111; }
+.colorBtn.c-blue  { --chip: #2563eb; --chipText: #ffffff; }
+.colorBtn.c-black { --chip: #111827; --chipText: #ffffff; }
+
+/* активное состояние — НЕ tg-btn (иначе все выбранные одинаково синие) */
+.colorBtn.isActive {
+  background: var(--chip) !important;
+  color: var(--chipText) !important;
+  border-color: color-mix(in srgb, var(--chip) 70%, var(--border)) !important;
+  filter: saturate(1.05);
+  box-shadow: 0 10px 18px rgba(0,0,0,0.10);
+}
+
+/* чтобы белая кнопка не пропадала на светлом фоне */
+.colorBtn.isActive.c-white {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #000 18%, transparent),
+    0 10px 18px rgba(0,0,0,0.10);
+}
