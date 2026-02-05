@@ -9,7 +9,7 @@ const PATHS = {
 
 export function JerseyBadge({
   number,
-  variant = "pro",
+  variant = "classic",
   striped = false,
   size = 42,          // увеличил дефолт
   fill,
