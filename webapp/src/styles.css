@@ -1303,6 +1303,10 @@ textarea:focus{
 
   font-size: calc(var(--jb-size) * 0.46); /* было мелко — теперь норм */
 }
+.jerseyWrap[data-len="1"] .jerseyNum{
+  font-size: 1.25em;   /* увеличит только одиночную */
+  letter-spacing: -0.02em;
+}
 .jerseyWrap[data-len="2"] .jerseyNum{ font-size: calc(var(--jb-size) * 0.41); }
 .jerseyWrap[data-len="3"] .jerseyNum{ font-size: calc(var(--jb-size) * 0.34); }
 
