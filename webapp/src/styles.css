@@ -2723,3 +2723,179 @@ html[data-theme="light"] .btn.outline.active{
 .gsToast.err{
   box-shadow: inset 0 0 0 999px color-mix(in srgb, #ef4444 14%, transparent);
 }
+
+
+/* ===== Jersey UI (scoped) ===== */
+.jerseyCard { padding: 14px; }
+.jerseyHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.jerseyTitle h2 {
+  margin: 0;
+  line-height: 1.2;
+  font-size: 18px;
+  letter-spacing: -0.2px;
+}
+.jerseyTitle .jerseySub {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge.badge--ok { border: 1px solid rgba(46, 204, 113, 0.35); }
+.badge.badge--off { border: 1px solid rgba(231, 76, 60, 0.35); }
+
+.jerseyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.jerseyActions .btn {
+  flex: 1 1 140px;
+  min-width: 140px;
+}
+
+/* 2 колонки на широких, на мобиле — стек */
+.jerseyBody {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 860px) {
+  .jerseyBody {
+    grid-template-columns: 1.05fr 0.95fr;
+    align-items: start;
+  }
+}
+
+/* Секции */
+.jerseySection {
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.03);
+}
+.jerseySectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.jerseySectionHead h3 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.1px;
+}
+
+/* Список заявок */
+.jerseyReqGrid {
+  display: grid;
+  gap: 8px;
+}
+.jerseyReqItem {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.02);
+  transition: transform .06s ease, border-color .12s ease, background .12s ease;
+}
+.jerseyReqItem:active { transform: scale(0.99); }
+.jerseyReqItem:hover { border-color: rgba(255,255,255,0.22); }
+.jerseyReqItem.isActive {
+  border-color: rgba(255,255,255,0.38);
+  background: rgba(255,255,255,0.04);
+}
+
+.jerseyReqTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.jerseyReqTop .left {
+  font-weight: 800;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jerseyReqTop .right {
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.jerseyReqText {
+  margin-top: 6px;
+  opacity: 0.92;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.jerseyReqText b { font-weight: 800; }
+
+/* Форма */
+.jerseyForm {
+  display: grid;
+  gap: 10px;
+}
+.field { display: grid; gap: 6px; }
+.field label { font-size: 13px; opacity: 0.9; }
+
+.form2 {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 420px) {
+  .form2 { grid-template-columns: 1fr 1fr; }
+}
+
+/* Пиллы: делаем аккуратнее, но только внутри jersey */
+.jerseyCard .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.03);
+  user-select: none;
+}
+.jerseyCard .pill input { margin: 0; }
+
+.pillGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Кнопки формы */
+.jerseyBtnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.jerseyBtnRow .btn { flex: 1 1 150px; }
+
+.jerseyHint { opacity: 0.82; margin-top: 8px; }
+
+.jerseyNotice {
+  margin: 10px 0 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+}
+
+/* History */
+.jerseyHistory summary { cursor: pointer; }
+.jerseyHistoryGrid { display: grid; gap: 10px; margin-top: 10px; }

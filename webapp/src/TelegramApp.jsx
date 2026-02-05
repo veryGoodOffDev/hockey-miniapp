@@ -3428,254 +3428,289 @@ function openYandexRoute(lat, lon) {
                   {saving ? "Сохраняю..." : "Сохранить"}
                 </button>
               </div>
-              <div className="card">
-  <h2>👕 Командная форма</h2>
+              <div className="card jerseyCard">
+                        <div className="jerseyHeader">
+                          <div className="jerseyTitle">
+                            <h2>👕 Командная форма</h2>
 
-  <div className="small" style={{ marginTop: 6, opacity: 0.9 }}>
-    {jerseyOpenBatch?.id ? (
-      <span className="badge">🟢 Сбор открыт{jerseyOpenBatch.title ? `: ${jerseyOpenBatch.title}` : ""}</span>
-    ) : (
-      <span className="badge">🔴 Сбор закрыт</span>
-    )}
-  </div>
+                            <div className="jerseySub small">
+                              {jerseyOpenBatch?.id ? (
+                                <span className="badge badge--ok">
+                                  🟢 Сбор открыт{jerseyOpenBatch.title ? `: ${jerseyOpenBatch.title}` : ""}
+                                </span>
+                              ) : (
+                                <span className="badge badge--off">🔴 Сбор закрыт</span>
+                              )}
+                            </div>
 
-  {jerseyMsg ? <div className="small" style={{ marginTop: 8 }}>{jerseyMsg}</div> : null}
+                            {jerseyMsg ? <div className="jerseyNotice small">{jerseyMsg}</div> : null}
+                          </div>
 
-  <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-    <button className="btn secondary" onClick={loadJerseyRequests} disabled={jerseyBusy}>
-      Обновить
-    </button>
+                          <div className="jerseyActions">
+                            <button className="btn secondary" onClick={loadJerseyRequests} disabled={jerseyBusy}>
+                              Обновить
+                            </button>
 
-    {jerseyOpenBatch?.id ? (
-      <button className="btn" onClick={newJerseyReq} disabled={jerseyBusy}>
-        ➕ Новая заявка
-      </button>
-    ) : null}
-  </div>
+                            {jerseyOpenBatch?.id ? (
+                              <button className="btn" onClick={newJerseyReq} disabled={jerseyBusy}>
+                                ➕ Новая заявка
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
 
-  {/* список заявок текущего сбора */}
-  <div style={{ marginTop: 12 }}>
-    <h3 style={{ margin: "10px 0" }}>Мои заявки</h3>
+                        <div className="jerseyBody">
+                          {/* ===== LEFT: список заявок ===== */}
+                          <section className="jerseySection">
+                            <div className="jerseySectionHead">
+                              <h3>Мои заявки</h3>
+                              <div className="small" style={{ opacity: 0.8 }}>
+                                {jerseyReqs.length ? `Всего: ${jerseyReqs.length}` : ""}
+                              </div>
+                            </div>
 
-    {jerseyReqs.length === 0 ? (
-      <div className="small" style={{ opacity: 0.8 }}>Пока заявок нет.</div>
-    ) : (
-      <div style={{ display: "grid", gap: 8 }}>
-        {jerseyReqs.map((r) => {
-          const active = String(jerseyActiveId) === String(r.id);
-          const colorStr = (r.jersey_colors || []).join(" + ") || "—";
-          return (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => pickJerseyReq(r)}
-              className="card"
-              style={{
-                margin: 0,
-                textAlign: "left",
-                cursor: "pointer",
-                border: active ? "1px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.12)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ fontWeight: 800 }}>
-                  #{r.id} · {r.status === "sent" ? "📨 отправлено" : "📝 черновик"}
-                </div>
-                <div className="small" style={{ opacity: 0.75 }}>
-                  {r.sent_at ? new Date(r.sent_at).toLocaleString("ru-RU") : (r.updated_at ? new Date(r.updated_at).toLocaleString("ru-RU") : "")}
-                </div>
-              </div>
+                            {jerseyReqs.length === 0 ? (
+                              <div className="small" style={{ opacity: 0.8 }}>Пока заявок нет.</div>
+                            ) : (
+                              <div className="jerseyReqGrid">
+                                {jerseyReqs.map((r) => {
+                                  const active = String(jerseyActiveId) === String(r.id);
+                                  const colorStr = (r.jersey_colors || []).join(" + ") || "—";
+                                  const dt = r.sent_at || r.updated_at;
 
-              <div className="small" style={{ marginTop: 6, opacity: 0.9 }}>
-                <b>{r.name_on_jersey || "без надписи"}</b> · № <b>{r.jersey_number ?? "без номера"}</b> · размер <b>{r.jersey_size || "—"}</b><br/>
-                цвет: <b>{colorStr}</b>
-                {r.socks_needed ? (
-                  <>
-                    <br/>гамаши: <b>{(r.socks_colors || []).join(" + ") || "—"}</b> · <b>{r.socks_size || "adult"}</b>
-                  </>
-                ) : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    )}
-  </div>
+                                  return (
+                                    <button
+                                      key={r.id}
+                                      type="button"
+                                      onClick={() => pickJerseyReq(r)}
+                                      className={`jerseyReqItem ${active ? "isActive" : ""}`}
+                                    >
+                                      <div className="jerseyReqTop">
+                                        <div className="left">
+                                          #{r.id} · {r.status === "sent" ? "📨 отправлено" : "📝 черновик"}
+                                        </div>
+                                        <div className="right small">
+                                          {dt ? new Date(dt).toLocaleString("ru-RU") : ""}
+                                        </div>
+                                      </div>
 
-  {/* форма редактирования выбранного */}
-  <div style={{ marginTop: 12 }}>
-    <h3 style={{ margin: "10px 0" }}>
-      {jerseyActiveId === "new" ? "Новая заявка" : `Заявка #${jerseyActiveId}`}
-      {jerseyActiveStatus === "sent" ? " (история)" : ""}
-    </h3>
+                                      <div className="jerseyReqText small">
+                                        <b>{r.name_on_jersey || "без надписи"}</b> · № <b>{r.jersey_number ?? "без номера"}</b> · размер{" "}
+                                        <b>{r.jersey_size || "—"}</b>
+                                        <br />
+                                        цвет: <b>{colorStr}</b>
 
-    {!jerseyOpenBatch?.id ? (
-      <div className="small" style={{ opacity: 0.8 }}>
-        Сбор закрыт — заявки не принимаются.
-      </div>
-    ) : null}
+                                        {r.socks_needed ? (
+                                          <>
+                                            <br />
+                                            гамаши: <b>{(r.socks_colors || []).join(" + ") || "—"}</b> ·{" "}
+                                            <b>{r.socks_size || "adult"}</b>
+                                          </>
+                                        ) : null}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </section>
 
-    <label>Имя на джерси</label>
-    <input
-      className="input"
-      value={jerseyDraft.name_on_jersey}
-      onChange={(e) => setJerseyDraft((s) => ({ ...s, name_on_jersey: e.target.value }))}
-      disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-      placeholder="Например: OVECHKIN"
-    />
+                          {/* ===== RIGHT: форма ===== */}
+                          <section className="jerseySection">
+                            <div className="jerseySectionHead">
+                              <h3>
+                                {jerseyActiveId === "new" ? "Новая заявка" : `Заявка #${jerseyActiveId}`}
+                                {jerseyActiveStatus === "sent" ? " (история)" : ""}
+                              </h3>
 
-    <div style={{ marginTop: 10 }}>
-      <label>Цвет джерси</label>
-      <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-        {JERSEY_COLOR_OPTS.map((c) => (
-          <label key={c.code} className="pill">
-            <input
-              type="checkbox"
-              checked={jerseyDraft.jersey_colors.includes(c.code)}
-              onChange={() =>
-                setJerseyDraft((s) => ({ ...s, jersey_colors: toggleArr(s.jersey_colors, c.code) }))
-              }
-              disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-            />
-            {c.label}
-          </label>
-        ))}
-      </div>
-    </div>
+                              {jerseyActiveStatus === "sent" ? (
+                                <span className="badge">📦 Архив</span>
+                              ) : jerseyOpenBatch?.id ? (
+                                <span className="badge">🟢 Редактирование</span>
+                              ) : (
+                                <span className="badge">🔴 Закрыто</span>
+                              )}
+                            </div>
 
-    <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
-      <div style={{ flex: "1 1 140px" }}>
-        <label>Номер</label>
-        <input
-          className="input"
-          value={jerseyDraft.jersey_number}
-          onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_number: e.target.value }))}
-          disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-          placeholder="Например: 8"
-        />
-      </div>
-      <div style={{ flex: "1 1 160px" }}>
-        <label>Размер</label>
-        <input
-          className="input"
-          value={jerseyDraft.jersey_size}
-          onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_size: e.target.value }))}
-          disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-          placeholder="Например: 50"
-        />
-      </div>
-    </div>
+                            {!jerseyOpenBatch?.id ? (
+                              <div className="small" style={{ opacity: 0.8 }}>
+                                Сбор закрыт — заявки не принимаются.
+                              </div>
+                            ) : null}
 
-    <div style={{ marginTop: 10 }}>
-      <label className="pill">
-        <input
-          type="checkbox"
-          checked={jerseyDraft.socks_needed}
-          onChange={(e) => setJerseyDraft((s) => ({ ...s, socks_needed: e.target.checked }))}
-          disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-        />
-        Гамаши нужны
-      </label>
-    </div>
+                            <div className="jerseyForm">
+                              <div className="field">
+                                <label>Имя на джерси</label>
+                                <input
+                                  className="input"
+                                  value={jerseyDraft.name_on_jersey}
+                                  onChange={(e) => setJerseyDraft((s) => ({ ...s, name_on_jersey: e.target.value }))}
+                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                  placeholder="Например: OVECHKIN"
+                                />
+                              </div>
 
-    {jerseyDraft.socks_needed ? (
-      <div style={{ marginTop: 10 }}>
-        <label>Цвет гамаш</label>
-        <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-          {JERSEY_COLOR_OPTS.map((c) => (
-            <label key={c.code} className="pill">
-              <input
-                type="checkbox"
-                checked={jerseyDraft.socks_colors.includes(c.code)}
-                onChange={() =>
-                  setJerseyDraft((s) => ({ ...s, socks_colors: toggleArr(s.socks_colors, c.code) }))
-                }
-                disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-              />
-              {c.label}
-            </label>
-          ))}
-        </div>
+                              <div className="field">
+                                <label>Цвет джерси</label>
+                                <div className="pillGroup">
+                                  {JERSEY_COLOR_OPTS.map((c) => (
+                                    <label key={c.code} className="pill">
+                                      <input
+                                        type="checkbox"
+                                        checked={jerseyDraft.jersey_colors.includes(c.code)}
+                                        onChange={() =>
+                                          setJerseyDraft((s) => ({ ...s, jersey_colors: toggleArr(s.jersey_colors, c.code) }))
+                                        }
+                                        disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                      />
+                                      {c.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
 
-        <div style={{ marginTop: 10 }}>
-          <label>Размер гамаш</label>
-          <select
-            className="input"
-            value={jerseyDraft.socks_size}
-            onChange={(e) => setJerseyDraft((s) => ({ ...s, socks_size: e.target.value }))}
-            disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-          >
-            {SOCKS_SIZE_OPTS.map((x) => (
-              <option key={x.code} value={x.code}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-    ) : null}
+                              <div className="form2">
+                                <div className="field">
+                                  <label>Номер</label>
+                                  <input
+                                    className="input"
+                                    value={jerseyDraft.jersey_number}
+                                    onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_number: e.target.value }))}
+                                    disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                    placeholder="Например: 8"
+                                  />
+                                </div>
 
-    <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-      <button
-        className="btn secondary"
-        onClick={saveActiveJersey}
-        disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-      >
-        💾 Сохранить
-      </button>
+                                <div className="field">
+                                  <label>Размер</label>
+                                  <input
+                                    className="input"
+                                    value={jerseyDraft.jersey_size}
+                                    onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_size: e.target.value }))}
+                                    disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                    placeholder="Например: 50"
+                                  />
+                                </div>
+                              </div>
 
-      <button
-        className="btn"
-        onClick={sendActiveJersey}
-        disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-      >
-        📨 Отправить
-      </button>
+                              <div className="field">
+                                <label className="pill" style={{ width: "fit-content" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={jerseyDraft.socks_needed}
+                                    onChange={(e) => setJerseyDraft((s) => ({ ...s, socks_needed: e.target.checked }))}
+                                    disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                  />
+                                  Гамаши нужны
+                                </label>
+                              </div>
 
-      <button
-        className="btn secondary"
-        onClick={deleteActiveJersey}
-        disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-      >
-        🗑 Удалить
-      </button>
-    </div>
+                              {jerseyDraft.socks_needed ? (
+                                <>
+                                  <div className="field">
+                                    <label>Цвет гамаш</label>
+                                    <div className="pillGroup">
+                                      {JERSEY_COLOR_OPTS.map((c) => (
+                                        <label key={c.code} className="pill">
+                                          <input
+                                            type="checkbox"
+                                            checked={jerseyDraft.socks_colors.includes(c.code)}
+                                            onChange={() =>
+                                              setJerseyDraft((s) => ({ ...s, socks_colors: toggleArr(s.socks_colors, c.code) }))
+                                            }
+                                            disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                          />
+                                          {c.label}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
 
-    {jerseySentAt ? (
-      <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-        Отправлено: {new Date(jerseySentAt).toLocaleString("ru-RU")}
-      </div>
-    ) : jerseyUpdatedAt ? (
-      <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-        Обновлено: {new Date(jerseyUpdatedAt).toLocaleString("ru-RU")}
-      </div>
-    ) : null}
+                                  <div className="field">
+                                    <label>Размер гамаш</label>
+                                    <select
+                                      className="input"
+                                      value={jerseyDraft.socks_size}
+                                      onChange={(e) => setJerseyDraft((s) => ({ ...s, socks_size: e.target.value }))}
+                                      disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                    >
+                                      {SOCKS_SIZE_OPTS.map((x) => (
+                                        <option key={x.code} value={x.code}>
+                                          {x.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </>
+                              ) : null}
 
-    {jerseyHistory?.length ? (
-      <details style={{ marginTop: 12 }}>
-        <summary className="small" style={{ opacity: 0.85, cursor: "pointer" }}>
-          История прошлых сборов
-        </summary>
-        <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-          {jerseyHistory.map((b) => (
-            <div key={b.batch_id} className="card" style={{ margin: 0 }}>
-              <div style={{ fontWeight: 800 }}>
-                {b.title || `Сбор #${b.batch_id}`}
-              </div>
-              <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                {b.items?.map((it) => (
-                  <div key={it.id}>
-                    #{it.id}: <b>{it.name_on_jersey || "без надписи"}</b> · № <b>{it.jersey_number ?? "без номера"}</b> · <b>{(it.jersey_colors || []).join(" + ")}</b>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </details>
-    ) : null}
-  </div>
-</div>
+                              <div className="jerseyBtnRow">
+                                <button
+                                  className="btn secondary"
+                                  onClick={saveActiveJersey}
+                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                >
+                                  💾 Сохранить
+                                </button>
+
+                                <button
+                                  className="btn"
+                                  onClick={sendActiveJersey}
+                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                >
+                                  📨 Отправить
+                                </button>
+
+                                <button
+                                  className="btn secondary"
+                                  onClick={deleteActiveJersey}
+                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                >
+                                  🗑 Удалить
+                                </button>
+                              </div>
+
+                              {jerseySentAt ? (
+                                <div className="small jerseyHint">
+                                  Отправлено: {new Date(jerseySentAt).toLocaleString("ru-RU")}
+                                </div>
+                              ) : jerseyUpdatedAt ? (
+                                <div className="small jerseyHint">
+                                  Обновлено: {new Date(jerseyUpdatedAt).toLocaleString("ru-RU")}
+                                </div>
+                              ) : null}
+
+                              {jerseyHistory?.length ? (
+                                <details className="jerseyHistory" style={{ marginTop: 8 }}>
+                                  <summary className="small" style={{ opacity: 0.9 }}>
+                                    История прошлых сборов
+                                  </summary>
+
+                                  <div className="jerseyHistoryGrid">
+                                    {jerseyHistory.map((b) => (
+                                      <div key={b.batch_id} className="card" style={{ margin: 0 }}>
+                                        <div style={{ fontWeight: 800 }}>
+                                          {b.title || `Сбор #${b.batch_id}`}
+                                        </div>
+                                        <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                                          {b.items?.map((it) => (
+                                            <div key={it.id}>
+                                              #{it.id}: <b>{it.name_on_jersey || "без надписи"}</b> · №{" "}
+                                              <b>{it.jersey_number ?? "без номера"}</b> ·{" "}
+                                              <b>{(it.jersey_colors || []).join(" + ")}</b>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              ) : null}
+                            </div>
+                          </section>
+                        </div>
+                      </div>
+
 
 
             </div>
