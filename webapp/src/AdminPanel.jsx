@@ -60,6 +60,27 @@ function posLabel(pos) {
   if (pos === "D") return "D";
   return "F";
 }
+
+function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
+  return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showPopup) {
+      tg.showPopup(
+        {
+          title,
+          message,
+          buttons: [
+            { id: "cancel", type: "cancel", text: cancelText },
+            { id: "ok", type: "default", text: okText },
+          ],
+        },
+        (id) => resolve(id === "ok")
+      );
+      return;
+    }
+    resolve(window.confirm(`${title}\n\n${message}`));
+  });
+}
 const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
 const DEFAULT_SKILL = 5;
 
