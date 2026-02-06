@@ -5663,6 +5663,65 @@ app.post("/api/admin/jersey/batches/:id/close", async (req, res) => {
   }
 });
 
+app.post("/api/admin/jersey/batches/:id/reopen", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const open = await getOpenJerseyBatch();
+    if (open && Number(open.id) !== Number(id)) {
+      return res.status(400).json({ ok: false, reason: "another_batch_open" });
+    }
+
+    const up = await q(
+      `UPDATE jersey_batches
+       SET status='open', opened_at=NOW(), closed_at=NULL, closed_by=NULL
+       WHERE id=$1
+       RETURNING *`,
+      [id]
+    );
+
+    const batch = up.rows?.[0];
+    if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    return res.json({ ok: true, batch });
+  } catch (e) {
+    console.error("POST /api/admin/jersey/batches/:id/reopen failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.delete("/api/admin/jersey/batches/:id", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: "admin_only" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    await q(`DELETE FROM jersey_requests WHERE batch_id=$1`, [id]);
+    const del = await q(`DELETE FROM jersey_batches WHERE id=$1 RETURNING *`, [id]);
+    const batch = del.rows?.[0];
+    if (!batch) return res.status(404).json({ ok: false, reason: "not_found" });
+
+    return res.json({ ok: true, batch });
+  } catch (e) {
+    console.error("DELETE /api/admin/jersey/batches/:id failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
 // (если кнопка есть в UI — пусть просто помечает announced_at; отправку в чат ты можешь делать отдельным роутом позже)
 app.post("/api/admin/jersey/batches/:id/announce", async (req, res) => {
   try {
