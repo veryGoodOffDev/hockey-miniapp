@@ -188,7 +188,6 @@ async function sendEmail({ to, subject, html, text }) {
   }
 }
 
-
 function issueAuthToken(tgId) {
   return signToken({ uid: tgId, exp: Date.now() + AUTH_TOKEN_TTL_MS });
 }

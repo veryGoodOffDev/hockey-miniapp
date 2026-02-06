@@ -968,7 +968,9 @@ async function refreshAll(forceGameId) {
     setIsAdmin(!!m?.is_admin);
     setAccessReason(null);
 
-    const gamesUrl = "/api/games?scope=upcoming&limit=365&offset=0";
+    const gamesUrl = hasWebAuth && !inTelegramWebApp
+      ? "/api/games?scope=all&limit=365&offset=0"
+      : "/api/games?scope=upcoming&limit=365&offset=0";
 
     // если уже знаем игру (почти всегда да после первой загрузки) — можно грузить деталку параллельно
     const optimisticId = forceGameId ?? selectedGameId ?? null;
