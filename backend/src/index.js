@@ -1740,9 +1740,8 @@ app.post("/api/me/email/start", async (req, res) => {
     );
 
     const token = signToken({ uid: user.id, email, exp: Date.now() + EMAIL_VERIFY_TTL_MS });
-    const apiBase = apiBaseFromReq(req);
-    const link = `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
-
+    const base = PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
+    const link = `${base}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
 
     await sendEmail({
       to: email,
@@ -1757,6 +1756,7 @@ app.post("/api/me/email/start", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 /** ====== ME ====== */
 /** ====== ME ====== */
 app.get("/api/me", async (req, res) => {

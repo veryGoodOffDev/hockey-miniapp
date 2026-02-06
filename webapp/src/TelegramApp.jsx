@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
+import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
@@ -37,6 +37,7 @@ export default function TelegramApp() {
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
+  const hasWebAuth = Boolean(getAuthToken());
   const tgPopupBusyRef = useRef(false);
 
   const OWNER_TG_ID = Number(import.meta.env.VITE_OWNER_TG_ID || 0);
@@ -2338,7 +2339,7 @@ function openYandexRoute(lat, lon) {
 
   // === RENDER ===
   if (loading) return <HockeyLoader text="Загружаем..." />;
-  if (!inTelegramWebApp) {
+  if (!inTelegramWebApp && !hasWebAuth) {
     return (
       <div className="container">
         <h1>🏒 Хоккей: отметки и составы</h1>

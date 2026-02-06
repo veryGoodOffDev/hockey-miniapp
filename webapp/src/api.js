@@ -5,7 +5,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
 // На будущее: токен для входа вне Telegram (Email OTP / Google)
 // Если пока токена нет — просто вернёт пусто.
-function getAuthToken() {
+export function getAuthToken() {
   try {
     return localStorage.getItem("auth_token") || "";
   } catch {
