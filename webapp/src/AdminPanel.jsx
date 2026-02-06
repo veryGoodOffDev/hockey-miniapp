@@ -60,6 +60,27 @@ function posLabel(pos) {
   if (pos === "D") return "D";
   return "F";
 }
+
+function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
+  return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showPopup) {
+      tg.showPopup(
+        {
+          title,
+          message,
+          buttons: [
+            { id: "cancel", type: "cancel", text: cancelText },
+            { id: "ok", type: "default", text: okText },
+          ],
+        },
+        (id) => resolve(id === "ok")
+      );
+      return;
+    }
+    resolve(window.confirm(`${title}\n\n${message}`));
+  });
+}
 const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
 const DEFAULT_SKILL = 5;
 
@@ -779,6 +800,39 @@ async function closeJerseyBatch(id) {
   }, { successText: "✅ Сбор закрыт", errorText: "❌ Не удалось закрыть" });
 }
 
+async function reopenJerseyBatch(id) {
+  const ok = await tgConfirm({
+    title: "Возобновить сбор?",
+    message: "Сбор снова откроется для отправки и редактирования заявок.",
+    okText: "Возобновить",
+    cancelText: "Отмена",
+  });
+  if (!ok) return;
+
+  await runAdminOp("Возобновляю сбор…", async () => {
+    const r = await apiPost(`/api/admin/jersey/batches/${id}/reopen`, {});
+    if (!r?.ok) throw new Error(r?.reason || "reopen_failed");
+    await loadJerseyBatches({ silent: true });
+  }, { successText: "✅ Сбор возобновлён", errorText: "❌ Не удалось возобновить" });
+}
+
+async function deleteJerseyBatch(id) {
+  const ok = await tgConfirm({
+    title: "Удалить сбор?",
+    message: "Будут удалены все заявки из этого сбора. Действие необратимо.",
+    okText: "Удалить",
+    cancelText: "Отмена",
+  });
+  if (!ok) return;
+
+  await runAdminOp("Удаляю сбор…", async () => {
+    const r = await apiDelete(`/api/admin/jersey/batches/${id}`);
+    if (!r?.ok) throw new Error(r?.reason || "delete_failed");
+    setJerseyOrders([]);
+    await loadJerseyBatches({ silent: true });
+  }, { successText: "✅ Сбор удалён", errorText: "❌ Не удалось удалить" });
+}
+
 async function announceJerseyBatch(id) {
   await runAdminOp("Отправляю сообщение в чат…", async () => {
     const r = await apiPost(`/api/admin/jersey/batches/${id}/announce`, {});
@@ -1066,8 +1120,12 @@ async function adminDeleteJerseyReq(id) {
       const r = await apiDelete(`/api/admin/jersey/requests/${id}`); // если у тебя apiDelete нет — скажи, дам 3 строки реализации
       if (!r?.ok) throw new Error(r?.reason || "delete_failed");
 
+      setJerseyOrders((prev) => (prev || []).filter((row) => row.id !== id));
+
       // перезагрузи список заявок текущего батча
-      await loadBatchOrders();
+      if (jerseySelectedId) {
+        await loadJerseyOrders(jerseySelectedId, { silent: true });
+      }
     },
     { successText: "✅ Удалено", errorText: "❌ Не удалось удалить" }
   );
@@ -1596,7 +1654,16 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 Закрыть сбор
               </button>
             </>
-          ) : null}
+          ) : (
+            <>
+              <button className="btn" onClick={() => reopenJerseyBatch(jerseySelected.id)} disabled={jerseyLoading}>
+                Возобновить сбор
+              </button>
+              <button className="btn secondary" onClick={() => deleteJerseyBatch(jerseySelected.id)} disabled={jerseyLoading}>
+                Удалить сбор
+              </button>
+            </>
+          )}
 
           <button className="btn secondary" onClick={() => exportJerseyCsv(jerseySelected.id)} disabled={jerseyLoading}>
             Скачать CSV
