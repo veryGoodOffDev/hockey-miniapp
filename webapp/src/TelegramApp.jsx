@@ -1008,9 +1008,25 @@ async function refreshAll(forceGameId) {
       todayFromPast = (p?.games || []).filter((g) => !gameFlags(g?.starts_at).isPast);
     } catch {}
 
-    const list = mergeUniqueById(gl.games || [], todayFromPast);
+    let list = mergeUniqueById(gl.games || [], todayFromPast);
     setGames(list);
     setTalismanHolder(gl.talisman_holder || null);
+
+    if (hasWebAuth && !inTelegramWebApp) {
+      const hasUpcoming = (list || []).some((g) => !isPastGame(g));
+      if (!hasUpcoming) {
+        try {
+          const up = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
+          if (up?.games?.length) {
+            list = up.games || [];
+            setGames(list);
+            setTalismanHolder(up.talisman_holder || null);
+          }
+        } catch (e) {
+          console.error("fallback upcoming games failed", e);
+        }
+      }
+    }
 
     const safeNext =
       list.find((g) => g.status === "scheduled" && !isPastGame(g))?.id ??
