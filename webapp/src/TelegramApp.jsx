@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, apiPatch, apiDelete } from "./api.js";
+import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
@@ -32,11 +32,12 @@ const SOCKS_SIZE_OPTS = [
 ];
 
 
-export default function TelegramApp() {
+export default function TelegramApp({ me: initialMeProp }) {
   const tg = window.Telegram?.WebApp;
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
+  const hasWebAuth = Boolean(getAuthToken() || initialMeProp?.player || initialMeProp?.tg_id);
   const tgPopupBusyRef = useRef(false);
 
   const OWNER_TG_ID = Number(import.meta.env.VITE_OWNER_TG_ID || 0);
@@ -48,9 +49,9 @@ export default function TelegramApp() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [me, setMe] = useState(null);
+  const [me, setMe] = useState(initialMeProp?.player ?? initialMeProp ?? null);
   const [accessReason, setAccessReason] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(!!initialMeProp?.is_admin);
 
   const [games, setGames] = useState([]);
   const [selectedGameId, setSelectedGameId] = useState(null);
@@ -123,6 +124,7 @@ export default function TelegramApp() {
 
   const [jerseyActiveId, setJerseyActiveId] = useState("new"); // "new" | number
   const [jerseyActiveStatus, setJerseyActiveStatus] = useState("draft"); // draft|sent
+  const [jerseyEditingSent, setJerseyEditingSent] = useState(false);
 
   const [jerseyDraft, setJerseyDraft] = useState({ ...EMPTY_JERSEY_REQ });
 
@@ -132,6 +134,20 @@ export default function TelegramApp() {
   const [jerseyBusy, setJerseyBusy] = useState(false);
   const [jerseyMsg, setJerseyMsg] = useState("");
 
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+
+  const jerseyCanEditSent = jerseyActiveStatus === "sent" && jerseyOpenBatch?.id && jerseyEditingSent;
+  const jerseyInputsDisabled = jerseyBusy || (jerseyActiveStatus === "sent" && !jerseyCanEditSent);
+  const jerseyNamePlaceholder = (() => {
+    const name = showName(me);
+    return name && name !== "—" ? name : "OVECHKIN";
+  })();
+  const jerseyNumberPlaceholder = (() => {
+    const num = showNum(me);
+    return num ? num : "8";
+  })();
 
 
   const [teamsBack, setTeamsBack] = useState({ tab: "game", gameView: "list" });
@@ -931,6 +947,8 @@ async function refreshAll(forceGameId) {
     // профиль
     if (m?.player) {
       setMe(m.player);
+    } else if (initialMeProp?.player || initialMeProp?.tg_id) {
+      setMe(initialMeProp?.player ?? initialMeProp);
     } else if (tgUser?.id) {
       setMe({
         tg_id: tgUser.id,
@@ -1564,6 +1582,7 @@ function pickJerseyReq(req) {
   if (!req) return;
   setJerseyActiveId(req.id);
   setJerseyActiveStatus(req.status || "draft");
+  setJerseyEditingSent(false);
   setJerseyDraft({
     name_on_jersey: req.name_on_jersey || "",
     jersey_colors: Array.isArray(req.jersey_colors) ? req.jersey_colors : [],
@@ -1580,6 +1599,7 @@ function pickJerseyReq(req) {
 function newJerseyReq() {
   setJerseyActiveId("new");
   setJerseyActiveStatus("draft");
+  setJerseyEditingSent(false);
   setJerseyDraft((prev) => ({ ...prev, ...{
     name_on_jersey: "",
     jersey_colors: [],
@@ -1592,6 +1612,10 @@ function newJerseyReq() {
   setJerseyUpdatedAt(null);
   setJerseySentAt(null);
 }
+
+useEffect(() => {
+  if (me?.email) setEmailDraft(me.email);
+}, [me?.email]);
 
 async function loadJerseyRequests() {
   setJerseyBusy(true);
@@ -1635,11 +1659,11 @@ function jerseyPayloadFromDraft(d) {
 }
 
 async function saveActiveJersey() {
-  if (!jerseyOpenBatch?.id) {
-    setJerseyMsg("⚠️ Сбор закрыт — заявки не принимаются");
+  if (jerseyActiveStatus === "sent" && !jerseyEditingSent) return;
+  if (jerseyActiveStatus === "sent" && !jerseyOpenBatch?.id) {
+    setJerseyMsg("⚠️ Сбор закрыт — редактирование отправленных заявок недоступно");
     return;
   }
-  if (jerseyActiveStatus === "sent") return;
 
   setJerseyBusy(true);
   setJerseyMsg("");
@@ -1690,6 +1714,20 @@ async function deleteActiveJersey() {
   }
 }
 
+async function sendEmailVerification() {
+  if (!emailDraft) return;
+  setEmailBusy(true);
+  setEmailMsg("");
+  try {
+    await apiPost("/api/me/email/start", { email: emailDraft });
+    setEmailMsg("✅ Ссылка для подтверждения отправлена на почту");
+  } catch (e) {
+    setEmailMsg("❌ Не удалось отправить письмо");
+  } finally {
+    setEmailBusy(false);
+  }
+}
+
 // async function sendActiveJersey() {
 //   if (!jerseyOpenBatch?.id) {
 //     setJerseyMsg("⚠️ Сбор закрыт — заявки не принимаются");
@@ -1726,6 +1764,11 @@ async function deleteActiveJersey() {
 async function sendActiveJersey() {
   if (!jerseyOpenBatch?.id) {
     await tgAlert({ title: "Сбор закрыт", message: "Сейчас заявки не принимаются." });
+    return;
+  }
+
+  if (jerseyActiveStatus === "sent") {
+    await tgAlert({ title: "Заявка уже отправлена", message: "Сначала нажми «Изменить», если нужно обновить данные." });
     return;
   }
 
@@ -2298,7 +2341,7 @@ function openYandexRoute(lat, lon) {
 
   // === RENDER ===
   if (loading) return <HockeyLoader text="Загружаем..." />;
-  if (!inTelegramWebApp) {
+  if (!inTelegramWebApp && !hasWebAuth) {
     return (
       <div className="container">
         <h1>🏒 Хоккей: отметки и составы</h1>
@@ -3524,6 +3567,35 @@ function openYandexRoute(lat, lon) {
                 />
               </div>
 
+              <div className="card" style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 800 }}>📧 Почта для входа</div>
+                <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                  {me?.email
+                    ? (me?.email_verified ? "Почта подтверждена" : "Почта не подтверждена")
+                    : "Почта не привязана"}
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label>Почта</label>
+                  <input
+                    className="input"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={emailDraft}
+                    onChange={(e) => setEmailDraft(e.target.value)}
+                    disabled={emailBusy}
+                  />
+                </div>
+
+                {emailMsg ? <div className="small" style={{ marginTop: 8 }}>{emailMsg}</div> : null}
+
+                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn secondary" onClick={sendEmailVerification} disabled={emailBusy || !emailDraft}>
+                    Отправить подтверждение
+                  </button>
+                </div>
+              </div>
+
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn" onClick={saveProfile} disabled={saving}>
                   {saving ? "Сохраняю..." : "Сохранить"}
@@ -3552,11 +3624,9 @@ function openYandexRoute(lat, lon) {
                               Обновить
                             </button>
 
-                            {jerseyOpenBatch?.id ? (
-                              <button className="btn" onClick={newJerseyReq} disabled={jerseyBusy}>
-                                ➕ Новая заявка
-                              </button>
-                            ) : null}
+                            <button className="btn" onClick={newJerseyReq} disabled={jerseyBusy}>
+                              ➕ Новая заявка
+                            </button>
                           </div>
                         </div>
 
@@ -3625,17 +3695,21 @@ function openYandexRoute(lat, lon) {
                               </h3>
 
                               {jerseyActiveStatus === "sent" ? (
-                                <span className="badge">📦 Архив</span>
+                                jerseyCanEditSent ? (
+                                  <span className="badge">🟢 Редактирование</span>
+                                ) : (
+                                  <span className="badge">📦 Архив</span>
+                                )
                               ) : jerseyOpenBatch?.id ? (
                                 <span className="badge">🟢 Редактирование</span>
                               ) : (
-                                <span className="badge">🔴 Закрыто</span>
+                                <span className="badge">🔴 Черновик</span>
                               )}
                             </div>
 
                             {!jerseyOpenBatch?.id ? (
                               <div className="small" style={{ opacity: 0.8 }}>
-                                Сбор закрыт — заявки не принимаются.
+                                Сбор закрыт — можно подготовить черновик. Отправка появится, когда сбор откроют.
                               </div>
                             ) : null}
 
@@ -3646,8 +3720,8 @@ function openYandexRoute(lat, lon) {
                                   className="input"
                                   value={jerseyDraft.name_on_jersey}
                                   onChange={(e) => setJerseyDraft((s) => ({ ...s, name_on_jersey: e.target.value }))}
-                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-                                  placeholder="Например: OVECHKIN"
+                                  disabled={jerseyInputsDisabled}
+                                  placeholder={`Например: ${jerseyNamePlaceholder}`}
                                 />
                               </div>
 
@@ -3669,7 +3743,7 @@ function openYandexRoute(lat, lon) {
                                             jersey_colors: toggleArr(s.jersey_colors, c.code),
                                           }))
                                         }
-                                        disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                        disabled={jerseyInputsDisabled}
                                       >
                                         {c.label}
                                       </button>
@@ -3686,8 +3760,8 @@ function openYandexRoute(lat, lon) {
                                     className="input"
                                     value={jerseyDraft.jersey_number}
                                     onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_number: e.target.value }))}
-                                    disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
-                                    placeholder="Например: 8"
+                                    disabled={jerseyInputsDisabled}
+                                    placeholder={`Например: ${jerseyNumberPlaceholder}`}
                                   />
                                 </div>
 
@@ -3697,7 +3771,7 @@ function openYandexRoute(lat, lon) {
                                     className="input"
                                     value={jerseyDraft.jersey_size}
                                     onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_size: e.target.value }))}
-                                    disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                    disabled={jerseyInputsDisabled}
                                     placeholder="Например: 50"
                                   />
                                 </div>
@@ -3709,7 +3783,7 @@ function openYandexRoute(lat, lon) {
                                     type="checkbox"
                                     checked={jerseyDraft.socks_needed}
                                     onChange={(e) => setJerseyDraft((s) => ({ ...s, socks_needed: e.target.checked }))}
-                                    disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                    disabled={jerseyInputsDisabled}
                                   />
                                   Гамаши нужны
                                 </label>
@@ -3735,7 +3809,7 @@ function openYandexRoute(lat, lon) {
                                                 socks_colors: toggleArr(s.socks_colors, c.code),
                                               }))
                                             }
-                                            disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                            disabled={jerseyInputsDisabled}
                                           >
                                             {c.label}
                                           </button>
@@ -3751,7 +3825,7 @@ function openYandexRoute(lat, lon) {
                                       className="input"
                                       value={jerseyDraft.socks_size}
                                       onChange={(e) => setJerseyDraft((s) => ({ ...s, socks_size: e.target.value }))}
-                                      disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                      disabled={jerseyInputsDisabled}
                                     >
                                       {SOCKS_SIZE_OPTS.map((x) => (
                                         <option key={x.code} value={x.code}>
@@ -3767,7 +3841,7 @@ function openYandexRoute(lat, lon) {
                                 <button
                                   className="btn secondary"
                                   onClick={saveActiveJersey}
-                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                  disabled={jerseyInputsDisabled}
                                 >
                                   💾 Сохранить
                                 </button>
@@ -3775,7 +3849,7 @@ function openYandexRoute(lat, lon) {
                                 <button
                                   className="btn"
                                   onClick={sendActiveJersey}
-                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy || jerseyActiveId === "new"}
                                 >
                                   📨 Отправить
                                 </button>
@@ -3783,10 +3857,29 @@ function openYandexRoute(lat, lon) {
                                 <button
                                   className="btn secondary"
                                   onClick={deleteActiveJersey}
-                                  disabled={!jerseyOpenBatch?.id || jerseyActiveStatus === "sent" || jerseyBusy}
+                                  disabled={jerseyActiveStatus === "sent" || jerseyBusy}
                                 >
                                   🗑 Удалить
                                 </button>
+                                {jerseyActiveStatus === "sent" && jerseyOpenBatch?.id ? (
+                                  jerseyEditingSent ? (
+                                    <button
+                                      className="btn secondary"
+                                      onClick={() => loadJerseyRequests()}
+                                      disabled={jerseyBusy}
+                                    >
+                                      ↩️ Отмена
+                                    </button>
+                                  ) : (
+                                    <button
+                                      className="btn secondary"
+                                      onClick={() => setJerseyEditingSent(true)}
+                                      disabled={jerseyBusy}
+                                    >
+                                      ✏️ Изменить
+                                    </button>
+                                  )
+                                ) : null}
                               </div>
 
                               {jerseySentAt ? (
@@ -5016,5 +5109,3 @@ function BottomNav({ tab, setTab, isAdmin }) {
     </nav>
   );
 }
-
-

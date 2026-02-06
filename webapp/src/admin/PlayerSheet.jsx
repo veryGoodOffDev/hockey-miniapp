@@ -73,6 +73,8 @@ useEffect(() => {
     username: player.username || "",
     first_name: player.first_name || "",
     is_env_admin: !!player.is_env_admin,
+    email: player.email || "",
+    email_verified: !!player.email_verified,
 
 
     joke_premium: !!player.joke_premium,
@@ -100,6 +102,8 @@ useEffect(() => {
       position: (draft.position || "F").toUpperCase(),
       notes: draft.notes ?? "",
       disabled: !!draft.disabled,
+      email: (draft.email || "").trim(),
+      email_verified: !!draft.email_verified,
     };
 
     for (const k of SKILLS) body[k] = clampSkill(draft[k]);
@@ -181,6 +185,20 @@ useEffect(() => {
 
         <label>Заметки</label>
         <textarea className="input" rows={2} value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
+
+        <label>Почта</label>
+        <input
+          className="input"
+          type="email"
+          placeholder="name@example.com"
+          value={draft.email}
+          onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+        />
+
+        <div className="row" style={{ alignItems: "center" }}>
+          <label style={{ margin: 0 }}>Почта подтверждена</label>
+          <input type="checkbox" checked={!!draft.email_verified} onChange={(e) => setDraft((d) => ({ ...d, email_verified: e.target.checked }))} />
+        </div>
 
         <div className="row" style={{ alignItems: "center" }}>
           <label style={{ margin: 0 }}>Отключить</label>

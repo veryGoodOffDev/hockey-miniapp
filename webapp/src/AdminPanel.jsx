@@ -60,6 +60,27 @@ function posLabel(pos) {
   if (pos === "D") return "D";
   return "F";
 }
+
+function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
+  return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showPopup) {
+      tg.showPopup(
+        {
+          title,
+          message,
+          buttons: [
+            { id: "cancel", type: "cancel", text: cancelText },
+            { id: "ok", type: "default", text: okText },
+          ],
+        },
+        (id) => resolve(id === "ok")
+      );
+      return;
+    }
+    resolve(window.confirm(`${title}\n\n${message}`));
+  });
+}
 const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
 const DEFAULT_SKILL = 5;
 
@@ -332,6 +353,8 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [teamApps, setTeamApps] = useState([]);
+  const [teamAppsLoading, setTeamAppsLoading] = useState(false);
 
   // create game
   const [date, setDate] = useState("");
@@ -640,11 +663,34 @@ function closePlayerSheet() {
         const p = await apiGet("/api/admin/players");
         setPlayers(p.players || []);
         setIsSuperAdmin(!!p.is_super_admin);
+
+        const apps = await apiGet("/api/admin/team-applications");
+        setTeamApps(apps.applications || []);
     
         if (!silent) flashAdmin("✅ Обновлено", "success", false, 1200);
       } catch (e) {
         console.error("load failed", e);
         if (!silent) flashAdmin("❌ Не удалось обновить", "error", false, 2400);
+      }
+    }
+
+    async function approveTeamApp(id) {
+      setTeamAppsLoading(true);
+      try {
+        await apiPost(`/api/admin/team-applications/${id}/approve`, {});
+        await load({ silent: true });
+      } finally {
+        setTeamAppsLoading(false);
+      }
+    }
+
+    async function rejectTeamApp(id) {
+      setTeamAppsLoading(true);
+      try {
+        await apiPost(`/api/admin/team-applications/${id}/reject`, {});
+        await load({ silent: true });
+      } finally {
+        setTeamAppsLoading(false);
       }
     }
 
@@ -777,6 +823,39 @@ async function closeJerseyBatch(id) {
     if (!r?.ok) throw new Error(r?.reason || "close_failed");
     await loadJerseyBatches({ silent: true });
   }, { successText: "✅ Сбор закрыт", errorText: "❌ Не удалось закрыть" });
+}
+
+async function reopenJerseyBatch(id) {
+  const ok = await tgConfirm({
+    title: "Возобновить сбор?",
+    message: "Сбор снова откроется для отправки и редактирования заявок.",
+    okText: "Возобновить",
+    cancelText: "Отмена",
+  });
+  if (!ok) return;
+
+  await runAdminOp("Возобновляю сбор…", async () => {
+    const r = await apiPost(`/api/admin/jersey/batches/${id}/reopen`, {});
+    if (!r?.ok) throw new Error(r?.reason || "reopen_failed");
+    await loadJerseyBatches({ silent: true });
+  }, { successText: "✅ Сбор возобновлён", errorText: "❌ Не удалось возобновить" });
+}
+
+async function deleteJerseyBatch(id) {
+  const ok = await tgConfirm({
+    title: "Удалить сбор?",
+    message: "Будут удалены все заявки из этого сбора. Действие необратимо.",
+    okText: "Удалить",
+    cancelText: "Отмена",
+  });
+  if (!ok) return;
+
+  await runAdminOp("Удаляю сбор…", async () => {
+    const r = await apiDelete(`/api/admin/jersey/batches/${id}`);
+    if (!r?.ok) throw new Error(r?.reason || "delete_failed");
+    setJerseyOrders([]);
+    await loadJerseyBatches({ silent: true });
+  }, { successText: "✅ Сбор удалён", errorText: "❌ Не удалось удалить" });
 }
 
 async function announceJerseyBatch(id) {
@@ -1066,8 +1145,12 @@ async function adminDeleteJerseyReq(id) {
       const r = await apiDelete(`/api/admin/jersey/requests/${id}`); // если у тебя apiDelete нет — скажи, дам 3 строки реализации
       if (!r?.ok) throw new Error(r?.reason || "delete_failed");
 
+      setJerseyOrders((prev) => (prev || []).filter((row) => row.id !== id));
+
       // перезагрузи список заявок текущего батча
-      await loadBatchOrders();
+      if (jerseySelectedId) {
+        await loadJerseyOrders(jerseySelectedId, { silent: true });
+      }
     },
     { successText: "✅ Удалено", errorText: "❌ Не удалось удалить" }
   );
@@ -1596,7 +1679,16 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 Закрыть сбор
               </button>
             </>
-          ) : null}
+          ) : (
+            <>
+              <button className="btn" onClick={() => reopenJerseyBatch(jerseySelected.id)} disabled={jerseyLoading}>
+                Возобновить сбор
+              </button>
+              <button className="btn secondary" onClick={() => deleteJerseyBatch(jerseySelected.id)} disabled={jerseyLoading}>
+                Удалить сбор
+              </button>
+            </>
+          )}
 
           <button className="btn secondary" onClick={() => exportJerseyCsv(jerseySelected.id)} disabled={jerseyLoading}>
             Скачать CSV
@@ -1875,6 +1967,38 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           <div className="rowBetween">
             <h2 style={{ margin: 0 }}>Игроки</h2>
             <button className="btn secondary" onClick={load}>Обновить</button>
+          </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="rowBetween">
+              <div style={{ fontWeight: 800 }}>🆕 Новые заявки в команду</div>
+              <span className="badgeMini">{teamApps.length}</span>
+            </div>
+
+            {teamApps.length === 0 ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+                Пока заявок нет.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {teamApps.map((app) => (
+                  <div key={app.id} className="listItem">
+                    <div className="rowBetween">
+                      <div style={{ fontWeight: 800 }}>{app.email}</div>
+                      <div className="small">{new Date(app.created_at).toLocaleString("ru-RU")}</div>
+                    </div>
+                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                      <button className="btn" onClick={() => approveTeamApp(app.id)} disabled={teamAppsLoading}>
+                        Принять
+                      </button>
+                      <button className="btn secondary" onClick={() => rejectTeamApp(app.id)} disabled={teamAppsLoading}>
+                        Отклонить
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <input
