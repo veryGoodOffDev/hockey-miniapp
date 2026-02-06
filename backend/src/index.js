@@ -1787,9 +1787,22 @@ app.get("/api/jersey/requests", async (req, res) => {
       const rr = await q(
         `SELECT *
          FROM jersey_requests
-         WHERE tg_id=$1 AND batch_id=$2
+         WHERE tg_id=$1
+           AND (
+             status='draft'
+             OR (status='sent' AND batch_id=$2)
+           )
          ORDER BY id DESC`,
         [user.id, open.id]
+      );
+      requests = rr.rows || [];
+    } else {
+      const rr = await q(
+        `SELECT *
+         FROM jersey_requests
+         WHERE tg_id=$1 AND status='draft'
+         ORDER BY id DESC`,
+        [user.id]
       );
       requests = rr.rows || [];
     }
@@ -1828,7 +1841,7 @@ app.get("/api/jersey/requests", async (req, res) => {
   }
 });
 
-/** ---- PLAYER: create draft request (in open batch only) ---- */
+/** ---- PLAYER: create draft request (allowed even if collection is closed) ---- */
 app.post("/api/jersey/requests", async (req, res) => {
   try {
     const user = requireWebAppAuth(req, res);
@@ -1841,7 +1854,6 @@ app.post("/api/jersey/requests", async (req, res) => {
     await ensurePlayer(user);
 
     const open = await getOpenJerseyBatchRow();
-    if (!open?.id) return res.status(400).json({ ok: false, reason: "collection_closed" });
 
     const b = req.body || {};
     const payload = {
@@ -1862,7 +1874,7 @@ app.post("/api/jersey/requests", async (req, res) => {
         ($1,$2,'draft',$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
        RETURNING *`,
       [
-        open.id,
+        open?.id ?? null,
         user.id,
         payload.name_on_jersey,
         payload.jersey_colors,
@@ -1881,7 +1893,7 @@ app.post("/api/jersey/requests", async (req, res) => {
   }
 });
 
-/** ---- PLAYER: update draft ---- */
+/** ---- PLAYER: update draft (and allow sent->draft edit when batch is open) ---- */
 app.patch("/api/jersey/requests/:id", async (req, res) => {
   try {
     const user = requireWebAppAuth(req, res);
@@ -1897,7 +1909,6 @@ app.patch("/api/jersey/requests/:id", async (req, res) => {
     if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
 
     const open = await getOpenJerseyBatchRow();
-    if (!open?.id) return res.status(400).json({ ok: false, reason: "collection_closed" });
 
     const cur = await q(
       `SELECT * FROM jersey_requests WHERE id=$1 AND tg_id=$2`,
@@ -1905,8 +1916,14 @@ app.patch("/api/jersey/requests/:id", async (req, res) => {
     );
     const row = cur.rows?.[0];
     if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
-    if (row.status !== "draft") return res.status(400).json({ ok: false, reason: "already_sent" });
-    if (Number(row.batch_id) !== Number(open.id)) return res.status(400).json({ ok: false, reason: "batch_closed" });
+    if (row.status === "sent") {
+      if (!open?.id) return res.status(400).json({ ok: false, reason: "collection_closed" });
+      if (Number(row.batch_id) !== Number(open.id)) {
+        return res.status(400).json({ ok: false, reason: "batch_closed" });
+      }
+    } else if (row.status !== "draft") {
+      return res.status(400).json({ ok: false, reason: "already_sent" });
+    }
 
     const b = req.body || {};
     const payload = {
@@ -1919,6 +1936,9 @@ app.patch("/api/jersey/requests/:id", async (req, res) => {
       socks_size: SOCKS_SIZE_SET.has(String(b.socks_size)) ? String(b.socks_size) : "adult",
     };
 
+    const nextStatus = row.status === "sent" ? "draft" : row.status;
+    const sentAt = row.status === "sent" ? null : row.sent_at;
+
     const upd = await q(
       `UPDATE jersey_requests SET
         name_on_jersey=$2,
@@ -1928,6 +1948,8 @@ app.patch("/api/jersey/requests/:id", async (req, res) => {
         socks_needed=$6,
         socks_colors=$7,
         socks_size=$8,
+        status=$9,
+        sent_at=$10,
         updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
@@ -1940,6 +1962,8 @@ app.patch("/api/jersey/requests/:id", async (req, res) => {
         payload.socks_needed,
         payload.socks_colors,
         payload.socks_size,
+        nextStatus,
+        sentAt,
       ]
     );
 
@@ -2006,7 +2030,6 @@ app.post("/api/jersey/requests/:id/send", async (req, res) => {
     const row = cur.rows?.[0];
     if (!row) return res.status(404).json({ ok: false, reason: "not_found" });
     if (row.status !== "draft") return res.status(400).json({ ok: false, reason: "already_sent" });
-    if (Number(row.batch_id) !== Number(open.id)) return res.status(400).json({ ok: false, reason: "batch_closed" });
     // запрет отправки пустого
     const name = String(row.name_on_jersey || "").trim();
     const size = String(row.jersey_size || "").trim();
@@ -2022,10 +2045,14 @@ app.post("/api/jersey/requests/:id/send", async (req, res) => {
     }
 
     const upd = await q(
-      `UPDATE jersey_requests SET status='sent', sent_at=NOW(), updated_at=NOW()
+      `UPDATE jersey_requests SET
+        status='sent',
+        sent_at=NOW(),
+        batch_id=$2,
+        updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
-      [id]
+      [id, open.id]
     );
 
     return res.json({ ok: true, request: upd.rows?.[0] || null });
