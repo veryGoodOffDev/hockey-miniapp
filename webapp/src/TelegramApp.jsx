@@ -32,12 +32,12 @@ const SOCKS_SIZE_OPTS = [
 ];
 
 
-export default function TelegramApp() {
+export default function TelegramApp({ me: initialMeProp }) {
   const tg = window.Telegram?.WebApp;
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
-  const hasWebAuth = Boolean(getAuthToken());
+  const hasWebAuth = Boolean(getAuthToken() || initialMeProp?.player || initialMeProp?.tg_id);
   const tgPopupBusyRef = useRef(false);
 
   const OWNER_TG_ID = Number(import.meta.env.VITE_OWNER_TG_ID || 0);
@@ -49,9 +49,9 @@ export default function TelegramApp() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [me, setMe] = useState(null);
+  const [me, setMe] = useState(initialMeProp?.player ?? initialMeProp ?? null);
   const [accessReason, setAccessReason] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(!!initialMeProp?.is_admin);
 
   const [games, setGames] = useState([]);
   const [selectedGameId, setSelectedGameId] = useState(null);
@@ -947,6 +947,8 @@ async function refreshAll(forceGameId) {
     // профиль
     if (m?.player) {
       setMe(m.player);
+    } else if (initialMeProp?.player || initialMeProp?.tg_id) {
+      setMe(initialMeProp?.player ?? initialMeProp);
     } else if (tgUser?.id) {
       setMe({
         tg_id: tgUser.id,
