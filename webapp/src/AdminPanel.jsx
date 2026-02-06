@@ -1087,8 +1087,12 @@ async function adminDeleteJerseyReq(id) {
       const r = await apiDelete(`/api/admin/jersey/requests/${id}`); // если у тебя apiDelete нет — скажи, дам 3 строки реализации
       if (!r?.ok) throw new Error(r?.reason || "delete_failed");
 
+      setJerseyOrders((prev) => (prev || []).filter((row) => row.id !== id));
+
       // перезагрузи список заявок текущего батча
-      await loadBatchOrders();
+      if (jerseySelectedId) {
+        await loadJerseyOrders(jerseySelectedId, { silent: true });
+      }
     },
     { successText: "✅ Удалено", errorText: "❌ Не удалось удалить" }
   );
