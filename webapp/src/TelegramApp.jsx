@@ -3488,7 +3488,7 @@ function openYandexRoute(lat, lon) {
                 <input
                   className="input"
                   type="text"
-                  placeholder={me?.first_name || "Например: Илья"}
+                  placeholder={me?.first_name || "Например: ALEXANDER"}
                   value={me?.display_name ?? ""}
                   onChange={(e) => setMe({ ...me, display_name: e.target.value })}
                 />
@@ -3501,7 +3501,7 @@ function openYandexRoute(lat, lon) {
                   type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  placeholder="Например: 17"
+                  placeholder="Например: 8"
                   value={me?.jersey_number == null ? "" : String(me.jersey_number)}
                   onChange={(e) => {
                     const raw = e.target.value.replace(/[^\d]/g, "");
