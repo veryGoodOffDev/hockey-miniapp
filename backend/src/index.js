@@ -2060,13 +2060,10 @@ app.post("/api/jersey/requests/:id/send", async (req, res) => {
         status='sent',
         sent_at=NOW(),
         batch_id=$2,
-        name_on_jersey=$3,
-        jersey_size=$4,
-        jersey_colors=$5,
         updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
-      [id, open.id, nameToSave, sizeToSave, colorsToSave]
+      [id, open.id]
     );
 
     return res.json({ ok: true, request: upd.rows?.[0] || null });
