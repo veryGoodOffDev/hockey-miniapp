@@ -2034,15 +2034,26 @@ app.post("/api/jersey/requests/:id/send", async (req, res) => {
     const name = String(row.name_on_jersey || "").trim();
     const size = String(row.jersey_size || "").trim();
     const colors = Array.isArray(row.jersey_colors) ? row.jersey_colors : [];
+    const wantsJersey = !!name || !!size || colors.length > 0;
 
-    if (!name) return res.status(400).json({ ok: false, reason: "name_required" });
-    if (!size) return res.status(400).json({ ok: false, reason: "size_required" });
-    if (colors.length === 0) return res.status(400).json({ ok: false, reason: "colors_required" });
+    if (!wantsJersey && !row.socks_needed) {
+      return res.status(400).json({ ok: false, reason: "jersey_or_socks_required" });
+    }
+
+    if (wantsJersey) {
+      if (!name) return res.status(400).json({ ok: false, reason: "name_required" });
+      if (!size) return res.status(400).json({ ok: false, reason: "size_required" });
+      if (colors.length === 0) return res.status(400).json({ ok: false, reason: "colors_required" });
+    }
 
     if (row.socks_needed) {
       const sc = Array.isArray(row.socks_colors) ? row.socks_colors : [];
       if (sc.length === 0) return res.status(400).json({ ok: false, reason: "socks_colors_required" });
     }
+
+    const nameToSave = wantsJersey ? name : "нет";
+    const sizeToSave = wantsJersey ? size : "нет";
+    const colorsToSave = wantsJersey ? colors : [];
 
     const upd = await q(
       `UPDATE jersey_requests SET
