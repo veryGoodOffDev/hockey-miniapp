@@ -1016,14 +1016,14 @@ async function refreshAll(forceGameId) {
       const hasUpcoming = (list || []).some((g) => !isPastGame(g));
       if (!hasUpcoming) {
         try {
-          const up = await apiGet("/api/games?scope=upcoming&limit=365&offset=0");
-          if (up?.games?.length) {
-            list = up.games || [];
+          const all = await apiGet("/api/games?scope=all&limit=365&offset=0");
+          if (all?.games?.length) {
+            list = all.games || [];
             setGames(list);
-            setTalismanHolder(up.talisman_holder || null);
+            setTalismanHolder(all.talisman_holder || null);
           }
         } catch (e) {
-          console.error("fallback upcoming games failed", e);
+          console.error("fallback all games failed", e);
         }
       }
     }
