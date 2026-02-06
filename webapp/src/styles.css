@@ -2728,7 +2728,13 @@ html[data-theme="light"] .btn.outline.active{
 
 
 /* ===== Jersey UI (scoped) ===== */
-.jerseyCard { padding: 14px; }
+.jerseyCard {
+  padding: 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--tg-bg) 92%, var(--tg-text) 4%);
+  border: 1px solid color-mix(in srgb, var(--tg-text) 10%, transparent);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+}
 .jerseyHeader {
   display: flex;
   align-items: flex-start;
@@ -2967,6 +2973,103 @@ html[data-theme="light"] .btn.outline.active{
 .jerseyCard .jerseyReqItem.isActive {
   border-color: color-mix(in srgb, var(--tg-btn) 55%, var(--border)) !important;
   background: color-mix(in srgb, var(--tg-btn) 12%, transparent) !important;
+}
+
+/* ===== Mobile-first polish for Telegram WebApp ===== */
+@media (max-width: 680px) {
+  .jerseyCard {
+    padding: 16px 14px;
+    border-radius: 20px;
+    box-shadow: 0 12px 24px rgba(0,0,0,0.14);
+  }
+
+  .jerseyHeader {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .jerseyTitle h2 {
+    font-size: 20px;
+    letter-spacing: -0.3px;
+  }
+
+  .jerseyActions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .jerseyActions .btn {
+    min-width: 0;
+    padding: 10px 12px;
+  }
+
+  .jerseySection {
+    border-radius: 16px;
+    padding: 12px;
+    background: color-mix(in srgb, var(--tg-bg) 88%, var(--tg-text) 6%);
+    border: 1px solid color-mix(in srgb, var(--tg-text) 10%, transparent);
+  }
+
+  .jerseyReqGrid {
+    gap: 10px;
+  }
+
+  .jerseyReqItem {
+    padding: 12px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--tg-bg) 90%, var(--tg-text) 6%);
+    border: 1px solid color-mix(in srgb, var(--tg-text) 12%, transparent);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+  }
+
+  .jerseyReqTop {
+    align-items: center;
+  }
+
+  .jerseyReqTop .left {
+    font-size: 13.5px;
+  }
+
+  .jerseyReqTop .right {
+    font-size: 12px;
+  }
+
+  .jerseyReqText {
+    font-size: 12.8px;
+    line-height: 1.45;
+  }
+
+  .jerseyForm {
+    gap: 12px;
+  }
+
+  .jerseyBtnRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .jerseyBtnRow .btn {
+    width: 100%;
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .jerseyActions {
+    grid-template-columns: 1fr;
+  }
+
+  .jerseyBtnRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+:root[data-tg="light"] .jerseyCard,
+:root[data-theme="light"] .jerseyCard {
+  box-shadow: 0 12px 20px rgba(0,0,0,0.08);
 }
 
 /* ===== Кнопки выбора цветов (вместо чекбоксов) ===== */
