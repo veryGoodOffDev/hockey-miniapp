@@ -1,4 +1,5 @@
 import "dotenv/config";
+import nodemailer from "nodemailer";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -31,6 +32,27 @@ const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || "";
 const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || "";
 const MAILGUN_FROM = process.env.MAILGUN_FROM || process.env.MAILGUN_USER || "";
 
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE =
+  String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || process.env.SMTP_SECURE === "1";
+const SMTP_USER = process.env.SMTP_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || "";
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "";
+
+let smtpTransport = null;
+function getSmtpTransport() {
+  if (smtpTransport) return smtpTransport;
+  smtpTransport = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE, // true для 465, false для 587
+    auth: SMTP_USER ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+  });
+  return smtpTransport;
+}
+
+
 function b64url(input) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
   return buf.toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -42,14 +64,15 @@ function b64urlDecode(s) {
 }
 function signToken(obj) {
   const payload = b64url(JSON.stringify(obj));
-  const sig = b64url(require("crypto").createHmac("sha256", DOWNLOAD_SECRET).update(payload).digest());
+  const sig = b64url(crypto.createHmac("sha256", DOWNLOAD_SECRET).update(payload).digest());
   return `${payload}.${sig}`;
 }
 function verifyToken(tok) {
   if (!tok || typeof tok !== "string") return null;
   const [payload, sig] = tok.split(".");
   if (!payload || !sig) return null;
-  const sig2 = b64url(require("crypto").createHmac("sha256", DOWNLOAD_SECRET).update(payload).digest());
+  const sig2 = b64url(crypto.createHmac("sha256", DOWNLOAD_SECRET).update(payload).digest());
+
   if (sig !== sig2) return null;
   const obj = JSON.parse(b64urlDecode(payload));
   if (!obj?.exp || Date.now() > obj.exp) return null;
@@ -79,9 +102,65 @@ function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+// async function sendEmail({ to, subject, html, text }) {
+//   if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN || !MAILGUN_FROM) {
+//     console.log("[email] Mailgun not configured, skipping send:", { to, subject, text });
+//     return;
+//   }
+
+//   const auth = Buffer.from(`api:${MAILGUN_API_KEY}`).toString("base64");
+//   const body = new URLSearchParams({
+//     from: MAILGUN_FROM,
+//     to,
+//     subject,
+//     text: text || "",
+//     html: html || "",
+//   });
+
+//   const r = await fetch(`https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`, {
+//     method: "POST",
+//     headers: {
+//       Authorization: `Basic ${auth}`,
+//       "Content-Type": "application/x-www-form-urlencoded",
+//     },
+//     body,
+//   });
+
+//   if (!r.ok) {
+//     const errText = await r.text();
+//     console.error("[email] Mailgun failed:", r.status, errText);
+//   }
+// }
+
 async function sendEmail({ to, subject, html, text }) {
+  // 1) SMTP (твой вариант)
+  if (SMTP_HOST && SMTP_FROM && SMTP_USER && SMTP_PASS) {
+    try {
+      const tr = getSmtpTransport();
+      await tr.sendMail({
+        from: SMTP_FROM,
+        to,
+        subject,
+        text: text || "",
+        html: html || "",
+      });
+      return;
+    } catch (e) {
+      console.error("[email] SMTP failed:", e?.message || e);
+      // не return — попробуем fallback ниже (если вдруг решишь оставить Mailgun)
+    }
+  } else {
+    console.log("[email] SMTP not configured:", {
+      SMTP_HOST: !!SMTP_HOST,
+      SMTP_FROM: !!SMTP_FROM,
+      SMTP_USER: !!SMTP_USER,
+      SMTP_PASS: !!SMTP_PASS,
+    });
+  }
+
+  // 2) fallback Mailgun (можно оставить, можно удалить)
   if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN || !MAILGUN_FROM) {
-    console.log("[email] Mailgun not configured, skipping send:", { to, subject, text });
+    console.log("[email] No provider configured, skipping send:", { to, subject });
     return;
   }
 
@@ -108,6 +187,7 @@ async function sendEmail({ to, subject, html, text }) {
     console.error("[email] Mailgun failed:", r.status, errText);
   }
 }
+
 
 function issueAuthToken(tgId) {
   return signToken({ uid: tgId, exp: Date.now() + AUTH_TOKEN_TTL_MS });
@@ -1660,8 +1740,9 @@ app.post("/api/me/email/start", async (req, res) => {
     );
 
     const token = signToken({ uid: user.id, email, exp: Date.now() + EMAIL_VERIFY_TTL_MS });
-    const base = PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
-    const link = `${base}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
+    const apiBase = apiBaseFromReq(req);
+    const link = `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
+
 
     await sendEmail({
       to: email,
@@ -1676,7 +1757,6 @@ app.post("/api/me/email/start", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
-
 /** ====== ME ====== */
 /** ====== ME ====== */
 app.get("/api/me", async (req, res) => {
