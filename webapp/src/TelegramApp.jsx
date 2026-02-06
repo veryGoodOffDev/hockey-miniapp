@@ -135,7 +135,14 @@ export default function TelegramApp() {
 
   const jerseyCanEditSent = jerseyActiveStatus === "sent" && jerseyOpenBatch?.id && jerseyEditingSent;
   const jerseyInputsDisabled = jerseyBusy || (jerseyActiveStatus === "sent" && !jerseyCanEditSent);
-
+  const jerseyNamePlaceholder = (() => {
+    const name = showName(me);
+    return name && name !== "—" ? name : "OVECHKIN";
+  })();
+  const jerseyNumberPlaceholder = (() => {
+    const num = showNum(me);
+    return num ? num : "8";
+  })();
 
   const [teamsBack, setTeamsBack] = useState({ tab: "game", gameView: "list" });
 
@@ -3659,7 +3666,7 @@ function openYandexRoute(lat, lon) {
                                   value={jerseyDraft.name_on_jersey}
                                   onChange={(e) => setJerseyDraft((s) => ({ ...s, name_on_jersey: e.target.value }))}
                                   disabled={jerseyInputsDisabled}
-                                  placeholder="Например: OVECHKIN"
+                                  placeholder={`Например: ${jerseyNamePlaceholder}`}
                                 />
                               </div>
 
@@ -3699,7 +3706,7 @@ function openYandexRoute(lat, lon) {
                                     value={jerseyDraft.jersey_number}
                                     onChange={(e) => setJerseyDraft((s) => ({ ...s, jersey_number: e.target.value }))}
                                     disabled={jerseyInputsDisabled}
-                                    placeholder="Например: 8"
+                                    placeholder={`Например: ${jerseyNumberPlaceholder}`}
                                   />
                                 </div>
 
