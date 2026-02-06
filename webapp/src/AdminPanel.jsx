@@ -353,6 +353,8 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [teamApps, setTeamApps] = useState([]);
+  const [teamAppsLoading, setTeamAppsLoading] = useState(false);
 
   // create game
   const [date, setDate] = useState("");
@@ -661,11 +663,34 @@ function closePlayerSheet() {
         const p = await apiGet("/api/admin/players");
         setPlayers(p.players || []);
         setIsSuperAdmin(!!p.is_super_admin);
+
+        const apps = await apiGet("/api/admin/team-applications");
+        setTeamApps(apps.applications || []);
     
         if (!silent) flashAdmin("✅ Обновлено", "success", false, 1200);
       } catch (e) {
         console.error("load failed", e);
         if (!silent) flashAdmin("❌ Не удалось обновить", "error", false, 2400);
+      }
+    }
+
+    async function approveTeamApp(id) {
+      setTeamAppsLoading(true);
+      try {
+        await apiPost(`/api/admin/team-applications/${id}/approve`, {});
+        await load({ silent: true });
+      } finally {
+        setTeamAppsLoading(false);
+      }
+    }
+
+    async function rejectTeamApp(id) {
+      setTeamAppsLoading(true);
+      try {
+        await apiPost(`/api/admin/team-applications/${id}/reject`, {});
+        await load({ silent: true });
+      } finally {
+        setTeamAppsLoading(false);
       }
     }
 
@@ -1942,6 +1967,38 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           <div className="rowBetween">
             <h2 style={{ margin: 0 }}>Игроки</h2>
             <button className="btn secondary" onClick={load}>Обновить</button>
+          </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="rowBetween">
+              <div style={{ fontWeight: 800 }}>🆕 Новые заявки в команду</div>
+              <span className="badgeMini">{teamApps.length}</span>
+            </div>
+
+            {teamApps.length === 0 ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
+                Пока заявок нет.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {teamApps.map((app) => (
+                  <div key={app.id} className="listItem">
+                    <div className="rowBetween">
+                      <div style={{ fontWeight: 800 }}>{app.email}</div>
+                      <div className="small">{new Date(app.created_at).toLocaleString("ru-RU")}</div>
+                    </div>
+                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                      <button className="btn" onClick={() => approveTeamApp(app.id)} disabled={teamAppsLoading}>
+                        Принять
+                      </button>
+                      <button className="btn secondary" onClick={() => rejectTeamApp(app.id)} disabled={teamAppsLoading}>
+                        Отклонить
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <input

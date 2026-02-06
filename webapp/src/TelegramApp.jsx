@@ -133,6 +133,10 @@ export default function TelegramApp() {
   const [jerseyBusy, setJerseyBusy] = useState(false);
   const [jerseyMsg, setJerseyMsg] = useState("");
 
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+
   const jerseyCanEditSent = jerseyActiveStatus === "sent" && jerseyOpenBatch?.id && jerseyEditingSent;
   const jerseyInputsDisabled = jerseyBusy || (jerseyActiveStatus === "sent" && !jerseyCanEditSent);
   const jerseyNamePlaceholder = (() => {
@@ -143,6 +147,7 @@ export default function TelegramApp() {
     const num = showNum(me);
     return num ? num : "8";
   })();
+
 
   const [teamsBack, setTeamsBack] = useState({ tab: "game", gameView: "list" });
 
@@ -1605,6 +1610,10 @@ function newJerseyReq() {
   setJerseySentAt(null);
 }
 
+useEffect(() => {
+  if (me?.email) setEmailDraft(me.email);
+}, [me?.email]);
+
 async function loadJerseyRequests() {
   setJerseyBusy(true);
   setJerseyMsg("");
@@ -1699,6 +1708,20 @@ async function deleteActiveJersey() {
     setJerseyMsg("❌ Не удалось удалить");
   } finally {
     setJerseyBusy(false);
+  }
+}
+
+async function sendEmailVerification() {
+  if (!emailDraft) return;
+  setEmailBusy(true);
+  setEmailMsg("");
+  try {
+    await apiPost("/api/me/email/start", { email: emailDraft });
+    setEmailMsg("✅ Ссылка для подтверждения отправлена на почту");
+  } catch (e) {
+    setEmailMsg("❌ Не удалось отправить письмо");
+  } finally {
+    setEmailBusy(false);
   }
 }
 
@@ -3539,6 +3562,35 @@ function openYandexRoute(lat, lon) {
                   value={me?.notes || ""}
                   onChange={(e) => setMe({ ...me, notes: e.target.value })}
                 />
+              </div>
+
+              <div className="card" style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 800 }}>📧 Почта для входа</div>
+                <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                  {me?.email
+                    ? (me?.email_verified ? "Почта подтверждена" : "Почта не подтверждена")
+                    : "Почта не привязана"}
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label>Почта</label>
+                  <input
+                    className="input"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={emailDraft}
+                    onChange={(e) => setEmailDraft(e.target.value)}
+                    disabled={emailBusy}
+                  />
+                </div>
+
+                {emailMsg ? <div className="small" style={{ marginTop: 8 }}>{emailMsg}</div> : null}
+
+                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn secondary" onClick={sendEmailVerification} disabled={emailBusy || !emailDraft}>
+                    Отправить подтверждение
+                  </button>
+                </div>
               </div>
 
               <div className="row" style={{ marginTop: 12 }}>

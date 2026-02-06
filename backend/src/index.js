@@ -23,6 +23,13 @@ const REMINDER_MINUTE = Number(process.env.REMINDER_MINUTE ?? 0);
 const INTERNAL_CRON_TOKEN = process.env.INTERNAL_CRON_TOKEN || "";
 
 const DOWNLOAD_SECRET = process.env.DOWNLOAD_SECRET || process.env.SESSION_SECRET || "change_me";
+const AUTH_TOKEN_TTL_MS = Number(process.env.AUTH_TOKEN_TTL_MS || 1000 * 60 * 60 * 24 * 30);
+const EMAIL_CODE_TTL_MS = Number(process.env.EMAIL_CODE_TTL_MS || 1000 * 60 * 10);
+const EMAIL_VERIFY_TTL_MS = Number(process.env.EMAIL_VERIFY_TTL_MS || 1000 * 60 * 60 * 24);
+const PUBLIC_WEBAPP_URL = (process.env.PUBLIC_WEBAPP_URL || "").replace(/\/+$/, "");
+const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || "";
+const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || "";
+const MAILGUN_FROM = process.env.MAILGUN_FROM || process.env.MAILGUN_USER || "";
 
 function b64url(input) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
@@ -54,6 +61,56 @@ function apiBaseFromReq(req) {
   if (base) return base.replace(/\/+$/, "");
   const proto = (req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim();
   return `${proto}://${req.get("host")}`;
+}
+
+function normalizeEmail(raw) {
+  return String(raw || "").trim().toLowerCase();
+}
+
+function hashToken(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function randomToken(bytes = 24) {
+  return b64url(crypto.randomBytes(bytes));
+}
+
+function generateCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function sendEmail({ to, subject, html, text }) {
+  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN || !MAILGUN_FROM) {
+    console.log("[email] Mailgun not configured, skipping send:", { to, subject, text });
+    return;
+  }
+
+  const auth = Buffer.from(`api:${MAILGUN_API_KEY}`).toString("base64");
+  const body = new URLSearchParams({
+    from: MAILGUN_FROM,
+    to,
+    subject,
+    text: text || "",
+    html: html || "",
+  });
+
+  const r = await fetch(`https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  if (!r.ok) {
+    const errText = await r.text();
+    console.error("[email] Mailgun failed:", r.status, errText);
+  }
+}
+
+function issueAuthToken(tgId) {
+  return signToken({ uid: tgId, exp: Date.now() + AUTH_TOKEN_TTL_MS });
 }
 
 
@@ -450,6 +507,17 @@ async function requireAdminAsync(req, res, user) {
 }
 
 function requireWebAppAuth(req, res) {
+  const authHeader = String(req.header("authorization") || "");
+  if (authHeader.toLowerCase().startsWith("bearer ")) {
+    const token = authHeader.slice(7).trim();
+    const payload = verifyToken(token);
+    if (!payload?.uid) {
+      res.status(401).json({ ok: false, reason: "invalid_token" });
+      return null;
+    }
+    return { id: payload.uid, is_email_auth: true };
+  }
+
   const initData = req.header("x-telegram-init-data");
   const v = verifyTelegramWebApp(initData, process.env.BOT_TOKEN);
   if (!v.ok) {
@@ -460,6 +528,7 @@ function requireWebAppAuth(req, res) {
 }
 
 async function requireGroupMember(req, res, user) {
+  if (user?.is_email_auth) return true;
   const chatIdRaw = await getSetting("notify_chat_id", null);
   if (!chatIdRaw) {
     res.status(403).json({ ok: false, reason: "access_chat_not_set" });
@@ -1122,6 +1191,18 @@ async function getTeamChatId(q) {
 
 
 async function ensurePlayer(user) {
+  if (user?.is_email_auth) {
+    const ex = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
+    if (ex.rows?.[0]) return ex.rows[0];
+    const ins = await q(
+      `INSERT INTO players(tg_id, display_name, player_kind, is_guest)
+       VALUES($1,$2,'web',FALSE)
+       RETURNING *`,
+      [user.id, null]
+    );
+    return ins.rows[0];
+  }
+
   const r = await q(
     `INSERT INTO players(tg_id, first_name, last_name, username, is_admin, player_kind, is_guest)
      VALUES($1,$2,$3,$4, FALSE, 'tg', FALSE)
@@ -1441,6 +1522,160 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
 /** ===================== ROUTES ===================== */
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+/** ====== AUTH: EMAIL OTP ====== */
+app.post("/api/auth/email/start", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ ok: false, reason: "bad_email" });
+    }
+
+    const code = generateCode();
+    const codeHash = hashToken(code);
+    const expiresAt = new Date(Date.now() + EMAIL_CODE_TTL_MS);
+
+    await q(
+      `INSERT INTO email_login_codes(email, code_hash, expires_at)
+       VALUES ($1,$2,$3)`,
+      [email, codeHash, expiresAt.toISOString()]
+    );
+
+    await sendEmail({
+      to: email,
+      subject: "Код входа в хоккейное приложение",
+      text: `Ваш код входа: ${code}\nКод действует 10 минут.`,
+      html: `<p>Ваш код входа: <b>${code}</b></p><p>Код действует 10 минут.</p>`,
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/auth/email/start failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.post("/api/auth/email/verify", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const code = String(req.body?.code || "").trim();
+    if (!email || !code) return res.status(400).json({ ok: false, reason: "bad_payload" });
+
+    const codeHash = hashToken(code);
+    const r = await q(
+      `SELECT id, expires_at FROM email_login_codes WHERE email=$1 AND code_hash=$2 ORDER BY id DESC LIMIT 1`,
+      [email, codeHash]
+    );
+    const row = r.rows?.[0];
+    if (!row) return res.status(400).json({ ok: false, reason: "invalid_code" });
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+      return res.status(400).json({ ok: false, reason: "code_expired" });
+    }
+
+    await q(`DELETE FROM email_login_codes WHERE id=$1`, [row.id]);
+
+    const pr = await q(`SELECT * FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
+    const player = pr.rows?.[0];
+    if (player) {
+      if (player.disabled) return res.status(403).json({ ok: false, reason: "disabled" });
+      if (!player.email_verified) {
+        await q(
+          `UPDATE players SET email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
+          [player.tg_id]
+        );
+      }
+      const token = issueAuthToken(player.tg_id);
+      return res.json({ ok: true, status: "approved", token });
+    }
+
+    const ar = await q(`SELECT * FROM team_applications WHERE LOWER(email)=LOWER($1) ORDER BY id DESC LIMIT 1`, [email]);
+    const appRow = ar.rows?.[0];
+    if (appRow?.status === "rejected") {
+      return res.status(403).json({ ok: false, reason: "rejected" });
+    }
+
+    if (appRow?.status === "approved" && appRow.player_tg_id) {
+      const token = issueAuthToken(appRow.player_tg_id);
+      return res.json({ ok: true, status: "approved", token });
+    }
+
+    if (!appRow || appRow.status !== "pending") {
+      await q(`INSERT INTO team_applications(email, status) VALUES ($1,'pending')`, [email]);
+    }
+
+    return res.json({ ok: true, status: "pending" });
+  } catch (e) {
+    console.error("POST /api/auth/email/verify failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.get("/api/auth/email/confirm", async (req, res) => {
+  try {
+    const token = String(req.query?.token || "");
+    const payload = verifyToken(token);
+    if (!payload?.uid || !payload?.email) {
+      return res.status(400).send("bad_token");
+    }
+
+    const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [payload.uid]);
+    if (!pr.rows?.[0]) return res.status(404).send("not_found");
+
+    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [payload.email]);
+    if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(payload.uid)) {
+      return res.status(400).send("email_in_use");
+    }
+
+    await q(
+      `UPDATE players SET email=$2, email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
+      [payload.uid, payload.email]
+    );
+
+    const redirectBase = PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
+    return res.redirect(`${redirectBase}/?email_verified=1`);
+  } catch (e) {
+    console.error("GET /api/auth/email/confirm failed:", e);
+    return res.status(500).send("server_error");
+  }
+});
+
+app.post("/api/me/email/start", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ ok: false, reason: "bad_email" });
+    }
+
+    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
+    if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(user.id)) {
+      return res.status(400).json({ ok: false, reason: "email_in_use" });
+    }
+
+    await q(
+      `UPDATE players SET email=$2, email_verified=FALSE, email_verified_at=NULL WHERE tg_id=$1`,
+      [user.id, email]
+    );
+
+    const token = signToken({ uid: user.id, email, exp: Date.now() + EMAIL_VERIFY_TTL_MS });
+    const base = PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
+    const link = `${base}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
+
+    await sendEmail({
+      to: email,
+      subject: "Подтверждение почты",
+      text: `Чтобы подтвердить почту, откройте ссылку: ${link}`,
+      html: `<p>Чтобы подтвердить почту, откройте ссылку:</p><p><a href="${link}">${link}</a></p>`,
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/me/email/start failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
 
 /** ====== ME ====== */
 /** ====== ME ====== */
@@ -2060,10 +2295,13 @@ app.post("/api/jersey/requests/:id/send", async (req, res) => {
         status='sent',
         sent_at=NOW(),
         batch_id=$2,
+        name_on_jersey=$3,
+        jersey_size=$4,
+        jersey_colors=$5,
         updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
-      [id, open.id]
+      [id, open.id, nameToSave, sizeToSave, colorsToSave]
     );
 
     return res.json({ ok: true, request: upd.rows?.[0] || null });
@@ -3383,6 +3621,7 @@ const r = await q(
     position, skill, skating, iq, stamina, passing, shooting,
     notes, disabled,
     is_admin, updated_at,
+    email, email_verified, email_verified_at,
 
     joke_premium,
     joke_premium_until,
@@ -3416,6 +3655,11 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
   const kindRaw = b.player_kind ? String(b.player_kind).toLowerCase().trim() : null;
   const kind = ["tg", "manual", "guest"].includes(kindRaw) ? kindRaw : null;
 
+  const emailProvided = b.email !== undefined;
+  const emailValue = emailProvided ? normalizeEmail(b.email) || null : null;
+  const emailVerifiedProvided = b.email_verified !== undefined;
+  const emailVerifiedValue = emailVerifiedProvided ? Boolean(b.email_verified) : null;
+
   await q(
     `UPDATE players SET
       display_name=$2,
@@ -3425,6 +3669,9 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
       notes=$11,
       disabled=$12,
       player_kind=COALESCE($13, player_kind),
+      email=CASE WHEN $14 THEN $15 ELSE email END,
+      email_verified=CASE WHEN $16 THEN $17 ELSE email_verified END,
+      email_verified_at=CASE WHEN $16 = TRUE AND $17 = TRUE THEN COALESCE(email_verified_at, NOW()) ELSE email_verified_at END,
       updated_at=NOW()
      WHERE tg_id=$1`,
     [
@@ -3441,6 +3688,10 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
       (b.notes || "").slice(0, 500),
       Boolean(b.disabled),
       kind,
+      emailProvided,
+      emailValue,
+      emailVerifiedProvided,
+      emailVerifiedValue,
     ]
   );
 
@@ -3451,6 +3702,7 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
         is_guest, player_kind, created_by,
         position, skill, skating, iq, stamina, passing, shooting,
         notes, disabled, is_admin, updated_at,
+        email, email_verified, email_verified_at,
 
         joke_premium,
         joke_premium_until,
@@ -3497,6 +3749,102 @@ app.delete("/api/admin/players/:tg_id", async (req, res) => {
 
   await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]);
   res.json({ ok: true });
+});
+
+/** ====== ADMIN: team applications ====== */
+app.get("/api/admin/team-applications", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+    if (!(await requireAdminAsync(req, res, user))) return;
+
+    const r = await q(
+      `SELECT *
+       FROM team_applications
+       WHERE status='pending'
+       ORDER BY created_at ASC`
+    );
+    return res.json({ ok: true, applications: r.rows || [] });
+  } catch (e) {
+    console.error("GET /api/admin/team-applications failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.post("/api/admin/team-applications/:id/approve", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+    if (!(await requireAdminAsync(req, res, user))) return;
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const ar = await q(`SELECT * FROM team_applications WHERE id=$1`, [id]);
+    const appRow = ar.rows?.[0];
+    if (!appRow) return res.status(404).json({ ok: false, reason: "not_found" });
+    if (appRow.status === "approved") return res.json({ ok: true, application: appRow });
+
+    const email = normalizeEmail(appRow.email);
+    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
+    let tgId = existing.rows?.[0]?.tg_id ?? null;
+
+    if (!tgId) {
+      const seq = await q(`SELECT nextval('guest_seq') AS v`);
+      tgId = -Number(seq.rows?.[0]?.v || 0);
+      const displayName = email.split("@")[0] || null;
+      await q(
+        `INSERT INTO players(tg_id, display_name, email, email_verified, email_verified_at, player_kind, is_guest)
+         VALUES($1,$2,$3,TRUE,NOW(),'web',FALSE)`,
+        [tgId, displayName, email]
+      );
+    } else {
+      await q(
+        `UPDATE players SET email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
+        [tgId]
+      );
+    }
+
+    const upd = await q(
+      `UPDATE team_applications
+       SET status='approved', decided_at=NOW(), decided_by=$2, player_tg_id=$3
+       WHERE id=$1
+       RETURNING *`,
+      [id, user.id, tgId]
+    );
+
+    return res.json({ ok: true, application: upd.rows?.[0] || null });
+  } catch (e) {
+    console.error("POST /api/admin/team-applications/:id/approve failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+app.post("/api/admin/team-applications/:id/reject", async (req, res) => {
+  try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+    if (!(await requireGroupMember(req, res, user))) return;
+    if (!(await requireAdminAsync(req, res, user))) return;
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
+
+    const upd = await q(
+      `UPDATE team_applications
+       SET status='rejected', decided_at=NOW(), decided_by=$2
+       WHERE id=$1
+       RETURNING *`,
+      [id, user.id]
+    );
+    if (!upd.rows?.[0]) return res.status(404).json({ ok: false, reason: "not_found" });
+    return res.json({ ok: true, application: upd.rows[0] });
+  } catch (e) {
+    console.error("POST /api/admin/team-applications/:id/reject failed:", e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
 });
 
 
