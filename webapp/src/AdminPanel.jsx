@@ -60,6 +60,27 @@ function posLabel(pos) {
   if (pos === "D") return "D";
   return "F";
 }
+
+function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
+  return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showPopup) {
+      tg.showPopup(
+        {
+          title,
+          message,
+          buttons: [
+            { id: "cancel", type: "cancel", text: cancelText },
+            { id: "ok", type: "default", text: okText },
+          ],
+        },
+        (id) => resolve(id === "ok")
+      );
+      return;
+    }
+    resolve(window.confirm(`${title}\n\n${message}`));
+  });
+}
 const SKILLS = ["skill", "skating", "iq", "stamina", "passing", "shooting"];
 const DEFAULT_SKILL = 5;
 
@@ -1066,8 +1087,12 @@ async function adminDeleteJerseyReq(id) {
       const r = await apiDelete(`/api/admin/jersey/requests/${id}`); // если у тебя apiDelete нет — скажи, дам 3 строки реализации
       if (!r?.ok) throw new Error(r?.reason || "delete_failed");
 
+      setJerseyOrders((prev) => (prev || []).filter((row) => row.id !== id));
+
       // перезагрузи список заявок текущего батча
-      await loadBatchOrders();
+      if (jerseySelectedId) {
+        await loadJerseyOrders(jerseySelectedId, { silent: true });
+      }
     },
     { successText: "✅ Удалено", errorText: "❌ Не удалось удалить" }
   );
