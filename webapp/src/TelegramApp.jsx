@@ -193,6 +193,9 @@ const [reactWhoCanView, setReactWhoCanView] = useState(true);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 
+const initStartedRef = useRef(false);
+
+
 
 function openGameDetail(id, focus = null) {
   setTab("game");                 // ✅ важно для переходов из чата
@@ -1189,90 +1192,184 @@ function clipText(s, max = 70) {
 }
 
   // init
+
   useEffect(() => {
-    if (!inTelegramWebApp) {
-      setLoading(false);
-      return;
-    }
+  // ждём, пока появится авторизация: либо TG, либо web-token
+  if (!inTelegramWebApp && !hasWebAuth) {
+    setLoading(false);
+    return;
+  }
 
-    const applyTheme = () => {
-      if (!tg) return;
+  // чтобы не запускать init повторно
+  if (initStartedRef.current) return;
+  initStartedRef.current = true;
 
-      const scheme = tg.colorScheme || "light";
-      document.documentElement.dataset.tg = scheme;
-      document.documentElement.dataset.theme = scheme;
+  const applyTheme = () => {
+    if (!tg) return;
 
-      const p = tg.themeParams || {};
-      for (const [k, v] of Object.entries(p)) {
-        if (typeof v === "string" && v) {
-          document.documentElement.style.setProperty(`--tg-${k}`, v);
-        }
+    const scheme = tg.colorScheme || "light";
+    document.documentElement.dataset.tg = scheme;
+    document.documentElement.dataset.theme = scheme;
+
+    const p = tg.themeParams || {};
+    for (const [k, v] of Object.entries(p)) {
+      if (typeof v === "string" && v) {
+        document.documentElement.style.setProperty(`--tg-${k}`, v);
       }
-    };
+    }
+  };
 
-    const readStartParam = () => {
-  const rawA = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "").trim();
-  const rawB = String(new URLSearchParams(window.location.search).get("tgWebAppStartParam") || "").trim();
-  const raw = rawA || rawB || "";
-  try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
-};
+  const readStartParam = () => {
+    const rawA = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "").trim();
+    const rawB = String(new URLSearchParams(window.location.search).get("tgWebAppStartParam") || "").trim();
+    const raw = rawA || rawB || "";
+    try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
+  };
 
-    const sp = readStartParam();
+  const sp = readStartParam();
 
-    // заранее решаем, какую игру открыть (если пришли из чата)
-    let forceGameId = null;
-
-    if (sp) {
-      if (sp === "jersey") {
-        setTab("profile");
-        setProfileView("me");
-        setTimeout(() => {
-          jerseyCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 50);
+  let forceGameId = null;
+  if (sp) {
+    if (sp === "jersey") {
+      setTab("profile");
+      setProfileView("me");
+      setTimeout(() => {
+        jerseyCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+    } else {
+      let m = sp.match(/^game_(\d+)(?:_(comments))?$/);
+      if (m) {
+        const gid = Number(m[1]);
+        const focus = m[2] ? "comments" : null;
+        if (Number.isFinite(gid) && gid > 0) {
+          forceGameId = gid;
+          setTab("game");
+          setGameView("detail");
+          setSelectedGameId(gid);
+          setDetailFocus(focus);
+        }
       } else {
-        let m = sp.match(/^game_(\d+)(?:_(comments))?$/);
+        m = sp.match(/^teams_(\d+)$/);
         if (m) {
           const gid = Number(m[1]);
-          const focus = m[2] ? "comments" : null;
           if (Number.isFinite(gid) && gid > 0) {
             forceGameId = gid;
-            setTab("game");
-            setGameView("detail");
             setSelectedGameId(gid);
-            setDetailFocus(focus);
-          }
-        } else {
-          m = sp.match(/^teams_(\d+)$/);
-          if (m) {
-            const gid = Number(m[1]);
-            if (Number.isFinite(gid) && gid > 0) {
-              forceGameId = gid;
-              setSelectedGameId(gid);
-              setTab("teams");
-              setTeamsBack?.({ tab: "game", gameView: "detail" });
-            }
+            setTab("teams");
+            setTeamsBack?.({ tab: "game", gameView: "detail" });
           }
         }
       }
     }
+  }
 
+  (async () => {
+    try {
+      setLoading(true);
 
-    (async () => {
-      try {
-        setLoading(true);
+      // TG-специфичные штуки — только если реально внутри Telegram
+      if (inTelegramWebApp) {
         tg?.ready?.();
         tg?.expand?.();
         applyTheme();
         tg?.onEvent?.("themeChanged", applyTheme);
-        await refreshAll(forceGameId);
-      } finally {
-        setLoading(false);
       }
-    })();
 
-    return () => tg?.offEvent?.("themeChanged", applyTheme);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      await refreshAll(forceGameId);
+    } finally {
+      setLoading(false);
+    }
+  })();
+
+  return () => {
+    if (inTelegramWebApp) tg?.offEvent?.("themeChanged", applyTheme);
+  };
+}, [inTelegramWebApp, hasWebAuth]);
+
+//   useEffect(() => {
+//     if (!inTelegramWebApp) {
+//       setLoading(false);
+//       return;
+//     }
+
+//     const applyTheme = () => {
+//       if (!tg) return;
+
+//       const scheme = tg.colorScheme || "light";
+//       document.documentElement.dataset.tg = scheme;
+//       document.documentElement.dataset.theme = scheme;
+
+//       const p = tg.themeParams || {};
+//       for (const [k, v] of Object.entries(p)) {
+//         if (typeof v === "string" && v) {
+//           document.documentElement.style.setProperty(`--tg-${k}`, v);
+//         }
+//       }
+//     };
+
+//     const readStartParam = () => {
+//   const rawA = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "").trim();
+//   const rawB = String(new URLSearchParams(window.location.search).get("tgWebAppStartParam") || "").trim();
+//   const raw = rawA || rawB || "";
+//   try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
+// };
+
+//     const sp = readStartParam();
+
+//     // заранее решаем, какую игру открыть (если пришли из чата)
+//     let forceGameId = null;
+
+//     if (sp) {
+//       if (sp === "jersey") {
+//         setTab("profile");
+//         setProfileView("me");
+//         setTimeout(() => {
+//           jerseyCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+//         }, 50);
+//       } else {
+//         let m = sp.match(/^game_(\d+)(?:_(comments))?$/);
+//         if (m) {
+//           const gid = Number(m[1]);
+//           const focus = m[2] ? "comments" : null;
+//           if (Number.isFinite(gid) && gid > 0) {
+//             forceGameId = gid;
+//             setTab("game");
+//             setGameView("detail");
+//             setSelectedGameId(gid);
+//             setDetailFocus(focus);
+//           }
+//         } else {
+//           m = sp.match(/^teams_(\d+)$/);
+//           if (m) {
+//             const gid = Number(m[1]);
+//             if (Number.isFinite(gid) && gid > 0) {
+//               forceGameId = gid;
+//               setSelectedGameId(gid);
+//               setTab("teams");
+//               setTeamsBack?.({ tab: "game", gameView: "detail" });
+//             }
+//           }
+//         }
+//       }
+//     }
+
+
+//     (async () => {
+//       try {
+//         setLoading(true);
+//         tg?.ready?.();
+//         tg?.expand?.();
+//         applyTheme();
+//         tg?.onEvent?.("themeChanged", applyTheme);
+//         await refreshAll(forceGameId);
+//       } finally {
+//         setLoading(false);
+//       }
+//     })();
+
+//     return () => tg?.offEvent?.("themeChanged", applyTheme);
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, []);
   
 // useEffect(() => {
 //   const raw = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "");
