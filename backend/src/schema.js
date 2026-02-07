@@ -183,6 +183,15 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pm_last_seen TIMESTAMPTZ;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS bot_menu_msg_id BIGINT;`);
   await q(`CREATE INDEX IF NOT EXISTS idx_players_pm_started ON players(pm_started);`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email TEXT;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;`);
+
+  await q(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_players_email_unique
+    ON players (LOWER(email))
+    WHERE email IS NOT NULL AND BTRIM(email) <> '';
+  `);
 
 
   // миграция/нормализация значений
@@ -335,6 +344,55 @@ await q(`ALTER TABLE jersey_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
 
   // ✅ последовательность для гостевых id (tg_id будет отрицательным)
   await q(`CREATE SEQUENCE IF NOT EXISTS guest_seq START 1`);
+
+  /** ===================== EMAIL AUTH ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      token_hash TEXT PRIMARY KEY,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_auth_tokens_tg_id ON auth_tokens(tg_id);`);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS email_login_codes (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      attempts INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_email_login_codes_email ON email_login_codes(email);`);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS email_verifications (
+      token_hash TEXT PRIMARY KEY,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS team_applications (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+      player_tg_id BIGINT REFERENCES players(tg_id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      decided_at TIMESTAMPTZ,
+      decided_by BIGINT
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_team_applications_status ON team_applications(status);`);
 
     /** ===================== JERSEY (BATCHES + REQUESTS) ===================== */
 
