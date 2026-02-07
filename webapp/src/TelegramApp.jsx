@@ -968,8 +968,9 @@ async function refreshAll(forceGameId) {
     setIsAdmin(!!m?.is_admin);
     setAccessReason(null);
 
-    const cacheBust = hasWebAuth && !inTelegramWebApp ? `&ts=${Date.now()}` : "";
-    const gamesUrl = `/api/games?scope=upcoming&limit=365&offset=0${cacheBust}`;
+    const gamesUrl = hasWebAuth && !inTelegramWebApp
+      ? "/api/games?scope=all&limit=365&offset=0"
+      : "/api/games?scope=upcoming&limit=365&offset=0";
 
     // если уже знаем игру (почти всегда да после первой загрузки) — можно грузить деталку параллельно
     const optimisticId = forceGameId ?? selectedGameId ?? null;
@@ -1015,7 +1016,7 @@ async function refreshAll(forceGameId) {
       const hasUpcoming = (list || []).some((g) => !isPastGame(g));
       if (!hasUpcoming) {
         try {
-          const all = await apiGet(`/api/games?scope=all&limit=365&offset=0${cacheBust}`);
+          const all = await apiGet("/api/games?scope=all&limit=365&offset=0");
           if (all?.games?.length) {
             list = all.games || [];
             setGames(list);
@@ -3507,7 +3508,7 @@ function openYandexRoute(lat, lon) {
                 <input
                   className="input"
                   type="text"
-                  placeholder={me?.first_name || "Например: Илья"}
+                  placeholder={me?.first_name || "Например: ALEXANDER"}
                   value={me?.display_name ?? ""}
                   onChange={(e) => setMe({ ...me, display_name: e.target.value })}
                 />
@@ -3520,7 +3521,7 @@ function openYandexRoute(lat, lon) {
                   type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  placeholder="Например: 17"
+                  placeholder="Например: 8"
                   value={me?.jersey_number == null ? "" : String(me.jersey_number)}
                   onChange={(e) => {
                     const raw = e.target.value.replace(/[^\d]/g, "");
