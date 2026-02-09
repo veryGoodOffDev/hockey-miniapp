@@ -324,6 +324,7 @@ export default function AuthLanding({
     letter-spacing: .2px;
     line-height: 1.1;
     margin: 0;
+    color:#fff;
   }
   .teamSub{ margin: 4px 0 0; font-size: 12px; color: rgba(255,255,255,.75); }
 
