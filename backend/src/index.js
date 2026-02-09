@@ -10,6 +10,7 @@ import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
 import { InlineKeyboard } from "grammy";
 import { performance } from "node:perf_hooks";
+import { Resend } from "resend";
 import crypto from "crypto";
 
 const app = express();
@@ -31,6 +32,14 @@ const PUBLIC_WEBAPP_URL = (process.env.PUBLIC_WEBAPP_URL || "").replace(/\/+$/, 
 const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || "";
 const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || "";
 const MAILGUN_FROM = process.env.MAILGUN_FROM || process.env.MAILGUN_USER || "";
+
+
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const RESEND_FROM = process.env.RESEND_FROM || "";
+const RESEND_REPLY_TO = process.env.RESEND_REPLY_TO || "";
+
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+
 
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
@@ -131,62 +140,97 @@ function generateCode() {
 //     console.error("[email] Mailgun failed:", r.status, errText);
 //   }
 // }
+//SMTP nodemailer-----------------------------------------------------------------------------------
+// async function sendEmail({ to, subject, html, text }) {
+//   // 1) SMTP (твой вариант)
+//   if (SMTP_HOST && SMTP_FROM && SMTP_USER && SMTP_PASS) {
+//     try {
+//       const tr = getSmtpTransport();
+//       await tr.sendMail({
+//         from: SMTP_FROM,
+//         to,
+//         subject,
+//         text: text || "",
+//         html: html || "",
+//       });
+//       return;
+//     } catch (e) {
+//       console.error("[email] SMTP failed:", e?.message || e);
+//       // не return — попробуем fallback ниже (если вдруг решишь оставить Mailgun)
+//     }
+//   } else {
+//     console.log("[email] SMTP not configured:", {
+//       SMTP_HOST: !!SMTP_HOST,
+//       SMTP_FROM: !!SMTP_FROM,
+//       SMTP_USER: !!SMTP_USER,
+//       SMTP_PASS: !!SMTP_PASS,
+//     });
+//   }
+
+//   // 2) fallback Mailgun (можно оставить, можно удалить)
+//   if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN || !MAILGUN_FROM) {
+//     console.log("[email] No provider configured, skipping send:", { to, subject });
+//     return;
+//   }
+
+//   const auth = Buffer.from(`api:${MAILGUN_API_KEY}`).toString("base64");
+//   const body = new URLSearchParams({
+//     from: MAILGUN_FROM,
+//     to,
+//     subject,
+//     text: text || "",
+//     html: html || "",
+//   });
+
+//   const r = await fetch(`https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`, {
+//     method: "POST",
+//     headers: {
+//       Authorization: `Basic ${auth}`,
+//       "Content-Type": "application/x-www-form-urlencoded",
+//     },
+//     body,
+//   });
+
+//   if (!r.ok) {
+//     const errText = await r.text();
+//     console.error("[email] Mailgun failed:", r.status, errText);
+//   }
+// }
+//SMTP nodemailer-----------------------------------------------------------------------------------
 
 async function sendEmail({ to, subject, html, text }) {
-  // 1) SMTP (твой вариант)
-  if (SMTP_HOST && SMTP_FROM && SMTP_USER && SMTP_PASS) {
-    try {
-      const tr = getSmtpTransport();
-      await tr.sendMail({
-        from: SMTP_FROM,
-        to,
-        subject,
-        text: text || "",
-        html: html || "",
-      });
-      return;
-    } catch (e) {
-      console.error("[email] SMTP failed:", e?.message || e);
-      // не return — попробуем fallback ниже (если вдруг решишь оставить Mailgun)
-    }
-  } else {
-    console.log("[email] SMTP not configured:", {
-      SMTP_HOST: !!SMTP_HOST,
-      SMTP_FROM: !!SMTP_FROM,
-      SMTP_USER: !!SMTP_USER,
-      SMTP_PASS: !!SMTP_PASS,
+  if (!resend || !RESEND_FROM) {
+    console.log("[email] Resend not configured, skipping send:", {
+      to,
+      subject,
+      hasKey: !!RESEND_API_KEY,
+      hasFrom: !!RESEND_FROM,
     });
-  }
-
-  // 2) fallback Mailgun (можно оставить, можно удалить)
-  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN || !MAILGUN_FROM) {
-    console.log("[email] No provider configured, skipping send:", { to, subject });
     return;
   }
 
-  const auth = Buffer.from(`api:${MAILGUN_API_KEY}`).toString("base64");
-  const body = new URLSearchParams({
-    from: MAILGUN_FROM,
-    to,
-    subject,
-    text: text || "",
-    html: html || "",
-  });
+  try {
+    const { data, error } = await resend.emails.send({
+      from: RESEND_FROM,
+      to, // string или string[] — оба варианта ок
+      subject,
+      html: html || undefined,
+      text: text || undefined, // можно не передавать: Resend умеет сгенерить text из html
+      replyTo: RESEND_REPLY_TO || undefined,
+    });
 
-  const r = await fetch(`https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
+    if (error) {
+      console.error("[email] Resend failed:", error);
+      return;
+    }
 
-  if (!r.ok) {
-    const errText = await r.text();
-    console.error("[email] Mailgun failed:", r.status, errText);
+    console.log("[email] Resend sent:", data?.id);
+  } catch (e) {
+    console.error("[email] Resend exception:", e?.message || e);
   }
 }
+
+
 
 function issueAuthToken(tgId) {
   return signToken({ uid: tgId, exp: Date.now() + AUTH_TOKEN_TTL_MS });
