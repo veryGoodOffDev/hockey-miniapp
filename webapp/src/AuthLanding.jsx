@@ -1,4 +1,3 @@
-// AuthLanding.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiPost, setAuthToken } from "./api.js";
 
@@ -53,14 +52,12 @@ function OTP6({ value, onChange, disabled, autoFocus }) {
         next[i] = cleaned[j];
       }
       onChange(next.join("").replace(/\D/g, "").slice(0, 6));
-      const nextPos = Math.min(5, idx + cleaned.length);
-      focus(nextPos);
+      focus(Math.min(5, idx + cleaned.length));
       return;
     }
 
     const ch = cleaned.slice(0, 1);
     setAt(idx, ch);
-
     if (ch && idx < 5) focus(idx + 1);
   };
 
@@ -137,7 +134,16 @@ function OTP6({ value, onChange, disabled, autoFocus }) {
   );
 }
 
-export default function AuthLanding({ telegramUrl, onDone }) {
+export default function AuthLanding({
+  telegramUrl,
+  onDone,
+
+  // брендинг (просто прокинь строки-пути)
+  teamName = "Mighty Sheep",
+  teamSubtitle = "Вход в приложение",
+  teamCoverSrc = "/brand/cover.jpg",
+  teamLogoSrc = "/brand/logo.png",
+}) {
   const [screen, setScreen] = useState("landing"); // landing | email
   const [step, setStep] = useState("email"); // email | code | pending
   const [email, setEmail] = useState("");
@@ -146,8 +152,14 @@ export default function AuthLanding({ telegramUrl, onDone }) {
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
+  const [otpShake, setOtpShake] = useState(0);
+  const [otpError, setOtpError] = useState(false);
+
+  const lastAutoVerifyRef = useRef("");
+
   const canSend = isValidEmail(email) && !busy && step !== "pending" && cooldown === 0;
-  const canVerify = otp.replace(/\D/g, "").length === 6 && !busy && step === "code";
+  const otpClean = otp.replace(/\D/g, "").slice(0, 6);
+  const canVerify = otpClean.length === 6 && !busy && step === "code";
 
   useEffect(() => {
     if (screen !== "email") {
@@ -156,6 +168,8 @@ export default function AuthLanding({ telegramUrl, onDone }) {
       setMsg("");
       setBusy(false);
       setCooldown(0);
+      setOtpError(false);
+      lastAutoVerifyRef.current = "";
     }
   }, [screen]);
 
@@ -165,14 +179,35 @@ export default function AuthLanding({ telegramUrl, onDone }) {
     return () => clearInterval(t);
   }, [cooldown]);
 
+  // авто-верификация, как только введены 6 цифр
+  useEffect(() => {
+    if (step !== "code") return;
+    if (busy) return;
+    if (otpClean.length !== 6) return;
+
+    if (lastAutoVerifyRef.current === otpClean) return;
+    lastAutoVerifyRef.current = otpClean;
+
+    // небольшая задержка для “ощущения” завершения ввода
+    const t = setTimeout(() => {
+      verifyCode(otpClean);
+    }, 120);
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpClean, step, busy]);
+
   async function sendCode() {
     setBusy(true);
     setMsg("");
+    setOtp("");
+    setOtpError(false);
+    lastAutoVerifyRef.current = "";
+
     try {
       await apiPost("/api/auth/email/start", { email: String(email).trim() });
       setStep("code");
-      setOtp("");
-      setCooldown(30); // чтобы не долбили кнопку
+      setCooldown(30);
       setMsg("Код отправлен на почту. Введите 6 цифр из письма.");
     } catch (e) {
       setMsg("Не удалось отправить код. Проверьте почту и попробуйте ещё раз.");
@@ -181,11 +216,14 @@ export default function AuthLanding({ telegramUrl, onDone }) {
     }
   }
 
-  async function verifyCode() {
+  async function verifyCode(codeArg) {
+    const code = (codeArg ?? otpClean).replace(/\D/g, "").slice(0, 6);
+
     setBusy(true);
     setMsg("");
+    setOtpError(false);
+
     try {
-      const code = otp.replace(/\D/g, "").slice(0, 6);
       const r = await apiPost("/api/auth/email/verify", { email: String(email).trim(), code });
 
       if (r?.token) {
@@ -200,13 +238,22 @@ export default function AuthLanding({ telegramUrl, onDone }) {
         return;
       }
 
+      // на всякий случай
+      setOtpError(true);
+      setOtpShake((x) => x + 1);
       setMsg("Не удалось войти. Попробуйте запросить код ещё раз.");
     } catch (e) {
       const reason = e?.data?.reason || "";
       if (reason === "rejected") {
         setMsg("Заявка отклонена администратором.");
+        setStep("pending");
       } else {
         setMsg("Неверный код или срок действия истёк.");
+        setOtpError(true);
+        setOtpShake((x) => x + 1);
+        // чуть приятнее UX: очищаем код и даём ввести заново
+        setOtp("");
+        lastAutoVerifyRef.current = "";
       }
     } finally {
       setBusy(false);
@@ -216,7 +263,7 @@ export default function AuthLanding({ telegramUrl, onDone }) {
   const styles = `
   .authPage{
     min-height: 100dvh;
-    padding: calc(16px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom));
+    padding: 0 14px calc(18px + env(safe-area-inset-bottom));
     display:flex; justify-content:center; align-items:stretch;
     background:
       radial-gradient(900px 600px at 20% 0%, rgba(37,99,235,.25), transparent 60%),
@@ -230,37 +277,93 @@ export default function AuthLanding({ telegramUrl, onDone }) {
     max-width: 420px;
     display:flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
+    padding-top: calc(14px + env(safe-area-inset-top));
   }
-  .authTop{
-    display:flex; align-items:center; justify-content:space-between;
-    padding: 6px 2px;
+
+  .hero{
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--tg-text, #fff) 10%, transparent);
+    box-shadow: 0 18px 50px rgba(0,0,0,.25);
   }
-  .brand{
-    display:flex; align-items:center; gap:10px;
-    font-weight: 800; letter-spacing: .2px;
+  .heroImg{
+    width: 100%;
+    height: 132px;
+    object-fit: cover;
+    display:block;
+    filter: saturate(1.05) contrast(1.02);
   }
-  .logoDot{
-    width: 36px; height: 36px; border-radius: 12px;
-    background: linear-gradient(135deg, rgba(37,99,235,.95), rgba(168,85,247,.9));
-    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  .heroOverlay{
+    position:absolute; inset:0;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.70)),
+      radial-gradient(700px 260px at 20% 20%, rgba(37,99,235,.35), transparent 55%);
   }
-  .hint{ color: var(--tg-hint, rgba(255,255,255,.7)); font-size: 13px; line-height: 1.35; }
+  .heroInner{
+    position:absolute; inset:0;
+    display:flex; align-items:flex-end;
+    padding: 12px;
+    gap: 12px;
+  }
+  .teamLogo{
+    width: 56px; height: 56px;
+    border-radius: 18px;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.16);
+    overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    flex: 0 0 auto;
+  }
+  .teamLogo img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .teamMeta{ min-width: 0; padding-bottom: 2px; }
+  .teamName{
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: .2px;
+    line-height: 1.1;
+    margin: 0;
+  }
+  .teamSub{ margin: 4px 0 0; font-size: 12px; color: rgba(255,255,255,.75); }
+
   .panel{
     background: color-mix(in srgb, var(--tg-section-bg, rgba(255,255,255,.08)) 92%, transparent);
     border: 1px solid color-mix(in srgb, var(--tg-text, #fff) 12%, transparent);
     border-radius: 18px;
     padding: 16px;
-    box-shadow: 0 18px 50px rgba(0,0,0,.25);
+    box-shadow: 0 18px 50px rgba(0,0,0,.22);
     backdrop-filter: blur(10px);
   }
-  .title{
-    margin: 0 0 6px 0;
-    font-size: 20px;
-    font-weight: 800;
+  .topRow{
+    display:flex; align-items:center; justify-content:space-between;
+    gap: 10px;
+    margin-bottom: 10px;
   }
+  .backBtn{
+    width:auto; padding: 10px 12px;
+  }
+
+  .titleRow{ display:flex; align-items:center; gap:10px; }
+  .title{
+    margin: 0;
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: .2px;
+  }
+  .spinner{
+    width: 16px; height: 16px;
+    border-radius: 999px;
+    border: 2px solid color-mix(in srgb, var(--tg-text, #fff) 25%, transparent);
+    border-top-color: var(--tg-btn, #2563eb);
+    animation: spin .9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hint{ color: var(--tg-hint, rgba(255,255,255,.7)); font-size: 13px; line-height: 1.35; }
   .field{ display:flex; flex-direction:column; gap:8px; margin-top: 12px; }
   .label{ font-size: 13px; color: var(--tg-hint, rgba(255,255,255,.7)); }
+
   .inputX{
     width: 100%;
     border-radius: 14px;
@@ -275,13 +378,14 @@ export default function AuthLanding({ telegramUrl, onDone }) {
     border-color: color-mix(in srgb, var(--tg-btn, #2563eb) 70%, transparent);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--tg-btn, #2563eb) 22%, transparent);
   }
+
   .actions{ display:flex; flex-direction:column; gap:10px; margin-top: 14px; }
   .btnX{
     width: 100%;
     padding: 13px 14px;
     border-radius: 14px;
     font-size: 15px;
-    font-weight: 800;
+    font-weight: 900;
     border: 1px solid transparent;
     cursor: pointer;
     user-select: none;
@@ -297,6 +401,7 @@ export default function AuthLanding({ telegramUrl, onDone }) {
     border-color: color-mix(in srgb, var(--tg-text, #fff) 14%, transparent);
   }
   .btnX:disabled{ opacity: .55; cursor: not-allowed; }
+
   .divider{
     display:flex; align-items:center; gap:10px;
     color: var(--tg-hint, rgba(255,255,255,.65));
@@ -310,8 +415,8 @@ export default function AuthLanding({ telegramUrl, onDone }) {
     background: color-mix(in srgb, var(--tg-text, #fff) 14%, transparent);
   }
 
+  .otpWrap{ margin-top: 10px; }
   .otpRow{
-    margin-top: 10px;
     display:grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 10px;
@@ -331,6 +436,23 @@ export default function AuthLanding({ telegramUrl, onDone }) {
     border-color: color-mix(in srgb, var(--tg-btn, #2563eb) 70%, transparent);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--tg-btn, #2563eb) 22%, transparent);
   }
+
+  .otpError .otpBox{
+    border-color: rgba(239,68,68,.85);
+    box-shadow: 0 0 0 4px rgba(239,68,68,.18);
+  }
+  .shake{
+    animation: shake .35s ease-in-out;
+  }
+  @keyframes shake{
+    0%{ transform: translateX(0); }
+    20%{ transform: translateX(-6px); }
+    40%{ transform: translateX(6px); }
+    60%{ transform: translateX(-4px); }
+    80%{ transform: translateX(4px); }
+    100%{ transform: translateX(0); }
+  }
+
   .row2{ display:flex; gap:10px; }
   .row2 > * { flex: 1; }
 
@@ -348,6 +470,22 @@ export default function AuthLanding({ telegramUrl, onDone }) {
   .footerHint{ text-align:center; margin-top: 2px; color: var(--tg-hint, rgba(255,255,255,.65)); font-size: 12px; }
   `;
 
+  const Hero = () => (
+    <div className="hero">
+      <img className="heroImg" src={teamCoverSrc} alt="" />
+      <div className="heroOverlay" />
+      <div className="heroInner">
+        <div className="teamLogo" aria-hidden="true">
+          <img src={teamLogoSrc} alt="" />
+        </div>
+        <div className="teamMeta">
+          <p className="teamName">{teamName}</p>
+          <p className="teamSub">{teamSubtitle}</p>
+        </div>
+      </div>
+    </div>
+  );
+
   // LANDING
   if (screen === "landing") {
     return (
@@ -355,20 +493,12 @@ export default function AuthLanding({ telegramUrl, onDone }) {
         <style>{styles}</style>
 
         <div className="authPhone">
-          <div className="authTop">
-            <div className="brand">
-              <div className="logoDot" />
-              <div>
-                Mighty Sheep
-                <div className="hint">Вход в приложение</div>
-              </div>
-            </div>
-          </div>
+          <Hero />
 
           <div className="panel">
             <h1 className="title">Продолжить</h1>
             <div className="hint">
-              Приложение рассчитано на мобильный. В браузере тоже работает, но будет мобильная верстка.
+              Приложение рассчитано на мобильный. В браузере тоже работает — но всегда в мобильной верстке.
             </div>
 
             <div className="actions">
@@ -402,19 +532,29 @@ export default function AuthLanding({ telegramUrl, onDone }) {
       <style>{styles}</style>
 
       <div className="authPhone">
-        <div className="authTop">
-          <button className="btnX btnGhost" style={{ width: "auto", padding: "10px 12px" }} onClick={() => setScreen("landing")} disabled={busy}>
-            ← Назад
-          </button>
-
-          <div className="hint" style={{ paddingRight: 2 }}>
-            {step === "code" ? "Введите код" : step === "pending" ? "Ожидание" : "Email"}
-          </div>
-        </div>
+        <Hero />
 
         <div className="panel">
-          <h1 className="title">Вход по email</h1>
-          <div className="hint">
+          <div className="topRow">
+            <button
+              className="btnX btnGhost backBtn"
+              onClick={() => setScreen("landing")}
+              disabled={busy}
+            >
+              ← Назад
+            </button>
+
+            <div className="hint">
+              {step === "code" ? "Введите код" : step === "pending" ? "Ожидание" : "Email"}
+            </div>
+          </div>
+
+          <div className="titleRow">
+            <h1 className="title">Вход по email</h1>
+            {busy ? <div className="spinner" aria-label="Загрузка" /> : null}
+          </div>
+
+          <div className="hint" style={{ marginTop: 6 }}>
             Мы отправим одноразовый код на вашу почту. Введите 6 цифр — и вы внутри.
           </div>
 
@@ -437,11 +577,7 @@ export default function AuthLanding({ telegramUrl, onDone }) {
                 {busy ? "Отправляем..." : "Отправить код"}
               </button>
 
-              <button
-                className="btnX btnGhost"
-                onClick={() => setScreen("landing")}
-                disabled={busy}
-              >
+              <button className="btnX btnGhost" onClick={() => setScreen("landing")} disabled={busy}>
                 Выбрать другой способ
               </button>
             </div>
@@ -451,14 +587,34 @@ export default function AuthLanding({ telegramUrl, onDone }) {
             <>
               <div className="field" style={{ marginTop: 14 }}>
                 <div className="label">Код из письма для {maskEmail(email)}</div>
-                <OTP6 value={otp} onChange={setOtp} disabled={busy} autoFocus />
+
+                <div
+                  className={[
+                    "otpWrap",
+                    otpError ? "otpError" : "",
+                    // ключ чтобы анимация шейка всегда срабатывала
+                    `shakeKey${otpShake}`,
+                  ].join(" ")}
+                >
+                  <div className={otpShake ? "shake" : ""} key={otpShake}>
+                    <OTP6
+                      value={otp}
+                      onChange={(v) => {
+                        setOtpError(false);
+                        setOtp(v);
+                      }}
+                      disabled={busy}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="hint" style={{ marginTop: 10 }}>
+                {busy ? "Входим..." : "Кнопка не нужна — вход произойдёт автоматически после 6 цифр."}
               </div>
 
               <div className="actions">
-                <button className="btnX btnPrimary" onClick={verifyCode} disabled={!canVerify}>
-                  {busy ? "Проверяем..." : "Войти"}
-                </button>
-
                 <div className="row2">
                   <button
                     className="btnX btnGhost"
@@ -466,6 +622,8 @@ export default function AuthLanding({ telegramUrl, onDone }) {
                       setStep("email");
                       setOtp("");
                       setMsg("");
+                      setOtpError(false);
+                      lastAutoVerifyRef.current = "";
                     }}
                     disabled={busy}
                   >
