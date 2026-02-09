@@ -63,15 +63,14 @@ export default function MainGate({ onAuthed }) {
   if (state.stage === "login") {
     const tgUrl = openInTelegramUrl();
     return (
-          <AuthLanding
-            telegramUrl={tgUrl}
-            onDone={onDone}
-            teamName="Mighty Sheep"
-            teamSubtitle="Вход в Hockey MiniApp"
-            teamCoverSrc="/brand/teamcover.jpg"
-            teamLogoSrc="/brand/commandlog.png"
-          />
-
+        <AuthLanding
+          telegramUrl={tgUrl}
+          onDone={checkMe}
+          teamName="Mighty Sheep"
+          teamSubtitle="Вход в Hockey MiniApp"
+          teamCoverSrc="/brand/teamcover.jpg"
+          teamLogoSrc="/brand/commandlog.png"
+        />
     );
   }
 
