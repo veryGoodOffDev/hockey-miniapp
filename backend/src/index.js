@@ -4578,7 +4578,6 @@ app.patch("/api/admin/games/:id/reminder", async (req, res) => {
   res.json({ ok: true, game: gr.rows?.[0] ?? null });
 });
 
-
 app.post("/api/internal/reminders/run", async (req, res) => {
   if (!checkInternalToken(req)) {
     return res.status(401).json({ ok: false, reason: "bad_token" });
@@ -4627,11 +4626,26 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       LIMIT 5
     `);
 
+
+    const postDueRes = await q(`
+      SELECT g.*
+      FROM games g
+      WHERE g.status IS DISTINCT FROM 'cancelled'
+        AND g.starts_at IS NOT NULL
+        AND g.postgame_message_id IS NULL
+        AND (g.starts_at + interval '3 hours') <= NOW()
+      ORDER BY g.starts_at ASC
+      LIMIT 5
+    `);
+    
     const due = dueRes.rows || [];
     const checked = due.length;
 
-    if (!checked) {
-      return res.json({ ok: true, checked: 0, sent: 0 });
+    const postDue = postDueRes.rows || [];
+    const postgame_checked = postDue.length;
+
+    if (!checked && !postgame_checked) {
+      return res.json({ ok: true, checked: 0, sent: 0, postgame_checked: 0, postgame_sent: 0 });
     }
 
     const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
@@ -4705,11 +4719,35 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       sentCount += 1;
     }
 
+
+    let postgame_sent = 0;
+    const postgame_game_ids = [];
+
+    for (const g of postDue) {
+      // перестраховка
+      if (g?.status === "cancelled") continue;
+      if (g?.postgame_message_id) continue;
+
+      try {
+        const r = await sendPostgameMessageForGame(g, chat_id);
+        if (r?.ok) {
+          postgame_sent += 1;
+          postgame_game_ids.push(g.id);
+        }
+      } catch (e) {
+        console.log("[postgame] send failed:", tgErrText?.(e) || String(e));
+      }
+    }
+    
     return res.json({
       ok: true,
       checked,
       sent: sentCount,
       reminder_ids: due.map((x) => x.reminder_id),
+
+      postgame_checked,
+      postgame_sent,
+      postgame_game_ids,
     });
   } catch (e) {
     console.error("reminders.run failed:", e);
@@ -4722,6 +4760,149 @@ app.post("/api/internal/reminders/run", async (req, res) => {
     }
   }
 });
+// app.post("/api/internal/reminders/run", async (req, res) => {
+//   if (!checkInternalToken(req)) {
+//     return res.status(401).json({ ok: false, reason: "bad_token" });
+//   }
+
+//   let locked = false;
+
+//   try {
+//     const lockRes = await q(`SELECT pg_try_advisory_lock($1) AS got`, [777001]);
+//     locked = !!lockRes.rows?.[0]?.got;
+//     if (!locked) {
+//       return res.json({ ok: true, checked: 0, sent: 0, reason: "already_running" });
+//     }
+
+//     const chatIdRaw = await getSetting("notify_chat_id", null);
+//     if (!chatIdRaw) {
+//       return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set" });
+//     }
+
+//     const chat_id = Number(chatIdRaw);
+//     if (!Number.isFinite(chat_id)) {
+//       return res.json({ ok: false, reason: "notify_chat_id_bad" });
+//     }
+
+//     const dueRes = await q(`
+//       SELECT
+//         r.id AS reminder_id,
+//         r.game_id,
+//         r.enabled,
+//         r.remind_at,
+//         r.pin,
+//         r.sent_at,
+//         r.message_id,
+//         r.attempts,
+//         r.last_error,
+//         g.starts_at,
+//         g.location,
+//         g.status
+//       FROM game_reminders r
+//       JOIN games g ON g.id = r.game_id
+//       WHERE g.status IS DISTINCT FROM 'cancelled'
+//         AND r.enabled = TRUE
+//         AND r.remind_at <= NOW()
+//         AND r.sent_at IS NULL
+//       ORDER BY r.remind_at ASC
+//       LIMIT 5
+//     `);
+
+//     const due = dueRes.rows || [];
+//     const checked = due.length;
+
+//     if (!checked) {
+//       return res.json({ ok: true, checked: 0, sent: 0 });
+//     }
+
+//     const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
+//     let sentCount = 0;
+
+//     for (const row of due) {
+//       const when = formatWhenForGame(row.starts_at);
+
+//       const text = `🏒 Напоминание: отметься на игру!
+
+// 📅 ${when}
+// 📍 ${row.location || "—"}
+
+// Открыть мини-приложение для отметок:`;
+
+//       const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(row.game_id))}`;
+//       const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
+
+//       let sent;
+//       try {
+//         sent = await bot.api.sendMessage(chat_id, text, {
+//           reply_markup: kb,
+//           disable_web_page_preview: true,
+//         });
+//       } catch (e) {
+//         const err = tgErrText?.(e) || String(e);
+//         console.log("[reminders] send failed:", err);
+
+//         await q(
+//           `UPDATE game_reminders
+//            SET attempts=attempts+1, last_error=$2, updated_at=NOW()
+//            WHERE id=$1`,
+//           [row.reminder_id, clip(err, 800)]
+//         );
+
+//         continue;
+//       }
+
+//       // логируем в bot_messages
+//       try {
+//         await logBotMessage({
+//           chat_id,
+//           message_id: sent.message_id,
+//           kind: "reminder",
+//           text,
+//           parse_mode: null,
+//           disable_web_page_preview: true,
+//           reply_markup: typeof replyMarkupToJson === "function" ? replyMarkupToJson(kb) : null,
+//           meta: { game_id: row.game_id, reminder_id: row.reminder_id, type: "scheduled_game_reminder" },
+//           sent_by_tg_id: null,
+//         });
+//       } catch {}
+
+//       // закрепляем при включённом флаге
+//       if (row.pin) {
+//         try {
+//           await bot.api.pinChatMessage(chat_id, sent.message_id, { disable_notification: true });
+//         } catch (e) {
+//           console.log("[reminders] pin failed:", tgErrText?.(e) || e);
+//         }
+//       }
+
+//       // помечаем как отправленное
+//       await q(
+//         `UPDATE game_reminders
+//          SET sent_at=NOW(), message_id=$2, attempts=attempts+1, last_error=NULL, updated_at=NOW()
+//          WHERE id=$1`,
+//         [row.reminder_id, sent.message_id]
+//       );
+
+//       sentCount += 1;
+//     }
+
+//     return res.json({
+//       ok: true,
+//       checked,
+//       sent: sentCount,
+//       reminder_ids: due.map((x) => x.reminder_id),
+//     });
+//   } catch (e) {
+//     console.error("reminders.run failed:", e);
+//     return res.status(500).json({ ok: false, reason: "internal_error" });
+//   } finally {
+//     if (locked) {
+//       try {
+//         await q(`SELECT pg_advisory_unlock($1)`, [777001]);
+//       } catch {}
+//     }
+//   }
+// });
 
 
 app.post("/api/internal/postgame/send", async (req, res) => {
