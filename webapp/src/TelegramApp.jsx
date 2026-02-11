@@ -1749,12 +1749,17 @@ async function saveProfile() {
 }
 
 function logoutWeb() {
+
   clearAuthToken();
 
-  // чтобы “назад” не возвращало на автhed-страницу
-  const url = window.location.origin + window.location.pathname;
-  window.location.replace(url);
+
+  setMe(null);
+  setIsAdmin(false);
+  setAccessReason(null);
+
+  window.location.reload();
 }
+
 
 
 function fmtDt(v) {
@@ -3829,13 +3834,20 @@ function openYandexRoute(lat, lon) {
                 </div>
               </div>
 
-              {!inTelegramWebApp && Boolean(getAuthToken()) ? (
-              <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-                <button className="btn secondary" onClick={logoutWeb}>
-                  🚪 Выйти (веб)
-                </button>
-              </div>
-            ) : null}
+                {!inTelegramWebApp && getAuthToken() ? (
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <div style={{ fontWeight: 800 }}>🌐 Веб-версия</div>
+                    <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                      Вы вошли через браузер. Можно выйти и удалить токен на этом устройстве.
+                    </div>
+
+                    <div className="row" style={{ marginTop: 10 }}>
+                      <button className="btn secondary" onClick={logoutWeb}>
+                        🚪 Выйти
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
 
               <div className="row" style={{ marginTop: 12 }}>
