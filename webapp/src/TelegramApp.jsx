@@ -40,6 +40,49 @@ export default function TelegramApp({ me: initialMeProp }) {
   const hasWebAuth = Boolean(getAuthToken() || initialMeProp?.player || initialMeProp?.tg_id);
   const tgPopupBusyRef = useRef(false);
 
+// ===== Web popups (fallback for tgPopup / tgSafeAlert outside Telegram) =====
+const [webPopup, setWebPopup] = useState(null); // { title, message, buttons }
+const webPopupResolveRef = useRef(null);
+const webPopupBusyRef = useRef(false);
+
+function closeWebPopup(id = "cancel") {
+  const r = webPopupResolveRef.current;
+  webPopupResolveRef.current = null;
+  webPopupBusyRef.current = false;
+  setWebPopup(null);
+  if (typeof r === "function") r({ id: id || "" });
+}
+
+function openWebPopup({ title, message, buttons }) {
+  return new Promise((resolve) => {
+    if (webPopupBusyRef.current) return resolve({ id: "cancel" });
+    webPopupBusyRef.current = true;
+    webPopupResolveRef.current = resolve;
+
+    setWebPopup({
+      title: title || "",
+      message: message || "",
+      buttons:
+        Array.isArray(buttons) && buttons.length
+          ? buttons
+          : [{ id: "ok", type: "ok", text: "Ок" }],
+    });
+  });
+}
+
+useEffect(() => {
+  if (!webPopup) return;
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+        const cancelId = (webPopup?.buttons || []).find((b) => b?.type === "cancel")?.id;
+        closeWebPopup(cancelId || (webPopup?.buttons || [])[0]?.id || "cancel");
+      }
+  };
+  window.addEventListener("keydown", onKey);
+  return () => window.removeEventListener("keydown", onKey);
+}, [webPopup]);
+
+
   // ===== WEB theme toggle (only outside Telegram) =====
   const WEB_THEME_KEY = "web_theme";
   const [webTheme, setWebTheme] = useState(() => {
@@ -263,12 +306,16 @@ useEffect(() => {
 
 
 function tgSafeAlert(text) {
-  if (!tg?.showAlert) {
-    window.alert(text);
-    return Promise.resolve();
+  // вне Telegram: показываем свой модал (встроенные tg.showAlert/showPopup тут часто “молчат”)
+  if (!inTelegramWebApp || !tg?.showAlert) {
+    return openWebPopup({
+      title: "Сообщение",
+      message: String(text || ""),
+      buttons: [{ id: "ok", type: "ok", text: "Ок" }],
+    }).then(() => {});
   }
-  if (tgPopupBusyRef.current) return Promise.resolve(); // игнорим второй алерт
 
+  if (tgPopupBusyRef.current) return Promise.resolve(); // игнорим второй алерт
   tgPopupBusyRef.current = true;
 
   return new Promise((resolve) => {
@@ -401,19 +448,14 @@ const [funBusy, setFunBusy] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
 
 function tgPopup({ title, message, buttons }) {
+  const tg = window.Telegram?.WebApp;
+
+  // вне Telegram: наш кастомный модал
+  if (!inTelegramWebApp || !tg?.showPopup) {
+    return openWebPopup({ title, message, buttons });
+  }
+
   return new Promise((resolve) => {
-    const tg = window.Telegram?.WebApp;
-
-    // fallback вне телеги
-    if (!tg?.showPopup) {
-      if (buttons?.length === 1) {
-        alert(message);
-        return resolve({ id: buttons[0]?.id || "ok" });
-      }
-      const ok = confirm(message);
-      return resolve({ id: ok ? "yes" : "no" });
-    }
-
     // ✅ защита от "Popup is already opened"
     if (tgPopupBusyRef.current) return resolve({ id: "cancel" });
     tgPopupBusyRef.current = true;
@@ -2257,38 +2299,52 @@ const teamsPosStaleInfo = React.useMemo(() => {
 
 
   function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
+  const tg = window.Telegram?.WebApp;
+
+  // вне Telegram — рисуем свой модал
+  if (!inTelegramWebApp || !tg?.showPopup) {
+    return openWebPopup({
+      title,
+      message,
+      buttons: [
+        { id: "cancel", type: "cancel", text: cancelText },
+        { id: "ok", type: "default", text: okText },
+      ],
+    }).then((r) => r?.id === "ok");
+  }
+
   return new Promise((resolve) => {
-    const tg = window.Telegram?.WebApp;
-    if (tg?.showPopup) {
-      tg.showPopup(
-        {
-          title,
-          message,
-          buttons: [
-            { id: "cancel", type: "cancel", text: cancelText },
-            { id: "ok", type: "default", text: okText },
-          ],
-        },
-        (id) => resolve(id === "ok")
-      );
-      return;
-    }
-    resolve(window.confirm(`${title}\n\n${message}`));
+    tg.showPopup(
+      {
+        title,
+        message,
+        buttons: [
+          { id: "cancel", type: "cancel", text: cancelText },
+          { id: "ok", type: "default", text: okText },
+        ],
+      },
+      (id) => resolve(id === "ok")
+    );
   });
 }
 
 function tgAlert({ title, message, okText = "OK" }) {
+  const tg = window.Telegram?.WebApp;
+
+  // вне Telegram — рисуем свой модал
+  if (!inTelegramWebApp || !tg?.showPopup) {
+    return openWebPopup({
+      title,
+      message,
+      buttons: [{ id: "ok", type: "ok", text: okText }],
+    }).then(() => {});
+  }
+
   return new Promise((resolve) => {
-    const tg = window.Telegram?.WebApp;
-    if (tg?.showPopup) {
-      tg.showPopup(
-        { title, message, buttons: [{ id: "ok", type: "ok", text: okText }] },
-        () => resolve()
-      );
-      return;
-    }
-    window.alert(`${title}\n\n${message}`);
-    resolve();
+    tg.showPopup(
+      { title, message, buttons: [{ id: "ok", type: "ok", text: okText }] },
+      () => resolve()
+    );
   });
 }
 
@@ -4665,6 +4721,57 @@ function openYandexRoute(lat, lon) {
                   </div>
                 </div>
               )}
+
+
+{/* ===== WEB POPUP (fallback for tgPopup / tgSafeAlert outside Telegram) ===== */}
+{webPopup && (
+  <div
+    className="modalOverlay"
+    style={{ zIndex: 10050 }}
+    onClick={() => {
+                    const cancelId = (webPopup.buttons || []).find((b) => b?.type === "cancel")?.id;
+                    closeWebPopup(cancelId || (webPopup.buttons || [])[0]?.id || "cancel");
+                  }}
+  >
+    <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+      {webPopup.title ? <h3 style={{ margin: 0 }}>{webPopup.title}</h3> : null}
+
+      <div
+        className="small"
+        style={{
+          opacity: 0.92,
+          marginTop: webPopup.title ? 6 : 0,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {webPopup.message}
+      </div>
+
+      <div
+        className="row"
+        style={{
+          marginTop: 14,
+          gap: 8,
+          justifyContent: "flex-end",
+          flexWrap: "wrap",
+        }}
+      >
+        {(webPopup.buttons || []).map((b) => {
+          const isCancel = b?.type === "cancel";
+          return (
+            <button
+              key={b.id}
+              className={`btn ${isCancel ? "secondary" : ""}`}
+              onClick={() => closeWebPopup(b.id)}
+            >
+              {b.text}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+)}
 
                {/* ====== MODAL PHOTO ====== */}
               {photoModal?.open && (
