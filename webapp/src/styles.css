@@ -2778,7 +2778,6 @@ html[data-theme="light"] .btn.outline.active{
 }
 @media (min-width: 860px) {
   .jerseyBody {
-    grid-template-columns: 1.05fr 0.95fr;
     align-items: start;
   }
 }
