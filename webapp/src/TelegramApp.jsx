@@ -2648,33 +2648,31 @@ function openYandexRoute(lat, lon) {
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
   return (
     <div className="container appShell">
-      {!inTelegramWebApp && (
-        <div className="webThemeBar" role="region" aria-label="Настройки темы">
-          <div className="webThemeBar__inner">
-            <div className="webThemeBar__title">Тема</div>
+    {!inTelegramWebApp && (
+      <div className="webThemeDock" role="region" aria-label="Тема (веб)">
+        <div className="webThemeDock__panel">
+          <button
+            type="button"
+            className={`themeSwitch themeSwitch--compact ${webTheme === "dark" ? "is-dark" : "is-light"}`}
+            role="switch"
+            aria-checked={webTheme === "dark"}
+            aria-label={webTheme === "dark" ? "Переключить на светлую тему" : "Переключить на тёмную тему"}
+            onClick={() => setWebTheme((t) => (t === "dark" ? "light" : "dark"))}
+          >
+            <span className="themeSwitch__track" aria-hidden="true">
+              <span className="themeSwitch__icon themeSwitch__icon--sun" aria-hidden="true">☀️</span>
+              <span className="themeSwitch__icon themeSwitch__icon--moon" aria-hidden="true">🌙</span>
 
-            <button
-              type="button"
-              className={`themeSwitch ${webTheme === "dark" ? "is-dark" : "is-light"}`}
-              role="switch"
-              aria-checked={webTheme === "dark"}
-              aria-label={webTheme === "dark" ? "Переключить на светлую тему" : "Переключить на тёмную тему"}
-              onClick={() => setWebTheme((t) => (t === "dark" ? "light" : "dark"))}
-            >
-              <span className="themeSwitch__track" aria-hidden="true">
-                <span className="themeSwitch__icon themeSwitch__icon--sun" aria-hidden="true">☀️</span>
-                <span className="themeSwitch__icon themeSwitch__icon--moon" aria-hidden="true">🌙</span>
-
-                <span className="themeSwitch__thumb" aria-hidden="true">
-                  <span className="themeSwitch__thumbIcon" aria-hidden="true">
-                    {webTheme === "dark" ? "🌙" : "☀️"}
-                  </span>
+              <span className="themeSwitch__thumb" aria-hidden="true">
+                <span className="themeSwitch__thumbIcon" aria-hidden="true">
+                  {webTheme === "dark" ? "🌙" : "☀️"}
                 </span>
               </span>
-            </button>
-          </div>
+            </span>
+          </button>
         </div>
-      )}
+      </div>
+    )}
       <h1>🏒 Хоккей: отметки и составы</h1>
           <div className="toastWrap" aria-live="polite" aria-atomic="true">
             <div className={`toast tone-${op.tone} ${op.text ? "isShow" : ""}`}>
