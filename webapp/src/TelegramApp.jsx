@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken } from "./api.js";
+import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
@@ -1746,6 +1746,14 @@ async function saveProfile() {
       sync: { refreshPlayers: true, refreshGames: true, refreshGame: true },
     }
   );
+}
+
+function logoutWeb() {
+  clearAuthToken();
+
+  // чтобы “назад” не возвращало на автhed-страницу
+  const url = window.location.origin + window.location.pathname;
+  window.location.replace(url);
 }
 
 
@@ -3820,6 +3828,15 @@ function openYandexRoute(lat, lon) {
                   </button>
                 </div>
               </div>
+
+              {!inTelegramWebApp && Boolean(getAuthToken()) ? (
+              <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+                <button className="btn secondary" onClick={logoutWeb}>
+                  🚪 Выйти (веб)
+                </button>
+              </div>
+            ) : null}
+
 
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn" onClick={saveProfile} disabled={saving}>

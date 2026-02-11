@@ -1381,6 +1381,21 @@ textarea:focus{
   --jersey-text: rgba(0,0,0,0.92);
 }
 
+/* WEB (outside TG): используем data-web-theme, чтобы джерси корректно переключалась */
+:root[data-web="1"][data-web-theme="light"] .jerseyWrap{
+  --jersey-fill: rgba(0,0,0,0.78);
+  --jersey-stroke: rgba(0,0,0,0.90);
+  --jersey-accent: rgba(255,255,255,0.22);
+  --jersey-text: rgba(255,255,255,0.98);
+}
+
+:root[data-web="1"][data-web-theme="dark"] .jerseyWrap{
+  --jersey-fill: rgba(255,255,255,0.86);
+  --jersey-stroke: rgba(255,255,255,0.98);
+  --jersey-accent: rgba(0,0,0,0.12);
+  --jersey-text: rgba(0,0,0,0.92);
+}
+
 /* Номер — делаем КРУПНЕЕ и от size */
 .jerseyNum{
   position: absolute;
@@ -3410,7 +3425,7 @@ html[data-theme="light"] .btn.outline.active{
 
 .webThemeDock {
   position: fixed;
-  top: calc(12px + env(safe-area-inset-top));
+  top: calc(5px + env(safe-area-inset-top));
   right: -10px;               /* чуть “выпирает” за край */
   z-index: 100000;            /* выше тостов (у них 99999) */
   pointer-events: none;       /* клики только по панели */
