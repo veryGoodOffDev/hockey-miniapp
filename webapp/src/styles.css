@@ -93,6 +93,37 @@ input.input[type="time"]::-webkit-date-and-time-value{
 }
 
 /* =========
+   Web-only theme override (outside Telegram)
+   Set by JS: document.documentElement.dataset.web = "1";
+           + document.documentElement.dataset.webTheme = "light" | "dark"
+   ========= */
+:root[data-web="1"][data-web-theme="light"]{
+  color-scheme: light;
+  --tg-theme-bg-color: #f5f7fb;
+  --tg-theme-text-color: #0f172a;
+  --tg-theme-hint-color: #64748b;
+  --tg-theme-link-color: #2563eb;
+  --tg-theme-button-color: #2563eb;
+  --tg-theme-button-text-color: #ffffff;
+  --tg-theme-secondary-bg-color: #ffffff;
+  --tg-theme-section-bg-color: #ffffff;
+  --shadow: 0 10px 22px rgba(15,23,42,.07);
+}
+
+:root[data-web="1"][data-web-theme="dark"]{
+  color-scheme: dark;
+  --tg-theme-bg-color: #0b1220;
+  --tg-theme-text-color: #e5e7eb;
+  --tg-theme-hint-color: #94a3b8;
+  --tg-theme-link-color: #60a5fa;
+  --tg-theme-button-color: #3b82f6;
+  --tg-theme-button-text-color: #ffffff;
+  --tg-theme-secondary-bg-color: #0f1a2d;
+  --tg-theme-section-bg-color: #0f1a2d;
+  --shadow: 0 16px 34px rgba(0,0,0,.35);
+}
+
+/* =========
    Base / reset
    ========= */
 html{
@@ -135,6 +166,56 @@ hr{
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+/* =========
+   Web theme toggle (only rendered outside Telegram)
+   ========= */
+.webThemeBar{
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+
+  /* stretch to container edges */
+  margin: -14px -14px 10px;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+
+  background: color-mix(in srgb, var(--tg-bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+
+.themeToggleBtn{
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card-bg) 86%, var(--tg-bg));
+  color: var(--tg-text);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  user-select: none;
+  transition: transform .06s ease, filter .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.themeToggleBtn:hover{
+  filter: brightness(1.03);
+}
+
+.themeToggleBtn:active{
+  transform: scale(0.98);
+}
+
+.themeToggleBtn:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-btn) 22%, transparent), var(--shadow);
 }
 
 /* =========

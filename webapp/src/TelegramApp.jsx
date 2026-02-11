@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
+import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
@@ -39,6 +39,35 @@ export default function TelegramApp({ me: initialMeProp }) {
   const inTelegramWebApp = Boolean(initData && tgUser?.id);
   const hasWebAuth = Boolean(getAuthToken() || initialMeProp?.player || initialMeProp?.tg_id);
   const tgPopupBusyRef = useRef(false);
+
+  // ===== WEB theme toggle (only outside Telegram) =====
+  const WEB_THEME_KEY = "web_theme";
+  const [webTheme, setWebTheme] = useState(() => {
+    try {
+      const saved = String(localStorage.getItem(WEB_THEME_KEY) || "").trim();
+      if (saved === "dark" || saved === "light") return saved;
+    } catch {}
+    const prefersDark =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return prefersDark ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    // Telegram controls theme itself
+    if (inTelegramWebApp) {
+      delete document.documentElement.dataset.web;
+      delete document.documentElement.dataset.webTheme;
+      return;
+    }
+
+    document.documentElement.dataset.web = "1";
+    document.documentElement.dataset.webTheme = webTheme;
+    try {
+      localStorage.setItem(WEB_THEME_KEY, webTheme);
+    } catch {}
+  }, [inTelegramWebApp, webTheme]);
 
   const OWNER_TG_ID = Number(import.meta.env.VITE_OWNER_TG_ID || 0);
   const myTgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
@@ -1677,18 +1706,6 @@ async function saveProfile() {
   );
 }
 
-function logoutWeb() {
-
-  clearAuthToken();
-
-
-  setMe(null);
-  setIsAdmin(false);
-  setAccessReason(null);
-
-  window.location.reload();
-}
-
 
 function fmtDt(v) {
   if (!v) return "";
@@ -2575,6 +2592,19 @@ function openYandexRoute(lat, lon) {
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
   return (
     <div className="container appShell">
+      {!inTelegramWebApp && (
+        <div className="webThemeBar" role="region" aria-label="Настройки темы">
+          <button
+            className="themeToggleBtn"
+            type="button"
+            onClick={() => setWebTheme((t) => (t === "dark" ? "light" : "dark"))}
+            aria-label={webTheme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}
+            title={webTheme === "dark" ? "Светлая тема" : "Тёмная тема"}
+          >
+            <span aria-hidden="true">{webTheme === "dark" ? "☀️" : "🌙"}</span>
+          </button>
+        </div>
+      )}
       <h1>🏒 Хоккей: отметки и составы</h1>
           <div className="toastWrap" aria-live="polite" aria-atomic="true">
             <div className={`toast tone-${op.tone} ${op.text ? "isShow" : ""}`}>
@@ -3722,21 +3752,6 @@ function openYandexRoute(lat, lon) {
                   </button>
                 </div>
               </div>
-              
-              {!inTelegramWebApp && getAuthToken() ? (
-                <div className="card" style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 800 }}>🌐 Веб-версия</div>
-                  <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                    Вы вошли через браузер. Можно выйти и удалить токен на этом устройстве.
-                  </div>
-
-                  <div className="row" style={{ marginTop: 10 }}>
-                    <button className="btn secondary" onClick={logoutWeb}>
-                      🚪 Выйти
-                    </button>
-                  </div>
-                </div>
-              ) : null}
 
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn" onClick={saveProfile} disabled={saving}>
