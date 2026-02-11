@@ -2650,15 +2650,29 @@ function openYandexRoute(lat, lon) {
     <div className="container appShell">
       {!inTelegramWebApp && (
         <div className="webThemeBar" role="region" aria-label="Настройки темы">
-          <button
-            className="themeToggleBtn"
-            type="button"
-            onClick={() => setWebTheme((t) => (t === "dark" ? "light" : "dark"))}
-            aria-label={webTheme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}
-            title={webTheme === "dark" ? "Светлая тема" : "Тёмная тема"}
-          >
-            <span aria-hidden="true">{webTheme === "dark" ? "☀️" : "🌙"}</span>
-          </button>
+          <div className="webThemeBar__inner">
+            <div className="webThemeBar__title">Тема</div>
+
+            <button
+              type="button"
+              className={`themeSwitch ${webTheme === "dark" ? "is-dark" : "is-light"}`}
+              role="switch"
+              aria-checked={webTheme === "dark"}
+              aria-label={webTheme === "dark" ? "Переключить на светлую тему" : "Переключить на тёмную тему"}
+              onClick={() => setWebTheme((t) => (t === "dark" ? "light" : "dark"))}
+            >
+              <span className="themeSwitch__track" aria-hidden="true">
+                <span className="themeSwitch__icon themeSwitch__icon--sun" aria-hidden="true">☀️</span>
+                <span className="themeSwitch__icon themeSwitch__icon--moon" aria-hidden="true">🌙</span>
+
+                <span className="themeSwitch__thumb" aria-hidden="true">
+                  <span className="themeSwitch__thumbIcon" aria-hidden="true">
+                    {webTheme === "dark" ? "🌙" : "☀️"}
+                  </span>
+                </span>
+              </span>
+            </button>
+          </div>
         </div>
       )}
       <h1>🏒 Хоккей: отметки и составы</h1>
