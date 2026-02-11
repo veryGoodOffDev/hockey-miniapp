@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken } from "./api.js";
+import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
@@ -1675,6 +1675,18 @@ async function saveProfile() {
       sync: { refreshPlayers: true, refreshGames: true, refreshGame: true },
     }
   );
+}
+
+function logoutWeb() {
+
+  clearAuthToken();
+
+
+  setMe(null);
+  setIsAdmin(false);
+  setAccessReason(null);
+
+  window.location.reload();
 }
 
 
@@ -3710,6 +3722,21 @@ function openYandexRoute(lat, lon) {
                   </button>
                 </div>
               </div>
+              
+              {!inTelegramWebApp && getAuthToken() ? (
+                <div className="card" style={{ marginTop: 12 }}>
+                  <div style={{ fontWeight: 800 }}>🌐 Веб-версия</div>
+                  <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                    Вы вошли через браузер. Можно выйти и удалить токен на этом устройстве.
+                  </div>
+
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <button className="btn secondary" onClick={logoutWeb}>
+                      🚪 Выйти
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn" onClick={saveProfile} disabled={saving}>
