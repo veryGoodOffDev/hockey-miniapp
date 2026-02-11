@@ -1370,20 +1370,7 @@ textarea:focus{
 .jerseyStripe{ fill: var(--jersey-accent); }
 .jerseyStripeSoft{ fill: rgba(255,255,255,0.12); }
 
-/* Номер — делаем КРУПНЕЕ и от size */
-.jerseyNum{
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-weight: 900;
-  color: var(--jersey-text);
-  text-shadow: 0 2px 10px rgba(0,0,0,.35);
-  line-height: 1;
-  user-select: none;
 
-  font-size: calc(var(--jb-size) * 0.46); /* было мелко — теперь норм */
-}
 
 .jerseyWrap[data-len="1"] .jerseyNum{ font-size: calc(var(--jb-size) * 0.5); }
 .jerseyWrap[data-len="2"] .jerseyNum{ font-size: calc(var(--jb-size) * 0.41); }
@@ -1405,6 +1392,21 @@ textarea:focus{
   --jersey-stroke: rgba(255,255,255,0.98);
   --jersey-accent: rgba(0,0,0,0.12);
   --jersey-text: rgba(0,0,0,0.92);
+}
+
+/* Номер — делаем КРУПНЕЕ и от size */
+.jerseyNum{
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  color: var(--jersey-text);
+  text-shadow: 0 2px 10px rgba(0,0,0,.35);
+  line-height: 1;
+  user-select: none;
+
+  font-size: calc(var(--jb-size) * 0.46); /* было мелко — теперь норм */
 }
 /* для pill */
 .pill.isMe{
