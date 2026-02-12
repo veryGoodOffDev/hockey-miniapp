@@ -2025,9 +2025,6 @@ app.post("/api/me/email/start", async (req, res) => {
     }
 
     const currentPlayer = await q(`SELECT email FROM players WHERE tg_id=$1`, [user.id]);
-    if (!currentPlayer.rows?.[0]) {
-      return res.status(403).json({ ok: false, reason: "player_deleted" });
-    }
     const activeEmail = normalizeEmail(currentPlayer.rows?.[0]?.email || null);
 
     if (activeEmail && activeEmail.toLowerCase() === email.toLowerCase()) {
