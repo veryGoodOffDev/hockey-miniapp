@@ -1945,58 +1945,84 @@ function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== AUTH: EMAIL OTP ====== */
-const BRAND = (process.env.EMAIL_BRAND || "Mighty Sheep").replace(/^"|"$/g, "");
-const EMAIL_LOGO_URL = (process.env.EMAIL_LOGO_URL || "").replace(/^"|"$/g, "");
 
 const WEBAPP_LOGIN_URL = (process.env.WEB_APP_URL || "https://mightysheep.ru")
   .replace(/^"|"$/g, "")
   .replace(/\/$/, "");
 
-app.post("/api/auth/email/start", async (req, res) => {
+const BRAND = (process.env.EMAIL_BRAND || "Mighty Sheep").replace(/^"|"$/g, "");
+const EMAIL_LOGO_URL = (process.env.EMAIL_LOGO_URL || "").replace(/^"|"$/g, "");
+
+// у тебя в env есть WEB_APP_URL, используем его как основной
+function getWebBase() {
+  const raw = (process.env.PUBLIC_WEBAPP_URL || process.env.WEB_APP_URL || "https://mightysheep.ru")
+    .replace(/^"|"$/g, "")
+    .trim();
+  return raw.replace(/\/$/, ""); // без слэша на конце
+}
+
+// API base (если PUBLIC_API_URL пуст, берём host запроса)
+function getApiBase(req) {
+  const raw = (process.env.PUBLIC_API_URL || "").replace(/^"|"$/g, "").trim();
+  if (raw) return raw.replace(/\/$/, "");
+  return apiBaseFromReq(req).replace(/\/$/, "");
+}
+
+app.post("/api/me/email/start", async (req, res) => {
   try {
+    const user = requireWebAppAuth(req, res);
+    if (!user) return;
+
     const email = normalizeEmail(req.body?.email);
     if (!email || !email.includes("@")) {
       return res.status(400).json({ ok: false, reason: "bad_email" });
     }
 
-    // ВАЖНО: ttlMs с дефолтом
-    const ttlMs = Number(process.env.EMAIL_CODE_TTL_MS) || (10 * 60 * 1000);
-    const ttlMinutes = Math.round(ttlMs / 60000);
-
-    const code = generateCode();
-    const codeHash = hashToken(code);
-    const expiresAt = new Date(Date.now() + ttlMs);
+    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
+    if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(user.id)) {
+      return res.status(400).json({ ok: false, reason: "email_in_use" });
+    }
 
     await q(
-      `INSERT INTO email_login_codes(email, code_hash, expires_at)
-       VALUES ($1,$2,$3)`,
-      // лучше передавать Date напрямую, pg нормально съест timestamp
-      [email, codeHash, expiresAt]
+      `UPDATE players SET email=$2, email_verified=FALSE, email_verified_at=NULL WHERE tg_id=$1`,
+      [user.id, email]
     );
+
+    // ✅ безопасный TTL (если env пустой)
+    const ttlMs = Number(process.env.EMAIL_VERIFY_TTL_MS) || (24 * 60 * 60 * 1000); // 24h
+    const exp = Date.now() + ttlMs;
+
+    const token = signToken({ uid: user.id, email, exp });
+
+    const webBase = getWebBase();
+    const apiBase = getApiBase(req);
+
+    // ✅ тебе нужен редирект только на главную
+    const next = `${webBase}/?email_verified=1`;
+
+    // ✅ confirm всегда на API
+    const link =
+      `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
 
     await sendEmail({
       to: email,
-      subject: `${BRAND} — код входа`,
-      text:
-        `Ваш код входа: ${code}\n` +
-        `Код действует ${ttlMinutes} минут.\n\n` +
-        `Если вы не запрашивали код — просто проигнорируйте письмо.`,
-      html: buildOtpEmailHtml({
+      subject: `${BRAND} — подтверждение почты`,
+      text: `Чтобы подтвердить почту, откройте ссылку: ${link}`,
+      html: buildConfirmEmailHtml({
         brand: BRAND,
-        code,
-        ttlMinutes,
-        preheader: `Ваш код: ${code}. Действует ${ttlMinutes} минут.`,
         logoUrl: EMAIL_LOGO_URL,
-        ctaUrl: WEBAPP_LOGIN_URL, // главная страница
+        link,
+        preheader: "Подтвердите почту и входите через браузер по email.",
       }),
     });
 
     return res.json({ ok: true });
   } catch (e) {
-    console.error("POST /api/auth/email/start failed:", e?.stack || e);
+    console.error("POST /api/me/email/start failed:", e?.stack || e);
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 
 
 
