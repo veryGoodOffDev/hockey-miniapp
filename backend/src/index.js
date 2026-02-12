@@ -4331,9 +4331,9 @@ app.delete("/api/admin/players/:tg_id", async (req, res) => {
   if (!pr.rows[0]) return res.status(404).json({ ok: false, reason: "not_found" });
 
   const kind = String(pr.rows[0].player_kind || "").toLowerCase();
-  // веб-игроков и гостей можно удалять из приложения полностью.
-  // tg/manual не удаляем, чтобы не ломать telegram-профили — для них используйте disabled.
-  if (!["guest", "web"].includes(kind)) {
+  // веб/ручных/гостей можно удалять из приложения полностью.
+  // tg не удаляем, чтобы не ломать telegram-профили — для них используйте disabled.
+  if (!["guest", "web", "manual"].includes(kind)) {
     return res.status(400).json({ ok: false, reason: "delete_not_allowed" });
   }
 

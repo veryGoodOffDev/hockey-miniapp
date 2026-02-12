@@ -118,7 +118,7 @@ useEffect(() => {
   }
 
 
-  async function deleteWebPlayer() {
+  async function deleteNonTgPlayer() {
     if (!draft?.tg_id) return;
     const ok = confirm("Удалить игрока из приложения? Вход по email для него будет недоступен.");
     if (!ok) return;
@@ -277,9 +277,9 @@ useEffect(() => {
           ) : null}
 
 
-          {(draft.player_kind === "web") ? (
-            <button className="btn secondary" onClick={deleteWebPlayer}>
-              🗑️ Удалить web-игрока
+          {(["web", "manual"].includes(draft.player_kind)) ? (
+            <button className="btn secondary" onClick={deleteNonTgPlayer}>
+              🗑️ Удалить игрока из приложения
             </button>
           ) : null}
 
