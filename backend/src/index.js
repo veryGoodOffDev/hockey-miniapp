@@ -4636,7 +4636,7 @@ app.get("/api/players", async (req, res) => {
 
   const is_admin = await isAdminId(user.id);
 
-  // ✅ показываем только постоянных: tg + manual
+  // ✅ показываем активных игроков: tg + manual + web
 const sql = is_admin
   ? `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
             photo_url, avatar_file_id, updated_at,
@@ -4644,7 +4644,7 @@ const sql = is_admin
             player_kind
      FROM players
      WHERE disabled=FALSE
-       AND player_kind IN ('tg','manual')
+       AND player_kind IN ('tg','manual','web')
      ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`
   : `SELECT tg_id, first_name, last_name, username, display_name, jersey_number, position,
             photo_url, avatar_file_id, updated_at,
@@ -4652,7 +4652,7 @@ const sql = is_admin
             player_kind
      FROM players
      WHERE disabled=FALSE
-       AND player_kind IN ('tg','manual')
+       AND player_kind IN ('tg','manual','web')
      ORDER BY COALESCE(display_name, first_name, username, tg_id::text) ASC`;
 
 const r = await q(sql);
