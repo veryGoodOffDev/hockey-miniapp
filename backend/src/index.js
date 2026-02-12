@@ -2094,6 +2094,10 @@ app.get("/auth/email/confirmed", (req, res) => {
 });
 
 // OTP: отправка 6-значного кода на почту (вход через email)
+const WEBAPP_LOGIN_URL = (process.env.WEB_APP_URL || "https://mightysheep.ru")
+  .replace(/^"|"$/g, "")
+  .replace(/\/$/, "");
+
 app.post("/api/auth/email/start", async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
@@ -2101,18 +2105,18 @@ app.post("/api/auth/email/start", async (req, res) => {
       return res.status(400).json({ ok: false, reason: "bad_email" });
     }
 
-    // ✅ безопасный TTL даже если EMAIL_CODE_TTL_MS не задан
+    // ВАЖНО: ttlMs с дефолтом
     const ttlMs = Number(process.env.EMAIL_CODE_TTL_MS) || (10 * 60 * 1000);
     const ttlMinutes = Math.round(ttlMs / 60000);
 
-    const code = generateCode();          // "123456"
+    const code = generateCode();
     const codeHash = hashToken(code);
     const expiresAt = new Date(Date.now() + ttlMs);
 
     await q(
       `INSERT INTO email_login_codes(email, code_hash, expires_at)
        VALUES ($1,$2,$3)`,
-      // ✅ лучше Date напрямую (pg сам приведет к timestamp)
+      // лучше передавать Date напрямую, pg нормально съест timestamp
       [email, codeHash, expiresAt]
     );
 
@@ -2129,7 +2133,7 @@ app.post("/api/auth/email/start", async (req, res) => {
         ttlMinutes,
         preheader: `Ваш код: ${code}. Действует ${ttlMinutes} минут.`,
         logoUrl: EMAIL_LOGO_URL,
-        ctaUrl: WEB_APP_URL,
+        ctaUrl: WEBAPP_LOGIN_URL, // главная страница
       }),
     });
 
@@ -2140,9 +2144,6 @@ app.post("/api/auth/email/start", async (req, res) => {
   }
 });
 
-
-
-/** ====== ME ====== */
 /** ====== ME ====== */
 app.get("/api/me", async (req, res) => {
   const user = requireWebAppAuth(req, res);
