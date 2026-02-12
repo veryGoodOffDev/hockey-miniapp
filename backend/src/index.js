@@ -1945,11 +1945,12 @@ function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== AUTH: EMAIL OTP ====== */
-const BRAND = process.env.EMAIL_BRAND || "Mighty Sheep";
-const EMAIL_LOGO_URL = process.env.EMAIL_LOGO_URL || ""; // https://...
-const WEBAPP_LOGIN_URL = process.env.WEB_APP_URL
-  ? `${process.env.WEB_APP_URL}${process.env.PUBLIC_WEBAPP_LOGIN_PATH || "/login"}`
-  : "";
+const BRAND = (process.env.EMAIL_BRAND || "Mighty Sheep").replace(/^"|"$/g, "");
+const EMAIL_LOGO_URL = (process.env.EMAIL_LOGO_URL || "").replace(/^"|"$/g, "");
+
+const WEBAPP_LOGIN_URL = (process.env.WEB_APP_URL || "https://mightysheep.ru")
+  .replace(/^"|"$/g, "")
+  .replace(/\/$/, "");
 
 app.post("/api/auth/email/start", async (req, res) => {
   try {
@@ -1958,17 +1959,20 @@ app.post("/api/auth/email/start", async (req, res) => {
       return res.status(400).json({ ok: false, reason: "bad_email" });
     }
 
+    // ВАЖНО: ttlMs с дефолтом
+    const ttlMs = Number(process.env.EMAIL_CODE_TTL_MS) || (10 * 60 * 1000);
+    const ttlMinutes = Math.round(ttlMs / 60000);
+
     const code = generateCode();
     const codeHash = hashToken(code);
-    const expiresAt = new Date(Date.now() + EMAIL_CODE_TTL_MS);
+    const expiresAt = new Date(Date.now() + ttlMs);
 
     await q(
       `INSERT INTO email_login_codes(email, code_hash, expires_at)
        VALUES ($1,$2,$3)`,
-      [email, codeHash, expiresAt.toISOString()]
+      // лучше передавать Date напрямую, pg нормально съест timestamp
+      [email, codeHash, expiresAt]
     );
-
-    const ttlMinutes = Math.round(EMAIL_CODE_TTL_MS / 60000) || 10;
 
     await sendEmail({
       to: email,
@@ -1983,17 +1987,17 @@ app.post("/api/auth/email/start", async (req, res) => {
         ttlMinutes,
         preheader: `Ваш код: ${code}. Действует ${ttlMinutes} минут.`,
         logoUrl: EMAIL_LOGO_URL,
-        ctaUrl: WEBAPP_LOGIN_URL,     // можно убрать, если не нужна кнопка
-        // bgImageUrl: "https://mightysheep.ru/assets/email-bg.jpg" // опционально
+        ctaUrl: WEBAPP_LOGIN_URL, // главная страница
       }),
     });
 
     return res.json({ ok: true });
   } catch (e) {
-    console.error("POST /api/auth/email/start failed:", e);
+    console.error("POST /api/auth/email/start failed:", e?.stack || e);
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 
 
 
@@ -6878,3 +6882,4 @@ console.log(`[BOOT] hockey-backend starting... ${new Date().toISOString()} commi
 console.log('куку все ок играем в хоккей')
 
 app.listen(port, () => console.log("Backend listening on", port));
+
