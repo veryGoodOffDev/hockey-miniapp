@@ -2025,6 +2025,9 @@ app.post("/api/me/email/start", async (req, res) => {
     }
 
     const currentPlayer = await q(`SELECT email FROM players WHERE tg_id=$1`, [user.id]);
+    if (!currentPlayer.rows?.[0]) {
+      return res.status(403).json({ ok: false, reason: "player_deleted" });
+    }
     const activeEmail = normalizeEmail(currentPlayer.rows?.[0]?.email || null);
 
     if (activeEmail && activeEmail.toLowerCase() === email.toLowerCase()) {
@@ -2109,9 +2112,6 @@ app.post("/api/auth/email/verify", async (req, res) => {
 
     const ar = await q(`SELECT * FROM team_applications WHERE LOWER(email)=LOWER($1) ORDER BY id DESC LIMIT 1`, [email]);
     const appRow = ar.rows?.[0];
-    if (appRow?.status === "rejected") {
-      return res.status(403).json({ ok: false, reason: "rejected" });
-    }
 
     if (appRow?.status === "approved" && appRow.player_tg_id) {
       const linked = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [appRow.player_tg_id]);
