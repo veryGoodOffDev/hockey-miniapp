@@ -651,7 +651,19 @@ function requireWebAppAuth(req, res) {
 }
 
 async function requireGroupMember(req, res, user) {
-  if (user?.is_email_auth) return true;
+  if (user?.is_email_auth) {
+    const pr = await q(`SELECT tg_id, disabled FROM players WHERE tg_id=$1`, [user.id]);
+    const row = pr.rows?.[0];
+    if (!row) {
+      res.status(403).json({ ok: false, reason: "player_deleted" });
+      return false;
+    }
+    if (row.disabled) {
+      res.status(403).json({ ok: false, reason: "profile_only" });
+      return false;
+    }
+    return true;
+  }
   const chatIdRaw = await getSetting("notify_chat_id", null);
   if (!chatIdRaw) {
     res.status(403).json({ ok: false, reason: "access_chat_not_set" });
@@ -2085,7 +2097,6 @@ app.post("/api/auth/email/verify", async (req, res) => {
     const pr = await q(`SELECT * FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
     const player = pr.rows?.[0];
     if (player) {
-      if (player.disabled) return res.status(403).json({ ok: false, reason: "disabled" });
       if (!player.email_verified) {
         await q(
           `UPDATE players SET email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
@@ -2103,6 +2114,10 @@ app.post("/api/auth/email/verify", async (req, res) => {
     }
 
     if (appRow?.status === "approved" && appRow.player_tg_id) {
+      const linked = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [appRow.player_tg_id]);
+      if (!linked.rows?.[0]) {
+        return res.status(403).json({ ok: false, reason: "player_deleted" });
+      }
       const token = issueAuthToken(appRow.player_tg_id);
       return res.json({ ok: true, status: "approved", token });
     }
@@ -2248,8 +2263,15 @@ app.get("/api/me", async (req, res) => {
   const admin = await isAdminId(user.id);
 
   // 2) членство проверяем только если НЕ админ
-  if (!admin) {
+  if (!admin && !user?.is_email_auth) {
     if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  if (user?.is_email_auth) {
+    const ex = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
+    const player = ex.rows?.[0] ?? null;
+    if (!player) return res.status(403).json({ ok: false, reason: "player_deleted" });
+    return res.json({ ok: true, player, is_admin: admin });
   }
 
   await ensurePlayer(user);
@@ -2265,11 +2287,16 @@ app.post("/api/me", async (req, res) => {
   if (!user) return;
 
   const admin = await isAdminId(user.id);
-  if (!admin) {
+  if (!admin && !user?.is_email_auth) {
     if (!(await requireGroupMember(req, res, user))) return;
   }
 
-  await ensurePlayer(user);
+  if (user?.is_email_auth) {
+    const ex = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [user.id]);
+    if (!ex.rows?.[0]) return res.status(403).json({ ok: false, reason: "player_deleted" });
+  } else {
+    await ensurePlayer(user);
+  }
   const b = req.body || {};
 
   await q(
@@ -4303,9 +4330,11 @@ app.delete("/api/admin/players/:tg_id", async (req, res) => {
   const pr = await q(`SELECT tg_id, player_kind FROM players WHERE tg_id=$1`, [tgId]);
   if (!pr.rows[0]) return res.status(404).json({ ok: false, reason: "not_found" });
 
-  // ✅ удаляем только "разовых" гостей
-  if (pr.rows[0].player_kind !== "guest") {
-    return res.status(400).json({ ok: false, reason: "not_guest" });
+  const kind = String(pr.rows[0].player_kind || "").toLowerCase();
+  // веб-игроков и гостей можно удалять из приложения полностью.
+  // tg/manual не удаляем, чтобы не ломать telegram-профили — для них используйте disabled.
+  if (!["guest", "web"].includes(kind)) {
+    return res.status(400).json({ ok: false, reason: "delete_not_allowed" });
   }
 
   await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]);
@@ -4357,13 +4386,17 @@ app.post("/api/admin/team-applications/:id/approve", async (req, res) => {
       tgId = -Number(seq.rows?.[0]?.v || 0);
       const displayName = email.split("@")[0] || null;
       await q(
-        `INSERT INTO players(tg_id, display_name, email, email_verified, email_verified_at, player_kind, is_guest)
-         VALUES($1,$2,$3,TRUE,NOW(),'web',FALSE)`,
+        `INSERT INTO players(tg_id, display_name, email, email_verified, email_verified_at, player_kind, is_guest, disabled)
+         VALUES($1,$2,$3,TRUE,NOW(),'web',FALSE,TRUE)`,
         [tgId, displayName, email]
       );
     } else {
       await q(
-        `UPDATE players SET email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
+        `UPDATE players
+            SET email_verified=TRUE,
+                email_verified_at=NOW(),
+                disabled=TRUE
+          WHERE tg_id=$1`,
         [tgId]
       );
     }

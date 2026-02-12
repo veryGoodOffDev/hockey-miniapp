@@ -994,7 +994,7 @@ async function refreshAll(forceGameId) {
     const m = await apiGet("/api/me");
 
     // доступ закрыт
-    if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
+    if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set" || m?.reason === "player_deleted")) {
       setMe(null);
       setIsAdmin(false);
       setGames([]);
@@ -1022,6 +1022,17 @@ async function refreshAll(forceGameId) {
     // профиль
     if (m?.player) {
       setMe(m.player);
+      if (m.player.disabled && !m?.is_admin) {
+        setTab("profile");
+        setGames([]);
+        setSelectedGameId(null);
+        setGame(null);
+        setRsvps([]);
+        setTeams(null);
+        setAccessReason("profile_only");
+        setIsAdmin(!!m?.is_admin);
+        return;
+      }
     } else if (initialMeProp?.player || initialMeProp?.tg_id) {
       setMe(initialMeProp?.player ?? initialMeProp);
     } else if (tgUser?.id) {
@@ -1536,6 +1547,12 @@ function clipText(s, max = 70) {
     if (!game) return;
     setBestPick(game.best_player_tg_id ? String(game.best_player_tg_id) : "");
   }, [game?.id, game?.best_player_tg_id]);
+
+useEffect(() => {
+  if (me?.disabled && !isAdmin && tab !== "profile") {
+    setTab("profile");
+  }
+}, [me?.disabled, isAdmin, tab]);
 
 useEffect(() => {
   if (tab === "profile" && profileView === "thanks") loadFunStatus();
@@ -3703,6 +3720,12 @@ function openYandexRoute(lat, lon) {
         <div className="card">
           <h2>Профиль</h2>
 
+          {!!me?.disabled && !isAdmin && (
+            <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+              ⚠️ Ваш аккаунт сейчас неактивен. Доступен только раздел профиля.
+            </div>
+          )}
+
           <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
             <button
               className={profileView === "me" ? "btn" : "btn secondary"}
@@ -4963,7 +4986,7 @@ function openYandexRoute(lat, lon) {
                 onChanged={onChanged}
               />
 
-      <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
+      <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} profileOnly={!!me?.disabled && !isAdmin} />
     </div>
   );
 }
@@ -5493,14 +5516,16 @@ function posHuman(posRaw) {
   return pos === "G" ? "🥅 Вратарь" : pos === "D" ? "🛡️ Защитник" : "🏒 Нападающий";
 }
 
-function BottomNav({ tab, setTab, isAdmin }) {
-  const items = [
-    { key: "game", label: "Игры", icon: "📅" },
-    { key: "players", label: "Игроки", icon: "👥" },
-    { key: "stats", label: "Статистика", icon: "📊" },
-    { key: "profile", label: "Профиль", icon: "👤" },
-    ...(isAdmin ? [{ key: "admin", label: "Админ", icon: "🛠" }] : []),
-  ];
+function BottomNav({ tab, setTab, isAdmin, profileOnly = false }) {
+  const items = profileOnly
+    ? [{ key: "profile", label: "Профиль", icon: "👤" }]
+    : [
+        { key: "game", label: "Игры", icon: "📅" },
+        { key: "players", label: "Игроки", icon: "👥" },
+        { key: "stats", label: "Статистика", icon: "📊" },
+        { key: "profile", label: "Профиль", icon: "👤" },
+        ...(isAdmin ? [{ key: "admin", label: "Админ", icon: "🛠" }] : []),
+      ];
 
   return (
     <nav className="bottomNav" role="navigation" aria-label="Навигация">
