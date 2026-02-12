@@ -2104,12 +2104,11 @@ app.get("/api/auth/email/confirm", async (req, res) => {
     );
 
     const webBase = getPublicWebBase(req);
-    const apiBase = getPublicApiBase(req);
 
     const next = safeNextUrl(req.query?.next, webBase) || defaultNextUrl(req);
 
-    // ведём на красивую страницу на API, она сама редиректит на next
-    return res.redirect(`${apiBase}/auth/email/confirmed?next=${encodeURIComponent(next)}`);
+    const apiBase = getApiBase(req);
+    return res.redirect(`${apiBase}/auth/email/confirmed`);
   } catch (e) {
     console.error("GET /api/auth/email/confirm failed:", e);
     return res.status(500).send("server_error");
@@ -2118,12 +2117,12 @@ app.get("/api/auth/email/confirm", async (req, res) => {
 
 
 app.get("/auth/email/confirmed", (req, res) => {
-  const webBase = getPublicWebBase(req);
-  const next = safeNextUrl(req.query?.next, webBase) || defaultNextUrl(req);
+  const webBase = getWebBase();
+  const next = `${webBase}/?email_verified=1`;
 
   res.status(200).type("html").send(
     renderEmailConfirmedHtml({
-      brand: EMAIL_BRAND,
+      brand: BRAND,
       logoUrl: EMAIL_LOGO_URL,
       nextUrl: next,
     })
