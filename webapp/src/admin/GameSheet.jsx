@@ -229,7 +229,7 @@ function askConfirm(message) {
     setGuestsState({ loading: false, list: [] });
     setGuestFormOpen(false);
     setGuestEditingId(null);
-    setGuestDraft({ ...GUEST_DEFAULT });
+    setGuestDraft({ ...GUEST_DEFAULT, email: "" });
 
     setAttendanceRows([]);
     setAttLoading(false);
@@ -526,7 +526,7 @@ async function resetReminderSent(row) {
     setGuestsState({ loading: false, list: [] });
     setGuestFormOpen(false);
     setGuestEditingId(null);
-    setGuestDraft({ ...GUEST_DEFAULT });
+    setGuestDraft({ ...GUEST_DEFAULT, email: "" });
     setVideoOpen(false);
     setVideoNotifySilent(false);
 
@@ -686,7 +686,7 @@ async function setAttend(pOrId, nextStatus) {
   function openAddGuest() {
     if (!gameDraft) return;
     setGuestEditingId(null);
-    setGuestDraft({ ...GUEST_DEFAULT });
+    setGuestDraft({ ...GUEST_DEFAULT, email: "" });
     setGuestFormOpen(true);
   }
 
@@ -703,6 +703,7 @@ async function setAttend(pOrId, nextStatus) {
       passing: guestRow.passing ?? 5,
       shooting: guestRow.shooting ?? 5,
       notes: guestRow.notes || "",
+      email: guestRow.email || "",
       status: guestRow.status || "yes",
     });
     setGuestFormOpen(true);
@@ -741,7 +742,7 @@ async function setAttend(pOrId, nextStatus) {
 
       setGuestFormOpen(false);
       setGuestEditingId(null);
-      setGuestDraft({ ...GUEST_DEFAULT });
+      setGuestDraft({ ...GUEST_DEFAULT, email: "" });
 
       await loadGuestsForGame(gameDraft.id);
       await loadAttendanceForGame(gameDraft.id);
@@ -770,17 +771,20 @@ async function setAttend(pOrId, nextStatus) {
     notify("✅ Удалено");
   }
 
-  async function promoteGuestToManual(tg_id, guestName = "") {
+  async function promoteGuestToManual(tg_id, guestName = "", emailFromForm = "") {
     const ok = confirm("Сделать этого гостя постоянным игроком команды (manual)?");
     if (!ok) return;
 
-    const emailInput = prompt(
-      `Укажите email для игрока ${guestName ? `«${guestName}»` : ""} (обязательно):`,
-      ""
-    );
-    if (emailInput == null) return;
+    let email = String(emailFromForm || "").trim().toLowerCase();
+    if (!email) {
+      const emailInput = prompt(
+        `Укажите email для игрока ${guestName ? `«${guestName}»` : ""} (обязательно):`,
+        ""
+      );
+      if (emailInput == null) return;
+      email = String(emailInput || "").trim().toLowerCase();
+    }
 
-    const email = String(emailInput || "").trim().toLowerCase();
     if (!email || !email.includes("@")) {
       notify("❌ Укажите корректный email");
       return;
@@ -898,7 +902,7 @@ async function setAttend(pOrId, nextStatus) {
           <button className="iconBtn" title="Ссылка на отметку" disabled={tokenBusy} onClick={() => createRsvpLink(g.tg_id)}>
             🔗
           </button>
-          <button className="iconBtn" title="Сделать игроком команды (manual)" onClick={() => promoteGuestToManual(g.tg_id, showName(g))}>
+          <button className="iconBtn" title="Сделать игроком команды (manual)" onClick={() => promoteGuestToManual(g.tg_id, showName(g), g.email || "")}>
             ⭐
           </button>
           <button className="iconBtn" title="Изменить" onClick={() => openEditGuest(g)}>
@@ -981,7 +985,7 @@ async function setAttend(pOrId, nextStatus) {
         .guestName{ font-weight:800; }
         .guestMeta{ opacity:.85; font-size:13px; }
         .guestStatus{ opacity:.9; font-size:13px; }
-        .guestPillActions{ display:flex; gap:8px; }
+        .guestPillActions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
         .iconBtn{
           border:1px solid var(--border);
           background: transparent;
@@ -1551,6 +1555,17 @@ async function setAttend(pOrId, nextStatus) {
               />
             </div>
 
+            <div className="full">
+              <label>Email для перевода в постоянные игроки</label>
+              <input
+                className="input"
+                type="email"
+                placeholder="name@example.com"
+                value={guestDraft.email || ""}
+                onChange={(e) => setGuestDraft((d) => ({ ...d, email: e.target.value }))}
+              />
+            </div>
+
             <div className="row full" style={{ marginTop: 6, gap: 8, flexWrap: "wrap" }}>
               <button className="btn" type="button" onClick={saveGuest}>
                 {guestEditingId ? "Сохранить изменения" : "Добавить гостя"}
@@ -1562,7 +1577,7 @@ async function setAttend(pOrId, nextStatus) {
                   type="button"
                   onClick={() => {
                     setGuestEditingId(null);
-                    setGuestDraft({ ...GUEST_DEFAULT });
+                    setGuestDraft({ ...GUEST_DEFAULT, email: "" });
                   }}
                 >
                   Очистить
@@ -1573,9 +1588,19 @@ async function setAttend(pOrId, nextStatus) {
                 <button
                   className="btn secondary"
                   type="button"
+                  onClick={() => promoteGuestToManual(guestEditingId, guestDraft.display_name, guestDraft.email || "")}
+                >
+                  ⭐ Перевести в постоянные игроки
+                </button>
+              )}
+
+              {guestEditingId && (
+                <button
+                  className="btn secondary"
+                  type="button"
                   onClick={() => deleteGuest(guestEditingId)}
                 >
-                  Удалить гостя
+                  🗑️ Удалить гостя
                 </button>
               )}
             </div>
