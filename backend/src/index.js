@@ -3576,7 +3576,7 @@ const nowMs = Date.now();
 const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOURS * 3600 * 1000);
 
   
-  // ✅ ВАЖНО: показываем roster (tg+manual) + гостей, которые реально отмечены на ЭТУ игру
+  // ✅ ВАЖНО: показываем roster (tg+manual+web) + гостей, которые реально отмечены на ЭТУ игру
   const rrPromise = is_admin
     ? q(
         `SELECT
@@ -3596,7 +3596,7 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
           ON r.game_id=$1 AND r.tg_id=p.tg_id
         WHERE p.disabled=FALSE
           AND (
-            p.player_kind IN ('tg','manual')
+            p.player_kind IN ('tg','manual','web')
             OR r.game_id IS NOT NULL
           )
         ORDER BY
@@ -3627,7 +3627,7 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
           ON r.game_id=$1 AND r.tg_id=p.tg_id
         WHERE p.disabled=FALSE
           AND (
-            p.player_kind IN ('tg','manual')
+            p.player_kind IN ('tg','manual','web')
             OR r.game_id IS NOT NULL
           )
         ORDER BY
