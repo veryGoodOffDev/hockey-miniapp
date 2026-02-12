@@ -5840,16 +5840,42 @@ app.post("/api/admin/players/:tg_id/promote", async (req, res) => {
   const tg_id = Number(req.params.tg_id);
   if (!tg_id) return res.status(400).json({ ok: false, reason: "bad_tg_id" });
 
-  await q(
+  const pr = await q(`SELECT tg_id, player_kind FROM players WHERE tg_id=$1`, [tg_id]);
+  const player = pr.rows?.[0];
+  if (!player) return res.status(404).json({ ok: false, reason: "not_found" });
+  if (String(player.player_kind || "").toLowerCase() !== "guest") {
+    return res.status(400).json({ ok: false, reason: "not_guest" });
+  }
+
+  const emailRaw = req.body?.email;
+  const emailProvided = emailRaw !== undefined && emailRaw !== null && String(emailRaw).trim() !== "";
+  const email = emailProvided ? normalizeEmail(emailRaw) : null;
+
+  if (emailProvided && (!email || !email.includes("@"))) {
+    return res.status(400).json({ ok: false, reason: "bad_email" });
+  }
+
+  if (email) {
+    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
+    if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(tg_id)) {
+      return res.status(400).json({ ok: false, reason: "email_in_use" });
+    }
+  }
+
+  const upd = await q(
     `UPDATE players
-     SET player_kind='manual',
-         is_guest=FALSE,
-         updated_at=NOW()
-     WHERE tg_id=$1`,
-    [tg_id]
+        SET player_kind='manual',
+            is_guest=FALSE,
+            email=CASE WHEN $2::boolean THEN $3 ELSE email END,
+            email_verified=CASE WHEN $2::boolean THEN FALSE ELSE email_verified END,
+            email_verified_at=CASE WHEN $2::boolean THEN NULL ELSE email_verified_at END,
+            updated_at=NOW()
+      WHERE tg_id=$1
+      RETURNING *`,
+    [tg_id, emailProvided, email]
   );
 
-  res.json({ ok: true });
+  res.json({ ok: true, player: upd.rows?.[0] || null });
 });
 
 app.post("/api/admin/teams/send", async (req, res) => {
