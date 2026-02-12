@@ -10,6 +10,7 @@ export default function PlayerSheet({
   onClose,
   apiPatch,
   apiPost,
+  apiDelete,
   onReload,
   onChanged,
 }) {
@@ -114,6 +115,27 @@ useEffect(() => {
     await onChanged?.({ label: "✅ Игрок сохранён — обновляю приложение…", refreshPlayers: true });
     notify("✅ Игрок сохранён");
     onClose?.();
+  }
+
+
+  async function deleteWebPlayer() {
+    if (!draft?.tg_id) return;
+    const ok = confirm("Удалить игрока из приложения? Вход по email для него будет недоступен.");
+    if (!ok) return;
+
+    try {
+      const r = await apiDelete(`/api/admin/players/${draft.tg_id}`);
+      if (!r?.ok) {
+        notify(`❌ Не удалось удалить: ${r?.reason || "unknown"}`);
+        return;
+      }
+      await onReload?.();
+      await onChanged?.({ label: "✅ Игрок удалён", refreshPlayers: true });
+      notify("✅ Игрок удалён");
+      onClose?.();
+    } catch (e) {
+      notify("❌ Не удалось удалить игрока");
+    }
   }
 
   async function toggleAdmin() {
@@ -255,7 +277,14 @@ useEffect(() => {
           ) : null}
 
 
+          {(draft.player_kind === "web") ? (
+            <button className="btn secondary" onClick={deleteWebPlayer}>
+              🗑️ Удалить web-игрока
+            </button>
+          ) : null}
+
           <button className="btn secondary" onClick={onClose}>Готово</button>
+
         </div>
       </div>
     </Sheet>

@@ -651,7 +651,19 @@ function requireWebAppAuth(req, res) {
 }
 
 async function requireGroupMember(req, res, user) {
-  if (user?.is_email_auth) return true;
+  if (user?.is_email_auth) {
+    const pr = await q(`SELECT tg_id, disabled FROM players WHERE tg_id=$1`, [user.id]);
+    const row = pr.rows?.[0];
+    if (!row) {
+      res.status(403).json({ ok: false, reason: "player_deleted" });
+      return false;
+    }
+    if (row.disabled) {
+      res.status(403).json({ ok: false, reason: "profile_only" });
+      return false;
+    }
+    return true;
+  }
   const chatIdRaw = await getSetting("notify_chat_id", null);
   if (!chatIdRaw) {
     res.status(403).json({ ok: false, reason: "access_chat_not_set" });
@@ -2012,13 +2024,26 @@ app.post("/api/me/email/start", async (req, res) => {
       return res.status(400).json({ ok: false, reason: "bad_email" });
     }
 
+    const currentPlayer = await q(`SELECT email FROM players WHERE tg_id=$1`, [user.id]);
+    if (!currentPlayer.rows?.[0]) {
+      return res.status(403).json({ ok: false, reason: "player_deleted" });
+    }
+    const activeEmail = normalizeEmail(currentPlayer.rows?.[0]?.email || null);
+
+    if (activeEmail && activeEmail.toLowerCase() === email.toLowerCase()) {
+      return res.status(400).json({ ok: false, reason: "same_as_current" });
+    }
+
     const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
     if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(user.id)) {
       return res.status(400).json({ ok: false, reason: "email_in_use" });
     }
 
     await q(
-      `UPDATE players SET email=$2, email_verified=FALSE, email_verified_at=NULL WHERE tg_id=$1`,
+      `UPDATE players
+         SET pending_email=$2,
+             pending_email_requested_at=NOW()
+       WHERE tg_id=$1`,
       [user.id, email]
     );
 
@@ -2027,7 +2052,6 @@ app.post("/api/me/email/start", async (req, res) => {
 
     const apiBase = getApiBase(req);
 
-    // ✅ УКОРАЧИВАЕМ ссылку: убираем next полностью (тебе всё равно на главную)
     const link = `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
 
     await sendEmail({
@@ -2038,7 +2062,7 @@ app.post("/api/me/email/start", async (req, res) => {
         brand: BRAND,
         logoUrl: EMAIL_LOGO_URL,
         link,
-        preheader: "Подтвердите почту и входите через браузер по email.",
+        preheader: "Подтвердите новую почту для входа через браузер по email.",
       }),
     });
 
@@ -2076,7 +2100,6 @@ app.post("/api/auth/email/verify", async (req, res) => {
     const pr = await q(`SELECT * FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
     const player = pr.rows?.[0];
     if (player) {
-      if (player.disabled) return res.status(403).json({ ok: false, reason: "disabled" });
       if (!player.email_verified) {
         await q(
           `UPDATE players SET email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
@@ -2089,11 +2112,12 @@ app.post("/api/auth/email/verify", async (req, res) => {
 
     const ar = await q(`SELECT * FROM team_applications WHERE LOWER(email)=LOWER($1) ORDER BY id DESC LIMIT 1`, [email]);
     const appRow = ar.rows?.[0];
-    if (appRow?.status === "rejected") {
-      return res.status(403).json({ ok: false, reason: "rejected" });
-    }
 
     if (appRow?.status === "approved" && appRow.player_tg_id) {
+      const linked = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [appRow.player_tg_id]);
+      if (!linked.rows?.[0]) {
+        return res.status(403).json({ ok: false, reason: "player_deleted" });
+      }
       const token = issueAuthToken(appRow.player_tg_id);
       return res.json({ ok: true, status: "approved", token });
     }
@@ -2127,14 +2151,34 @@ app.get("/api/auth/email/confirm", async (req, res) => {
     const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [payload.uid]);
     if (!pr.rows?.[0]) return res.status(404).send("not_found");
 
-    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [payload.email]);
+    const playerRow = await q(
+      `SELECT email, pending_email FROM players WHERE tg_id=$1`,
+      [payload.uid]
+    );
+    const player = playerRow.rows?.[0];
+    if (!player) return res.status(404).send("not_found");
+
+    const pendingEmail = normalizeEmail(player.pending_email || null);
+    const tokenEmail = normalizeEmail(payload.email || null);
+
+    if (!tokenEmail || !pendingEmail || tokenEmail.toLowerCase() !== pendingEmail.toLowerCase()) {
+      return res.status(400).send("stale_token");
+    }
+
+    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [tokenEmail]);
     if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(payload.uid)) {
       return res.status(400).send("email_in_use");
     }
 
     await q(
-      `UPDATE players SET email=$2, email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
-      [payload.uid, payload.email]
+      `UPDATE players
+          SET email=$2,
+              email_verified=TRUE,
+              email_verified_at=NOW(),
+              pending_email=NULL,
+              pending_email_requested_at=NULL
+        WHERE tg_id=$1`,
+      [payload.uid, tokenEmail]
     );
 
     const apiBase = getApiBase(req);
@@ -2219,8 +2263,15 @@ app.get("/api/me", async (req, res) => {
   const admin = await isAdminId(user.id);
 
   // 2) членство проверяем только если НЕ админ
-  if (!admin) {
+  if (!admin && !user?.is_email_auth) {
     if (!(await requireGroupMember(req, res, user))) return;
+  }
+
+  if (user?.is_email_auth) {
+    const ex = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
+    const player = ex.rows?.[0] ?? null;
+    if (!player) return res.status(403).json({ ok: false, reason: "player_deleted" });
+    return res.json({ ok: true, player, is_admin: admin });
   }
 
   await ensurePlayer(user);
@@ -2236,11 +2287,16 @@ app.post("/api/me", async (req, res) => {
   if (!user) return;
 
   const admin = await isAdminId(user.id);
-  if (!admin) {
+  if (!admin && !user?.is_email_auth) {
     if (!(await requireGroupMember(req, res, user))) return;
   }
 
-  await ensurePlayer(user);
+  if (user?.is_email_auth) {
+    const ex = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [user.id]);
+    if (!ex.rows?.[0]) return res.status(403).json({ ok: false, reason: "player_deleted" });
+  } else {
+    await ensurePlayer(user);
+  }
   const b = req.body || {};
 
   await q(
@@ -4274,9 +4330,11 @@ app.delete("/api/admin/players/:tg_id", async (req, res) => {
   const pr = await q(`SELECT tg_id, player_kind FROM players WHERE tg_id=$1`, [tgId]);
   if (!pr.rows[0]) return res.status(404).json({ ok: false, reason: "not_found" });
 
-  // ✅ удаляем только "разовых" гостей
-  if (pr.rows[0].player_kind !== "guest") {
-    return res.status(400).json({ ok: false, reason: "not_guest" });
+  const kind = String(pr.rows[0].player_kind || "").toLowerCase();
+  // веб-игроков и гостей можно удалять из приложения полностью.
+  // tg/manual не удаляем, чтобы не ломать telegram-профили — для них используйте disabled.
+  if (!["guest", "web"].includes(kind)) {
+    return res.status(400).json({ ok: false, reason: "delete_not_allowed" });
   }
 
   await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]);
@@ -4328,13 +4386,17 @@ app.post("/api/admin/team-applications/:id/approve", async (req, res) => {
       tgId = -Number(seq.rows?.[0]?.v || 0);
       const displayName = email.split("@")[0] || null;
       await q(
-        `INSERT INTO players(tg_id, display_name, email, email_verified, email_verified_at, player_kind, is_guest)
-         VALUES($1,$2,$3,TRUE,NOW(),'web',FALSE)`,
+        `INSERT INTO players(tg_id, display_name, email, email_verified, email_verified_at, player_kind, is_guest, disabled)
+         VALUES($1,$2,$3,TRUE,NOW(),'web',FALSE,TRUE)`,
         [tgId, displayName, email]
       );
     } else {
       await q(
-        `UPDATE players SET email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
+        `UPDATE players
+            SET email_verified=TRUE,
+                email_verified_at=NOW(),
+                disabled=TRUE
+          WHERE tg_id=$1`,
         [tgId]
       );
     }

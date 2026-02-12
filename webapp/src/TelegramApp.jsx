@@ -207,6 +207,7 @@ useEffect(() => {
   const [jerseyMsg, setJerseyMsg] = useState("");
 
   const [emailDraft, setEmailDraft] = useState("");
+  const [emailEditMode, setEmailEditMode] = useState(false);
   const [emailMsg, setEmailMsg] = useState("");
   const [emailBusy, setEmailBusy] = useState(false);
 
@@ -993,7 +994,7 @@ async function refreshAll(forceGameId) {
     const m = await apiGet("/api/me");
 
     // доступ закрыт
-    if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set")) {
+    if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set" || m?.reason === "player_deleted")) {
       setMe(null);
       setIsAdmin(false);
       setGames([]);
@@ -1021,6 +1022,17 @@ async function refreshAll(forceGameId) {
     // профиль
     if (m?.player) {
       setMe(m.player);
+      if (m.player.disabled && !m?.is_admin) {
+        setTab("profile");
+        setGames([]);
+        setSelectedGameId(null);
+        setGame(null);
+        setRsvps([]);
+        setTeams(null);
+        setAccessReason("profile_only");
+        setIsAdmin(!!m?.is_admin);
+        return;
+      }
     } else if (initialMeProp?.player || initialMeProp?.tg_id) {
       setMe(initialMeProp?.player ?? initialMeProp);
     } else if (tgUser?.id) {
@@ -1537,6 +1549,12 @@ function clipText(s, max = 70) {
   }, [game?.id, game?.best_player_tg_id]);
 
 useEffect(() => {
+  if (me?.disabled && !isAdmin && tab !== "profile") {
+    setTab("profile");
+  }
+}, [me?.disabled, isAdmin, tab]);
+
+useEffect(() => {
   if (tab === "profile" && profileView === "thanks") loadFunStatus();
 }, [tab, profileView]);
 
@@ -1818,8 +1836,9 @@ function newJerseyReq() {
 }
 
 useEffect(() => {
-  if (me?.email) setEmailDraft(me.email);
-}, [me?.email]);
+  setEmailDraft(me?.pending_email || me?.email || "");
+  setEmailEditMode(false);
+}, [me?.email, me?.pending_email]);
 
 async function loadJerseyRequests() {
   setJerseyBusy(true);
@@ -1919,14 +1938,21 @@ async function deleteActiveJersey() {
 }
 
 async function sendEmailVerification() {
-  if (!emailDraft) return;
+  const nextEmail = String(emailDraft || "").trim();
+  if (!nextEmail) return;
+
   setEmailBusy(true);
   setEmailMsg("");
   try {
-    await apiPost("/api/me/email/start", { email: emailDraft });
-    setEmailMsg("✅ Ссылка для подтверждения отправлена на почту");
+    await apiPost("/api/me/email/start", { email: nextEmail });
+    setMe((prev) => ({ ...(prev || {}), pending_email: nextEmail }));
+    setEmailMsg("✅ Ссылка для подтверждения новой почты отправлена");
+    setEmailEditMode(false);
   } catch (e) {
-    setEmailMsg("❌ Не удалось отправить письмо");
+    const reason = e?.response?.data?.reason;
+    if (reason === "email_in_use") setEmailMsg("❌ Эта почта уже используется");
+    else if (reason === "same_as_current") setEmailMsg("⚠️ Это уже ваша текущая почта");
+    else setEmailMsg("❌ Не удалось отправить письмо");
   } finally {
     setEmailBusy(false);
   }
@@ -3694,6 +3720,12 @@ function openYandexRoute(lat, lon) {
         <div className="card">
           <h2>Профиль</h2>
 
+          {!!me?.disabled && !isAdmin && (
+            <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
+              ⚠️ Ваш аккаунт сейчас неактивен. Доступен только раздел профиля.
+            </div>
+          )}
+
           <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
             <button
               className={profileView === "me" ? "btn" : "btn secondary"}
@@ -3814,28 +3846,72 @@ function openYandexRoute(lat, lon) {
                 <div style={{ fontWeight: 800 }}>📧 Почта для входа</div>
                 <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
                   {me?.email
-                    ? (me?.email_verified ? "Почта подтверждена" : "Почта не подтверждена")
+                    ? (me?.email_verified ? "Текущая почта подтверждена" : "Текущая почта не подтверждена")
                     : "Почта не привязана"}
                 </div>
 
-                <div style={{ marginTop: 10 }}>
-                  <label>Почта</label>
-                  <input
-                    className="input"
-                    type="email"
-                    placeholder="name@example.com"
-                    value={emailDraft}
-                    onChange={(e) => setEmailDraft(e.target.value)}
-                    disabled={emailBusy}
-                  />
-                </div>
+                {me?.email ? (
+                  <div className="small" style={{ marginTop: 8 }}>
+                    Активная почта: <b>{me.email}</b>
+                  </div>
+                ) : null}
+
+                {me?.pending_email ? (
+                  <div className="small" style={{ marginTop: 6 }}>
+                    Ожидает подтверждения: <b>{me.pending_email}</b> (до подтверждения вход остаётся по старой почте)
+                  </div>
+                ) : null}
+
+                {(!me?.email || emailEditMode) ? (
+                  <div style={{ marginTop: 10 }}>
+                    <label>{me?.email ? "Новая почта" : "Почта"}</label>
+                    <input
+                      className="input"
+                      type="email"
+                      placeholder="name@example.com"
+                      value={emailDraft}
+                      onChange={(e) => setEmailDraft(e.target.value)}
+                      disabled={emailBusy}
+                    />
+                  </div>
+                ) : null}
 
                 {emailMsg ? <div className="small" style={{ marginTop: 8 }}>{emailMsg}</div> : null}
 
                 <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-                  <button className="btn secondary" onClick={sendEmailVerification} disabled={emailBusy || !emailDraft}>
-                    Отправить подтверждение
-                  </button>
+                  {me?.email && !emailEditMode ? (
+                    <button
+                      className="btn secondary"
+                      onClick={() => {
+                        setEmailEditMode(true);
+                        setEmailDraft("");
+                        setEmailMsg("");
+                      }}
+                      disabled={emailBusy}
+                    >
+                      Изменить почту
+                    </button>
+                  ) : (
+                    <>
+                      <button className="btn secondary" onClick={sendEmailVerification} disabled={emailBusy || !emailDraft.trim()}>
+                        {me?.email ? "Подтвердить новую почту" : "Отправить подтверждение"}
+                      </button>
+
+                      {me?.email ? (
+                        <button
+                          className="btn ghost"
+                          onClick={() => {
+                            setEmailEditMode(false);
+                            setEmailDraft(me?.pending_email || me?.email || "");
+                            setEmailMsg("");
+                          }}
+                          disabled={emailBusy}
+                        >
+                          Отмена
+                        </button>
+                      ) : null}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -4910,7 +4986,7 @@ function openYandexRoute(lat, lon) {
                 onChanged={onChanged}
               />
 
-      <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} />
+      <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} profileOnly={!!me?.disabled && !isAdmin} />
     </div>
   );
 }
@@ -5440,14 +5516,16 @@ function posHuman(posRaw) {
   return pos === "G" ? "🥅 Вратарь" : pos === "D" ? "🛡️ Защитник" : "🏒 Нападающий";
 }
 
-function BottomNav({ tab, setTab, isAdmin }) {
-  const items = [
-    { key: "game", label: "Игры", icon: "📅" },
-    { key: "players", label: "Игроки", icon: "👥" },
-    { key: "stats", label: "Статистика", icon: "📊" },
-    { key: "profile", label: "Профиль", icon: "👤" },
-    ...(isAdmin ? [{ key: "admin", label: "Админ", icon: "🛠" }] : []),
-  ];
+function BottomNav({ tab, setTab, isAdmin, profileOnly = false }) {
+  const items = profileOnly
+    ? [{ key: "profile", label: "Профиль", icon: "👤" }]
+    : [
+        { key: "game", label: "Игры", icon: "📅" },
+        { key: "players", label: "Игроки", icon: "👥" },
+        { key: "stats", label: "Статистика", icon: "📊" },
+        { key: "profile", label: "Профиль", icon: "👤" },
+        ...(isAdmin ? [{ key: "admin", label: "Админ", icon: "🛠" }] : []),
+      ];
 
   return (
     <nav className="bottomNav" role="navigation" aria-label="Навигация">
