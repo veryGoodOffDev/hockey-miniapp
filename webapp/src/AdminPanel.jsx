@@ -348,7 +348,7 @@ function MapPickModal({ open, initial, onClose, onPick }) {
 
 
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
-  const [section, setSection] = useState("games"); // games | players | reminders
+  const [section, setSection] = useState("games"); // games | players | applications | reminders | jersey
 
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
@@ -1516,6 +1516,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         <button className={`segBtn ${section === "players" ? "active" : ""}`} onClick={() => setSection("players")}>
           Игроки
         </button>
+        <button className={`segBtn ${section === "applications" ? "active" : ""}`} onClick={() => setSection("applications")}>
+          Заявки{teamApps.length ? ` (${teamApps.length})` : ""}
+        </button>
         <button className={`segBtn ${section === "jersey" ? "active" : ""}`} onClick={() => setSection("jersey")}>
           Форма
         </button>
@@ -1961,44 +1964,48 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
   </div>
 )}
 
+
+{/* ====== APPLICATIONS ====== */}
+      {section === "applications" && (
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="rowBetween">
+            <h2 style={{ margin: 0 }}>Заявки</h2>
+            <button className="btn secondary" onClick={load}>Обновить</button>
+          </div>
+
+          {teamApps.length === 0 ? (
+            <div className="small" style={{ marginTop: 10, opacity: 0.8 }}>
+              Пока заявок нет.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+              {teamApps.map((app) => (
+                <div key={app.id} className="listItem">
+                  <div className="rowBetween">
+                    <div style={{ fontWeight: 800 }}>{app.email}</div>
+                    <div className="small">{new Date(app.created_at).toLocaleString("ru-RU")}</div>
+                  </div>
+                  <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                    <button className="btn" onClick={() => approveTeamApp(app.id)} disabled={teamAppsLoading}>
+                      Принять
+                    </button>
+                    <button className="btn secondary" onClick={() => rejectTeamApp(app.id)} disabled={teamAppsLoading}>
+                      Отклонить
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
 {/* ====== PLAYERS ====== */}
       {section === "players" && (
         <div className="card" style={{ marginTop: 12 }}>
           <div className="rowBetween">
             <h2 style={{ margin: 0 }}>Игроки</h2>
             <button className="btn secondary" onClick={load}>Обновить</button>
-          </div>
-
-          <div className="card" style={{ marginTop: 12 }}>
-            <div className="rowBetween">
-              <div style={{ fontWeight: 800 }}>🆕 Новые заявки в команду</div>
-              <span className="badgeMini">{teamApps.length}</span>
-            </div>
-
-            {teamApps.length === 0 ? (
-              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>
-                Пока заявок нет.
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                {teamApps.map((app) => (
-                  <div key={app.id} className="listItem">
-                    <div className="rowBetween">
-                      <div style={{ fontWeight: 800 }}>{app.email}</div>
-                      <div className="small">{new Date(app.created_at).toLocaleString("ru-RU")}</div>
-                    </div>
-                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                      <button className="btn" onClick={() => approveTeamApp(app.id)} disabled={teamAppsLoading}>
-                        Принять
-                      </button>
-                      <button className="btn secondary" onClick={() => rejectTeamApp(app.id)} disabled={teamAppsLoading}>
-                        Отклонить
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           <input
@@ -2070,6 +2077,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
   onClose={closePlayerSheet}
   apiPatch={apiPatch}
   apiPost={apiPost}
+  apiDelete={apiDelete}
   onReload={() => load({ silent: true })}
   onChanged={onChanged}
 />
