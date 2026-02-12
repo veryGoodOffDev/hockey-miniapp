@@ -2129,7 +2129,7 @@ app.post("/api/auth/email/start", async (req, res) => {
         ttlMinutes,
         preheader: `Ваш код: ${code}. Действует ${ttlMinutes} минут.`,
         logoUrl: EMAIL_LOGO_URL,
-        ctaUrl: WEBAPP_LOGIN_URL,
+        ctaUrl: WEB_APP_URL,
       }),
     });
 
