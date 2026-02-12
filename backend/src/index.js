@@ -1755,6 +1755,187 @@ function buildOtpEmailHtml({
   </div>`;
 }
 
+const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "";
+const PUBLIC_WEBAPP_AFTER_CONFIRM_PATH = process.env.PUBLIC_WEBAPP_AFTER_CONFIRM_PATH || "/?email_verified=1";
+const EMAIL_BRAND = process.env.EMAIL_BRAND || "Mighty Sheep";
+
+
+// Если за nginx/прокси — полезно:
+// app.set("trust proxy", 1);
+
+function getPublicApiBase(req) {
+  return PUBLIC_API_URL || apiBaseFromReq(req);
+}
+
+function getPublicWebBase(req) {
+  return PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
+}
+
+function safeNextUrl(nextRaw, webBase) {
+  try {
+    if (!nextRaw) return null;
+    const base = new URL(webBase);
+    const u = new URL(String(nextRaw), webBase); // relative тоже ок
+    if (u.origin !== base.origin) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function defaultNextUrl(req) {
+  const webBase = getPublicWebBase(req);
+  try {
+    return new URL(PUBLIC_WEBAPP_AFTER_CONFIRM_PATH, webBase).toString();
+  } catch {
+    return `${webBase}/?email_verified=1`;
+  }
+}
+
+function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
+  const esc = (s) =>
+    String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    }[c]));
+
+  const safeLink = esc(link);
+  const pre = esc(preheader || "Подтвердите почту и входите через браузер по email.");
+
+  const logoHtml = logoUrl
+    ? `<img src="${esc(logoUrl)}" width="36" height="36" alt="${esc(brand)}"
+            style="display:block;border-radius:10px;object-fit:cover;" />`
+    : "";
+
+  return `
+  <div style="display:none;font-size:1px;color:#0b0f19;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    ${pre}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  </div>
+
+  <div style="background:#0b0f19;padding:24px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%"
+           style="max-width:560px;margin:0 auto;">
+      <tr>
+        <td style="padding:0 16px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+                 style="background:#11162a;border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;">
+            <tr>
+              <td style="padding:14px 16px;background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(17,22,42,0));">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                  <tr>
+                    <td width="44" valign="middle">${logoHtml}</td>
+                    <td valign="middle" style="padding-left:10px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.14em;
+                                  text-transform:uppercase;color:#e8ecff;opacity:.9;">
+                        ${esc(brand)}
+                      </div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#e8ecff;opacity:.7;margin-top:2px;">
+                        Подтверждение почты
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:18px 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;color:#e8ecff;">
+                <div style="font-size:20px;font-weight:900;margin:0 0 10px;">
+                  Подтвердите email
+                </div>
+
+                <div style="font-size:14px;line-height:1.5;opacity:.9;margin:0 0 14px;">
+                  Нажмите кнопку ниже, чтобы подтвердить почту. После этого вы сможете входить в приложение через браузер по email.
+                </div>
+
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">
+                  <tr>
+                    <td bgcolor="#7c3aed" style="border-radius:12px;">
+                      <a href="${safeLink}"
+                         style="display:inline-block;padding:12px 16px;font-family:Arial,Helvetica,sans-serif;
+                                font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:12px;">
+                        Подтвердить почту
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <div style="font-size:12px;line-height:1.5;opacity:.65;margin-top:14px;">
+                  Если кнопка не работает, откройте ссылку:<br/>
+                  <a href="${safeLink}" style="color:#a78bfa;word-break:break-all;">${safeLink}</a>
+                </div>
+
+                <div style="font-size:12px;opacity:.55;margin-top:12px;">
+                  Если это были не вы — просто проигнорируйте письмо.
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>`;
+}
+
+function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
+  const esc = (s) =>
+    String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    }[c]));
+
+  const logo = logoUrl
+    ? `<img src="${esc(logoUrl)}" width="44" height="44" alt="${esc(brand)}"
+            style="display:block;border-radius:14px;object-fit:cover;border:1px solid rgba(255,255,255,.14)" />`
+    : "";
+
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Почта подтверждена</title>
+  <style>
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b0f19;color:#e8ecff}
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{max-width:560px;width:100%;background:#11162a;border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .head{padding:16px 18px;background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(17,22,42,0));
+      display:flex;gap:12px;align-items:center}
+    .brand{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.9}
+    .sub{font-size:12px;opacity:.7;margin-top:2px}
+    .body{padding:18px}
+    h1{margin:0 0 10px;font-size:22px}
+    p{margin:10px 0;line-height:1.5;color:rgba(232,236,255,.85)}
+    .btn{display:inline-block;margin-top:14px;background:#7c3aed;color:white;text-decoration:none;
+      padding:12px 16px;border-radius:12px;font-weight:800}
+    .muted{margin-top:14px;font-size:13px;color:rgba(232,236,255,.6)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        ${logo}
+        <div>
+          <div class="brand">${esc(brand)}</div>
+          <div class="sub">Подтверждение почты</div>
+        </div>
+      </div>
+      <div class="body">
+        <h1>Почта подтверждена ✅</h1>
+        <p>Теперь можно входить в приложение через браузер по этой почте (не только через Telegram).</p>
+        <a class="btn" href="${esc(nextUrl)}">Открыть приложение</a>
+        <div class="muted">Автопереход через пару секунд…</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    setTimeout(function(){ window.location.href = ${JSON.stringify(nextUrl)}; }, 2200);
+  </script>
+</body>
+</html>`;
+}
+
 
 
 
@@ -1892,13 +2073,33 @@ app.get("/api/auth/email/confirm", async (req, res) => {
       [payload.uid, payload.email]
     );
 
-    const redirectBase = PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
-    return res.redirect(`${redirectBase}/?email_verified=1`);
+    const webBase = getPublicWebBase(req);
+    const apiBase = getPublicApiBase(req);
+
+    const next = safeNextUrl(req.query?.next, webBase) || defaultNextUrl(req);
+
+    // ведём на красивую страницу на API, она сама редиректит на next
+    return res.redirect(`${apiBase}/auth/email/confirmed?next=${encodeURIComponent(next)}`);
   } catch (e) {
     console.error("GET /api/auth/email/confirm failed:", e);
     return res.status(500).send("server_error");
   }
 });
+
+
+app.get("/auth/email/confirmed", (req, res) => {
+  const webBase = getPublicWebBase(req);
+  const next = safeNextUrl(req.query?.next, webBase) || defaultNextUrl(req);
+
+  res.status(200).type("html").send(
+    renderEmailConfirmedHtml({
+      brand: EMAIL_BRAND,
+      logoUrl: EMAIL_LOGO_URL,
+      nextUrl: next,
+    })
+  );
+});
+
 
 app.post("/api/me/email/start", async (req, res) => {
   try {
@@ -1921,14 +2122,25 @@ app.post("/api/me/email/start", async (req, res) => {
     );
 
     const token = signToken({ uid: user.id, email, exp: Date.now() + EMAIL_VERIFY_TTL_MS });
-    const base = PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
-    const link = `${base}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
+
+    const apiBase = getPublicApiBase(req);
+    const webBase = getPublicWebBase(req);
+
+    const next = defaultNextUrl(req); // например https://mightysheep.ru/?email_verified=1
+    // confirm всегда на API:
+    const link =
+      `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
 
     await sendEmail({
       to: email,
-      subject: "Подтверждение почты",
+      subject: `${EMAIL_BRAND} — подтверждение почты`,
       text: `Чтобы подтвердить почту, откройте ссылку: ${link}`,
-      html: `<p>Чтобы подтвердить почту, откройте ссылку:</p><p><a href="${link}">${link}</a></p>`,
+      html: buildConfirmEmailHtml({
+        brand: BRAND,
+        logoUrl: EMAIL_LOGO_URL,
+        link,
+        preheader: "Подтвердите почту и входите через браузер по email.",
+      }),
     });
 
     return res.json({ ok: true });
@@ -1937,6 +2149,7 @@ app.post("/api/me/email/start", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 
 /** ====== ME ====== */
 /** ====== ME ====== */
