@@ -1763,34 +1763,7 @@ const EMAIL_BRAND = process.env.EMAIL_BRAND || "Mighty Sheep";
 // Если за nginx/прокси — полезно:
 // app.set("trust proxy", 1);
 
-function getPublicApiBase(req) {
-  return PUBLIC_API_URL || apiBaseFromReq(req);
-}
 
-function getPublicWebBase(req) {
-  return WEB_APP_URL || apiBaseFromReq(req);
-}
-
-function safeNextUrl(nextRaw, webBase) {
-  try {
-    if (!nextRaw) return null;
-    const base = new URL(webBase);
-    const u = new URL(String(nextRaw), webBase); // relative тоже ок
-    if (u.origin !== base.origin) return null;
-    return u.toString();
-  } catch {
-    return null;
-  }
-}
-
-function defaultNextUrl(req) {
-  const webBase = getPublicWebBase(req);
-  try {
-    return new URL(PUBLIC_WEBAPP_AFTER_CONFIRM_PATH, webBase).toString();
-  } catch {
-    return `${webBase}/?email_verified=1`;
-  }
-}
 
 function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
   const esc = (s) =>
@@ -1813,7 +1786,7 @@ function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
 
   <div style="background:#0b0f19;padding:24px 0;">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%"
-           style="max-width:560px;margin:0 auto;">
+           style="max-width:560px;margin:0 auto;table-layout:fixed;">
       <tr>
         <td style="padding:0 16px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
@@ -1860,8 +1833,8 @@ function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
                 </table>
 
                 <div style="font-size:12px;line-height:1.5;opacity:.65;margin-top:14px;">
-                  Если кнопка не работает, откройте ссылку:<br/>
-                  <a href="${safeLink}" style="color:#a78bfa;word-break:break-all;">${safeLink}</a>
+                  Если кнопка не работает, нажмите сюда:
+                  <a href="${safeLink}" style="color:#a78bfa;text-decoration:underline;">открыть подтверждение</a>
                 </div>
 
                 <div style="font-size:12px;opacity:.55;margin-top:12px;">
@@ -1875,6 +1848,7 @@ function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
     </table>
   </div>`;
 }
+
 
 function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
   const esc = (s) =>
@@ -1946,22 +1920,16 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== AUTH: EMAIL OTP ====== */
 
-const WEBAPP_LOGIN_URL = (process.env.WEB_APP_URL || "https://mightysheep.ru")
-  .replace(/^"|"$/g, "")
-  .replace(/\/$/, "");
-
 const BRAND = (process.env.EMAIL_BRAND || "Mighty Sheep").replace(/^"|"$/g, "");
 const EMAIL_LOGO_URL = (process.env.EMAIL_LOGO_URL || "").replace(/^"|"$/g, "");
 
-// у тебя в env есть WEB_APP_URL, используем его как основной
 function getWebBase() {
   const raw = (process.env.PUBLIC_WEBAPP_URL || process.env.WEB_APP_URL || "https://mightysheep.ru")
     .replace(/^"|"$/g, "")
     .trim();
-  return raw.replace(/\/$/, ""); // без слэша на конце
+  return raw.replace(/\/$/, "");
 }
 
-// API base (если PUBLIC_API_URL пуст, берём host запроса)
 function getApiBase(req) {
   const raw = (process.env.PUBLIC_API_URL || "").replace(/^"|"$/g, "").trim();
   if (raw) return raw.replace(/\/$/, "");
@@ -1988,21 +1956,13 @@ app.post("/api/me/email/start", async (req, res) => {
       [user.id, email]
     );
 
-    // ✅ безопасный TTL (если env пустой)
-    const ttlMs = Number(process.env.EMAIL_VERIFY_TTL_MS) || (24 * 60 * 60 * 1000); // 24h
-    const exp = Date.now() + ttlMs;
+    const ttlMs = Number(process.env.EMAIL_VERIFY_TTL_MS) || (24 * 60 * 60 * 1000);
+    const token = signToken({ uid: user.id, email, exp: Date.now() + ttlMs });
 
-    const token = signToken({ uid: user.id, email, exp });
-
-    const webBase = getWebBase();
     const apiBase = getApiBase(req);
 
-    // ✅ тебе нужен редирект только на главную
-    const next = `${webBase}/?email_verified=1`;
-
-    // ✅ confirm всегда на API
-    const link =
-      `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
+    // ✅ УКОРАЧИВАЕМ ссылку: убираем next полностью (тебе всё равно на главную)
+    const link = `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
 
     await sendEmail({
       to: email,
@@ -2022,6 +1982,7 @@ app.post("/api/me/email/start", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 
 
 
@@ -2085,7 +2046,14 @@ app.post("/api/auth/email/verify", async (req, res) => {
 app.get("/api/auth/email/confirm", async (req, res) => {
   try {
     const token = String(req.query?.token || "");
-    const payload = verifyToken(token);
+
+    let payload = null;
+    try {
+      payload = verifyToken(token);
+    } catch (err) {
+      return res.status(400).send("bad_token");
+    }
+
     if (!payload?.uid || !payload?.email) {
       return res.status(400).send("bad_token");
     }
@@ -2103,22 +2071,18 @@ app.get("/api/auth/email/confirm", async (req, res) => {
       [payload.uid, payload.email]
     );
 
-    const webBase = getPublicWebBase(req);
-
-    const next = safeNextUrl(req.query?.next, webBase) || defaultNextUrl(req);
-
     const apiBase = getApiBase(req);
     return res.redirect(`${apiBase}/auth/email/confirmed`);
   } catch (e) {
-    console.error("GET /api/auth/email/confirm failed:", e);
+    console.error("GET /api/auth/email/confirm failed:", e?.stack || e);
     return res.status(500).send("server_error");
   }
 });
 
 
+
 app.get("/auth/email/confirmed", (req, res) => {
-  const webBase = getWebBase();
-  const next = `${webBase}/?email_verified=1`;
+  const next = `${getWebBase()}/?email_verified=1`;
 
   res.status(200).type("html").send(
     renderEmailConfirmedHtml({
@@ -2130,54 +2094,6 @@ app.get("/auth/email/confirmed", (req, res) => {
 });
 
 
-app.post("/api/me/email/start", async (req, res) => {
-  try {
-    const user = requireWebAppAuth(req, res);
-    if (!user) return;
-
-    const email = normalizeEmail(req.body?.email);
-    if (!email || !email.includes("@")) {
-      return res.status(400).json({ ok: false, reason: "bad_email" });
-    }
-
-    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
-    if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(user.id)) {
-      return res.status(400).json({ ok: false, reason: "email_in_use" });
-    }
-
-    await q(
-      `UPDATE players SET email=$2, email_verified=FALSE, email_verified_at=NULL WHERE tg_id=$1`,
-      [user.id, email]
-    );
-
-    const token = signToken({ uid: user.id, email, exp: Date.now() + EMAIL_VERIFY_TTL_MS });
-
-    const apiBase = getPublicApiBase(req);
-    const webBase = getPublicWebBase(req);
-
-    const next = defaultNextUrl(req); // например https://mightysheep.ru/?email_verified=1
-    // confirm всегда на API:
-    const link =
-      `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
-
-    await sendEmail({
-      to: email,
-      subject: `${EMAIL_BRAND} — подтверждение почты`,
-      text: `Чтобы подтвердить почту, откройте ссылку: ${link}`,
-      html: buildConfirmEmailHtml({
-        brand: BRAND,
-        logoUrl: EMAIL_LOGO_URL,
-        link,
-        preheader: "Подтвердите почту и входите через браузер по email.",
-      }),
-    });
-
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error("POST /api/me/email/start failed:", e);
-    return res.status(500).json({ ok: false, reason: "server_error" });
-  }
-});
 
 
 /** ====== ME ====== */
