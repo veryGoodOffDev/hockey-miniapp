@@ -1768,7 +1768,7 @@ function getPublicApiBase(req) {
 }
 
 function getPublicWebBase(req) {
-  return PUBLIC_WEBAPP_URL || apiBaseFromReq(req);
+  return WEB_APP_URL || apiBaseFromReq(req);
 }
 
 function safeNextUrl(nextRaw, webBase) {
