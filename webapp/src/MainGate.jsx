@@ -69,7 +69,7 @@ export default function MainGate({ onAuthed }) {
           teamName="Mighty Sheep"
           teamSubtitle="Вход в Hockey MiniApp"
           teamCoverSrc="/brand/teamcover.jpg"
-          teamLogoSrc="/brand/commandlog.jpg"
+          teamLogoSrc="/brand/commandlog.webp"
         />
     );
   }

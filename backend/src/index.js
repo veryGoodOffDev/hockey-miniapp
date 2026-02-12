@@ -1642,7 +1642,9 @@ function buildOtpEmailHtml({
   code,
   ttlMinutes = 10,
   preheader = "",
-  note = "Никому не сообщайте этот код.",
+  logoUrl = "",      // например: https://mightysheep.ru/assets/email-logo.png
+  ctaUrl = "",       // например: https://mightysheep.ru/login (опционально)
+  bgImageUrl = "",   // опционально, может не везде работать
 }) {
   const esc = (s) =>
     String(s || "").replace(/[&<>"']/g, (c) => ({
@@ -1650,68 +1652,99 @@ function buildOtpEmailHtml({
     }[c]));
 
   const c = String(code || "").trim();
+  const pre = esc(preheader || `Ваш код: ${c}. Действует ${ttlMinutes} минут.`);
 
-  // preheader (скрытый текст для превью в почтовиках)
-  // + padding из невидимых символов, чтобы Gmail не подхватывал рандомный контент
-  const pre = esc(preheader || `Ваш код входа: ${c}. Действует ${ttlMinutes} минут.`);
+  const headerBg = bgImageUrl
+    ? `background-image:url('${esc(bgImageUrl)}');background-size:cover;background-position:center;`
+    : `background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(17,22,42,0));`;
 
-  const cells = c.split("").map((ch) => `
-    <td align="center" valign="middle"
-        style="width:44px;height:52px;border:1px solid rgba(255,255,255,.18);
-               border-radius:12px;background:rgba(255,255,255,.06);
-               font-size:22px;font-weight:900;
-               font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-               color:#ffffff;">
-      ${esc(ch)}
-    </td>
-  `).join(`<td style="width:8px;"></td>`);
+  const logoHtml = logoUrl
+    ? `<img src="${esc(logoUrl)}" width="36" height="36" alt="${esc(brand)}"
+            style="display:block;border-radius:10px;object-fit:cover;" />`
+    : "";
+
+  const ctaHtml = ctaUrl
+    ? `
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
+        <tr>
+          <td bgcolor="#7c3aed" style="border-radius:12px;">
+            <a href="${esc(ctaUrl)}"
+               style="display:inline-block;padding:12px 16px;font-family:Arial,Helvetica,sans-serif;
+                      font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:12px;">
+              Открыть страницу входа
+            </a>
+          </td>
+        </tr>
+      </table>
+    `
+    : "";
 
   return `
+  <!-- Preheader -->
   <div style="display:none;font-size:1px;color:#0b0f19;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
     ${pre}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
   </div>
 
-  <div style="background:#0b0f19;padding:24px 0;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%" style="max-width:560px;margin:0 auto;">
+  <div style="background:#0b0f19;padding:26px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%"
+           style="max-width:560px;margin:0 auto;">
       <tr>
         <td style="padding:0 16px;">
 
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-                 style="background:#11162a;border:1px solid rgba(255,255,255,.12);border-radius:16px;">
+                 style="background:#11162a;border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;">
+            <!-- Header -->
             <tr>
-              <td style="padding:18px 18px 0 18px;">
-                <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.12em;
-                            text-transform:uppercase;opacity:.8;color:#e8ecff;">
-                  ${esc(brand)}
-                </div>
+              <td style="padding:14px 16px;${headerBg}">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                  <tr>
+                    <td width="44" valign="middle">
+                      ${logoHtml}
+                    </td>
+                    <td valign="middle" style="padding-left:10px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.14em;
+                                  text-transform:uppercase;color:#e8ecff;opacity:.9;">
+                        ${esc(brand)}
+                      </div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#e8ecff;opacity:.7;margin-top:2px;">
+                        Код входа • действует ${esc(ttlMinutes)} минут
+                      </div>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
 
+            <!-- Body -->
             <tr>
-              <td style="padding:12px 18px 18px 18px;font-family:Arial,Helvetica,sans-serif;color:#e8ecff;">
+              <td style="padding:18px 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;color:#e8ecff;">
                 <div style="font-size:20px;font-weight:900;margin:0 0 10px;">
-                  Код входа
+                  Ваш код входа
                 </div>
 
                 <div style="font-size:14px;line-height:1.5;opacity:.9;margin:0 0 14px;">
-                  Введите этот код в приложении, чтобы войти. Код действует <b>${esc(ttlMinutes)}</b> минут.
+                  Введите этот код в приложении, чтобы войти.
                 </div>
 
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 14px;">
-                  <tr>${cells}</tr>
-                </table>
-
-                <div style="font-size:12px;line-height:1.5;opacity:.65;">
-                  ${esc(note)}
+                <!-- Code block (без ячеек) -->
+                <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+                            border-radius:14px;padding:14px 14px;text-align:center;">
+                  <div style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+                              font-size:36px;font-weight:900;letter-spacing:.18em;color:#ffffff;">
+                    ${esc(c)}
+                  </div>
                 </div>
 
-                <div style="font-size:12px;opacity:.55;margin-top:12px;">
-                  Если вы не запрашивали код — просто проигнорируйте письмо.
+                ${ctaHtml}
+
+                <div style="font-size:12px;line-height:1.5;opacity:.65;margin-top:14px;">
+                  Никому не сообщайте этот код. Если вы не запрашивали код — просто проигнорируйте письмо.
                 </div>
               </td>
             </tr>
           </table>
 
+          <!-- footer hint -->
           <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;opacity:.55;color:#e8ecff;padding:10px 2px 0;">
             Подсказка: код — <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;">${esc(c)}</span>
           </div>
@@ -1732,6 +1765,10 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== AUTH: EMAIL OTP ====== */
 const BRAND = process.env.EMAIL_BRAND || "Mighty Sheep";
+const EMAIL_LOGO_URL = process.env.EMAIL_LOGO_URL || ""; // https://...
+const WEBAPP_LOGIN_URL = process.env.PUBLIC_WEBAPP_URL
+  ? `${process.env.PUBLIC_WEBAPP_URL}${process.env.PUBLIC_WEBAPP_LOGIN_PATH || "/login"}`
+  : "";
 
 app.post("/api/auth/email/start", async (req, res) => {
   try {
@@ -1752,12 +1789,9 @@ app.post("/api/auth/email/start", async (req, res) => {
 
     const ttlMinutes = Math.round(EMAIL_CODE_TTL_MS / 60000) || 10;
 
-    const subject = `${BRAND} — код входа`;
-    const preheader = `Ваш код: ${code}. Действует ${ttlMinutes} минут.`;
-
     await sendEmail({
       to: email,
-      subject,
+      subject: `${BRAND} — код входа`,
       text:
         `Ваш код входа: ${code}\n` +
         `Код действует ${ttlMinutes} минут.\n\n` +
@@ -1766,7 +1800,10 @@ app.post("/api/auth/email/start", async (req, res) => {
         brand: BRAND,
         code,
         ttlMinutes,
-        preheader,
+        preheader: `Ваш код: ${code}. Действует ${ttlMinutes} минут.`,
+        logoUrl: EMAIL_LOGO_URL,
+        ctaUrl: WEBAPP_LOGIN_URL,     // можно убрать, если не нужна кнопка
+        // bgImageUrl: "https://mightysheep.ru/assets/email-bg.jpg" // опционально
       }),
     });
 
@@ -1776,6 +1813,7 @@ app.post("/api/auth/email/start", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 
 
 app.post("/api/auth/email/verify", async (req, res) => {
