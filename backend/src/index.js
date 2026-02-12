@@ -2012,13 +2012,23 @@ app.post("/api/me/email/start", async (req, res) => {
       return res.status(400).json({ ok: false, reason: "bad_email" });
     }
 
+    const currentPlayer = await q(`SELECT email FROM players WHERE tg_id=$1`, [user.id]);
+    const activeEmail = normalizeEmail(currentPlayer.rows?.[0]?.email || null);
+
+    if (activeEmail && activeEmail.toLowerCase() === email.toLowerCase()) {
+      return res.status(400).json({ ok: false, reason: "same_as_current" });
+    }
+
     const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [email]);
     if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(user.id)) {
       return res.status(400).json({ ok: false, reason: "email_in_use" });
     }
 
     await q(
-      `UPDATE players SET email=$2, email_verified=FALSE, email_verified_at=NULL WHERE tg_id=$1`,
+      `UPDATE players
+         SET pending_email=$2,
+             pending_email_requested_at=NOW()
+       WHERE tg_id=$1`,
       [user.id, email]
     );
 
@@ -2027,7 +2037,6 @@ app.post("/api/me/email/start", async (req, res) => {
 
     const apiBase = getApiBase(req);
 
-    // ✅ УКОРАЧИВАЕМ ссылку: убираем next полностью (тебе всё равно на главную)
     const link = `${apiBase}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
 
     await sendEmail({
@@ -2038,7 +2047,7 @@ app.post("/api/me/email/start", async (req, res) => {
         brand: BRAND,
         logoUrl: EMAIL_LOGO_URL,
         link,
-        preheader: "Подтвердите почту и входите через браузер по email.",
+        preheader: "Подтвердите новую почту для входа через браузер по email.",
       }),
     });
 
@@ -2127,14 +2136,34 @@ app.get("/api/auth/email/confirm", async (req, res) => {
     const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1`, [payload.uid]);
     if (!pr.rows?.[0]) return res.status(404).send("not_found");
 
-    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [payload.email]);
+    const playerRow = await q(
+      `SELECT email, pending_email FROM players WHERE tg_id=$1`,
+      [payload.uid]
+    );
+    const player = playerRow.rows?.[0];
+    if (!player) return res.status(404).send("not_found");
+
+    const pendingEmail = normalizeEmail(player.pending_email || null);
+    const tokenEmail = normalizeEmail(payload.email || null);
+
+    if (!tokenEmail || !pendingEmail || tokenEmail.toLowerCase() !== pendingEmail.toLowerCase()) {
+      return res.status(400).send("stale_token");
+    }
+
+    const existing = await q(`SELECT tg_id FROM players WHERE LOWER(email)=LOWER($1)`, [tokenEmail]);
     if (existing.rows?.[0] && Number(existing.rows[0].tg_id) !== Number(payload.uid)) {
       return res.status(400).send("email_in_use");
     }
 
     await q(
-      `UPDATE players SET email=$2, email_verified=TRUE, email_verified_at=NOW() WHERE tg_id=$1`,
-      [payload.uid, payload.email]
+      `UPDATE players
+          SET email=$2,
+              email_verified=TRUE,
+              email_verified_at=NOW(),
+              pending_email=NULL,
+              pending_email_requested_at=NULL
+        WHERE tg_id=$1`,
+      [payload.uid, tokenEmail]
     );
 
     const apiBase = getApiBase(req);

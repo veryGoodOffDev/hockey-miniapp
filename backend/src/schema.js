@@ -186,6 +186,8 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email TEXT;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pending_email TEXT;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pending_email_requested_at TIMESTAMPTZ;`);
 
   await q(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_players_email_unique
