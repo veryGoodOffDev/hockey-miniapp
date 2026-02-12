@@ -1637,6 +1637,90 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
 }
 
 
+function buildOtpEmailHtml({
+  brand = "Mighty Sheep",
+  code,
+  ttlMinutes = 10,
+  preheader = "",
+  note = "Никому не сообщайте этот код.",
+}) {
+  const esc = (s) =>
+    String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    }[c]));
+
+  const c = String(code || "").trim();
+
+  // preheader (скрытый текст для превью в почтовиках)
+  // + padding из невидимых символов, чтобы Gmail не подхватывал рандомный контент
+  const pre = esc(preheader || `Ваш код входа: ${c}. Действует ${ttlMinutes} минут.`);
+
+  const cells = c.split("").map((ch) => `
+    <td align="center" valign="middle"
+        style="width:44px;height:52px;border:1px solid rgba(255,255,255,.18);
+               border-radius:12px;background:rgba(255,255,255,.06);
+               font-size:22px;font-weight:900;
+               font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+               color:#ffffff;">
+      ${esc(ch)}
+    </td>
+  `).join(`<td style="width:8px;"></td>`);
+
+  return `
+  <div style="display:none;font-size:1px;color:#0b0f19;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    ${pre}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  </div>
+
+  <div style="background:#0b0f19;padding:24px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%" style="max-width:560px;margin:0 auto;">
+      <tr>
+        <td style="padding:0 16px;">
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+                 style="background:#11162a;border:1px solid rgba(255,255,255,.12);border-radius:16px;">
+            <tr>
+              <td style="padding:18px 18px 0 18px;">
+                <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.12em;
+                            text-transform:uppercase;opacity:.8;color:#e8ecff;">
+                  ${esc(brand)}
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:12px 18px 18px 18px;font-family:Arial,Helvetica,sans-serif;color:#e8ecff;">
+                <div style="font-size:20px;font-weight:900;margin:0 0 10px;">
+                  Код входа
+                </div>
+
+                <div style="font-size:14px;line-height:1.5;opacity:.9;margin:0 0 14px;">
+                  Введите этот код в приложении, чтобы войти. Код действует <b>${esc(ttlMinutes)}</b> минут.
+                </div>
+
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 14px;">
+                  <tr>${cells}</tr>
+                </table>
+
+                <div style="font-size:12px;line-height:1.5;opacity:.65;">
+                  ${esc(note)}
+                </div>
+
+                <div style="font-size:12px;opacity:.55;margin-top:12px;">
+                  Если вы не запрашивали код — просто проигнорируйте письмо.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;opacity:.55;color:#e8ecff;padding:10px 2px 0;">
+            Подсказка: код — <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;">${esc(c)}</span>
+          </div>
+
+        </td>
+      </tr>
+    </table>
+  </div>`;
+}
 
 
 
@@ -1647,6 +1731,8 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /** ====== AUTH: EMAIL OTP ====== */
+const BRAND = process.env.EMAIL_BRAND || "Mighty Sheep";
+
 app.post("/api/auth/email/start", async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
@@ -1664,11 +1750,24 @@ app.post("/api/auth/email/start", async (req, res) => {
       [email, codeHash, expiresAt.toISOString()]
     );
 
+    const ttlMinutes = Math.round(EMAIL_CODE_TTL_MS / 60000) || 10;
+
+    const subject = `${BRAND} — код входа`;
+    const preheader = `Ваш код: ${code}. Действует ${ttlMinutes} минут.`;
+
     await sendEmail({
       to: email,
-      subject: "Код входа в хоккейное приложение",
-      text: `Ваш код входа: ${code}\nКод действует 10 минут.`,
-      html: `<p>Ваш код входа: <b>${code}</b></p><p>Код действует 10 минут.</p>`,
+      subject,
+      text:
+        `Ваш код входа: ${code}\n` +
+        `Код действует ${ttlMinutes} минут.\n\n` +
+        `Если вы не запрашивали код — просто проигнорируйте письмо.`,
+      html: buildOtpEmailHtml({
+        brand: BRAND,
+        code,
+        ttlMinutes,
+        preheader,
+      }),
     });
 
     return res.json({ ok: true });
@@ -1677,6 +1776,7 @@ app.post("/api/auth/email/start", async (req, res) => {
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
 });
+
 
 app.post("/api/auth/email/verify", async (req, res) => {
   try {
