@@ -138,6 +138,44 @@ useEffect(() => {
     }
   }
 
+
+  async function promoteGuestToManual() {
+    if (!draft?.tg_id) return;
+    const ok = confirm("Перевести гостя в постоянные игроки (manual)?");
+    if (!ok) return;
+
+    const email = String(draft.email || "").trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      notify("❌ Для перевода укажите корректный email");
+      return;
+    }
+
+    try {
+      const r = await apiPost(`/api/admin/players/${draft.tg_id}/promote`, { email });
+      if (!r?.ok) {
+        const reason = r?.reason || "unknown";
+        if (reason === "email_in_use") notify("❌ Такой email уже используется");
+        else if (reason === "not_guest") notify("⚠️ Этот игрок уже не гость");
+        else notify(`❌ Не удалось перевести: ${reason}`);
+        return;
+      }
+
+      setDraft((d) => ({
+        ...d,
+        player_kind: "manual",
+        is_guest: false,
+        email,
+        email_verified: false,
+      }));
+
+      await onReload?.();
+      await onChanged?.({ label: "✅ Гость переведён в постоянные игроки", refreshPlayers: true });
+      notify("✅ Гость переведён в постоянные игроки");
+    } catch (e) {
+      notify("❌ Не удалось перевести гостя");
+    }
+  }
+
   async function toggleAdmin() {
     await apiPost(`/api/admin/players/${draft.tg_id}/admin`, { is_admin: !draft.is_admin });
     setDraft((d) => ({ ...d, is_admin: !d.is_admin }));
@@ -277,7 +315,13 @@ useEffect(() => {
           ) : null}
 
 
-          {(["web", "manual"].includes(draft.player_kind)) ? (
+          {draft.player_kind === "guest" ? (
+            <button className="btn secondary" onClick={promoteGuestToManual}>
+              ⭐ Перевести в постоянные игроки
+            </button>
+          ) : null}
+
+          {(["guest", "web", "manual"].includes(draft.player_kind)) ? (
             <button className="btn secondary" onClick={deleteNonTgPlayer}>
               🗑️ Удалить игрока из приложения
             </button>
