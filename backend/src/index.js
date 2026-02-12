@@ -1947,8 +1947,8 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 /** ====== AUTH: EMAIL OTP ====== */
 const BRAND = process.env.EMAIL_BRAND || "Mighty Sheep";
 const EMAIL_LOGO_URL = process.env.EMAIL_LOGO_URL || ""; // https://...
-const WEBAPP_LOGIN_URL = process.env.PUBLIC_WEBAPP_URL
-  ? `${process.env.PUBLIC_WEBAPP_URL}${process.env.PUBLIC_WEBAPP_LOGIN_PATH || "/login"}`
+const WEBAPP_LOGIN_URL = process.env.WEB_APP_URL
+  ? `${process.env.WEB_APP_URL}${process.env.PUBLIC_WEBAPP_LOGIN_PATH || "/login"}`
   : "";
 
 app.post("/api/auth/email/start", async (req, res) => {
