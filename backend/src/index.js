@@ -2093,6 +2093,52 @@ app.get("/auth/email/confirmed", (req, res) => {
   );
 });
 
+// OTP: отправка 6-значного кода на почту (вход через email)
+app.post("/api/auth/email/start", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ ok: false, reason: "bad_email" });
+    }
+
+    // ✅ безопасный TTL даже если EMAIL_CODE_TTL_MS не задан
+    const ttlMs = Number(process.env.EMAIL_CODE_TTL_MS) || (10 * 60 * 1000);
+    const ttlMinutes = Math.round(ttlMs / 60000);
+
+    const code = generateCode();          // "123456"
+    const codeHash = hashToken(code);
+    const expiresAt = new Date(Date.now() + ttlMs);
+
+    await q(
+      `INSERT INTO email_login_codes(email, code_hash, expires_at)
+       VALUES ($1,$2,$3)`,
+      // ✅ лучше Date напрямую (pg сам приведет к timestamp)
+      [email, codeHash, expiresAt]
+    );
+
+    await sendEmail({
+      to: email,
+      subject: `${BRAND} — код входа`,
+      text:
+        `Ваш код входа: ${code}\n` +
+        `Код действует ${ttlMinutes} минут.\n\n` +
+        `Если вы не запрашивали код — просто проигнорируйте письмо.`,
+      html: buildOtpEmailHtml({
+        brand: BRAND,
+        code,
+        ttlMinutes,
+        preheader: `Ваш код: ${code}. Действует ${ttlMinutes} минут.`,
+        logoUrl: EMAIL_LOGO_URL,
+        ctaUrl: WEBAPP_LOGIN_URL,
+      }),
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/auth/email/start failed:", e?.stack || e);
+    return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
 
 
 
