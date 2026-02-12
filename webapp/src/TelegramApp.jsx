@@ -267,7 +267,7 @@ const commentsCardRef = useRef(null);
 
 const initStartedRef = useRef(false);
 
-
+const [confirmOpen, setConfirmOpen] = useState(false);
 
 function openGameDetail(id, focus = null) {
   setTab("game");                 // ✅ важно для переходов из чата
@@ -1760,6 +1760,11 @@ function logoutWeb() {
   window.location.reload();
 }
 
+
+  const logoutWebConfirmed = () => {
+    setConfirmOpen(false);
+    logoutWeb(); // твоя реальная функция очистки токена/редиректа
+  };
 
 
 function fmtDt(v) {
@@ -3834,20 +3839,70 @@ function openYandexRoute(lat, lon) {
                 </div>
               </div>
 
-                {!inTelegramWebApp && getAuthToken() ? (
-                  <div className="card" style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 800 }}>🌐 Веб-версия</div>
-                    <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                      Вы вошли через браузер. Можно выйти и удалить токен на этом устройстве.
-                    </div>
+                <>
+                      {!inTelegramWebApp && getAuthToken() ? (
+                        <div className="card" style={{ marginTop: 12 }}>
+                          <div style={{ fontWeight: 800 }}>🌐 Веб-версия</div>
+                          <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
+                            Вы вошли через браузер. При выходе токен будет удалён.
+                            В следующий раз потребуется вход по коду.
+                          </div>
 
-                    <div className="row" style={{ marginTop: 10 }}>
-                      <button className="btn secondary" onClick={logoutWeb}>
-                        🚪 Выйти
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+                          <div className="row" style={{ marginTop: 10 }}>
+                            <button className="btn secondary" onClick={() => setConfirmOpen(true)}>
+                              🚪 Выйти
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {confirmOpen ? (
+                        <div
+                          role="dialog"
+                          aria-modal="true"
+                          onClick={() => setConfirmOpen(false)}
+                          style={{
+                            position: "fixed",
+                            inset: 0,
+                            background: "rgba(0,0,0,0.55)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: 16,
+                            zIndex: 9999,
+                          }}
+                        >
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              width: "min(520px, 100%)",
+                              borderRadius: 16,
+                              background: "rgba(20, 24, 40, 0.98)",
+                              border: "1px solid rgba(255,255,255,0.10)",
+                              boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+                              padding: 16,
+                            }}
+                          >
+                            <div style={{ fontWeight: 900, fontSize: 16 }}>Выйти из веб-версии?</div>
+
+                            <div style={{ marginTop: 8, opacity: 0.85, lineHeight: 1.4 }}>
+                              Токен будет удалён с этого устройства.
+                              <br />
+                              <b>В следующий раз нужно будет войти по 6-значному коду.</b>
+                            </div>
+
+                            <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
+                              <button className="btn secondary" onClick={() => setConfirmOpen(false)}>
+                                Отмена
+                              </button>
+                              <button className="btn" onClick={logoutWebConfirmed}>
+                                Выйти
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
 
 
               <div className="row" style={{ marginTop: 12 }}>
