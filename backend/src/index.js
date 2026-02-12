@@ -1642,35 +1642,56 @@ function buildOtpEmailHtml({
   code,
   ttlMinutes = 10,
   preheader = "",
-  logoUrl = "",      // например: https://mightysheep.ru/assets/email-logo.png
-  ctaUrl = "",       // например: https://mightysheep.ru/login (опционально)
-  bgImageUrl = "",   // опционально, может не везде работать
+  logoUrl = "",
+  ctaUrl = "",
+  bgImageUrl = "",
 }) {
   const esc = (s) =>
     String(s || "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     }[c]));
 
+  const toRgba = (hex, a) => {
+    const h = String(hex).replace("#", "");
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  };
+
+  // Brand palette (под лого)
+  const C = {
+    bg: "#070B14",
+    card: "#0E1630",
+    border: "rgba(255,255,255,.12)",
+    text: "#F4F7FF",
+    muted: "rgba(244,247,255,.78)",
+    blue: "#123BFF",
+    orange: "#FF8A00",
+    yellow: "#FFD34D",
+  };
+
   const c = String(code || "").trim();
   const pre = esc(preheader || `Ваш код: ${c}. Действует ${ttlMinutes} минут.`);
 
+  // Header bg: либо картинка, либо бренд-градиент
   const headerBg = bgImageUrl
     ? `background-image:url('${esc(bgImageUrl)}');background-size:cover;background-position:center;`
-    : `background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(17,22,42,0));`;
+    : `background:${C.card};background-image:linear-gradient(135deg, ${toRgba(C.blue, 0.55)} 0%, ${toRgba(C.orange, 0.38)} 55%, ${toRgba(C.yellow, 0.14)} 100%);`;
 
   const logoHtml = logoUrl
     ? `<img src="${esc(logoUrl)}" width="36" height="36" alt="${esc(brand)}"
-            style="display:block;border-radius:10px;object-fit:cover;" />`
+            style="display:block;border-radius:10px;object-fit:cover;border:1px solid rgba(255,255,255,.16);" />`
     : "";
 
   const ctaHtml = ctaUrl
     ? `
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
         <tr>
-          <td bgcolor="#7c3aed" style="border-radius:12px;">
+          <td bgcolor="${C.orange}" style="border-radius:12px;">
             <a href="${esc(ctaUrl)}"
                style="display:inline-block;padding:12px 16px;font-family:Arial,Helvetica,sans-serif;
-                      font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:12px;">
+                      font-size:14px;font-weight:800;color:#111318;text-decoration:none;border-radius:12px;">
               Открыть страницу входа
             </a>
           </td>
@@ -1681,18 +1702,18 @@ function buildOtpEmailHtml({
 
   return `
   <!-- Preheader -->
-  <div style="display:none;font-size:1px;color:#0b0f19;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+  <div style="display:none;font-size:1px;color:${C.bg};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
     ${pre}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
   </div>
 
-  <div style="background:#0b0f19;padding:26px 0;">
+  <div style="background:${C.bg};padding:26px 0;">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%"
-           style="max-width:560px;margin:0 auto;">
+           style="max-width:560px;margin:0 auto;table-layout:fixed;">
       <tr>
         <td style="padding:0 16px;">
 
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-                 style="background:#11162a;border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;">
+                 style="background:${C.card};border:1px solid ${C.border};border-radius:18px;overflow:hidden;">
             <!-- Header -->
             <tr>
               <td style="padding:14px 16px;${headerBg}">
@@ -1703,10 +1724,10 @@ function buildOtpEmailHtml({
                     </td>
                     <td valign="middle" style="padding-left:10px;">
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.14em;
-                                  text-transform:uppercase;color:#e8ecff;opacity:.9;">
+                                  text-transform:uppercase;color:${C.text};opacity:.92;">
                         ${esc(brand)}
                       </div>
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#e8ecff;opacity:.7;margin-top:2px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${C.text};opacity:.75;margin-top:2px;">
                         Код входа • действует ${esc(ttlMinutes)} минут
                       </div>
                     </td>
@@ -1715,29 +1736,34 @@ function buildOtpEmailHtml({
               </td>
             </tr>
 
+            <!-- Brand stripe -->
+            <tr>
+              <td style="height:6px;background:linear-gradient(90deg, ${C.blue} 0%, ${C.orange} 50%, ${C.blue} 100%);"></td>
+            </tr>
+
             <!-- Body -->
             <tr>
-              <td style="padding:18px 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;color:#e8ecff;">
+              <td style="padding:18px 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;color:${C.text};">
                 <div style="font-size:20px;font-weight:900;margin:0 0 10px;">
                   Ваш код входа
                 </div>
 
-                <div style="font-size:14px;line-height:1.5;opacity:.9;margin:0 0 14px;">
+                <div style="font-size:14px;line-height:1.5;opacity:.9;margin:0 0 14px;color:${C.muted};">
                   Введите этот код в приложении, чтобы войти.
                 </div>
 
-                <!-- Code block (без ячеек) -->
-                <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+                <!-- Code block -->
+                <div style="background:${toRgba(C.blue, 0.10)};border:1px solid ${toRgba(C.orange, 0.35)};
                             border-radius:14px;padding:14px 14px;text-align:center;">
                   <div style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-                              font-size:36px;font-weight:900;letter-spacing:.18em;color:#ffffff;">
+                              font-size:36px;font-weight:900;letter-spacing:.16em;color:${C.text};">
                     ${esc(c)}
                   </div>
                 </div>
 
                 ${ctaHtml}
 
-                <div style="font-size:12px;line-height:1.5;opacity:.65;margin-top:14px;">
+                <div style="font-size:12px;line-height:1.5;opacity:.68;margin-top:14px;color:${C.muted};">
                   Никому не сообщайте этот код. Если вы не запрашивали код — просто проигнорируйте письмо.
                 </div>
               </td>
@@ -1745,7 +1771,7 @@ function buildOtpEmailHtml({
           </table>
 
           <!-- footer hint -->
-          <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;opacity:.55;color:#e8ecff;padding:10px 2px 0;">
+          <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;opacity:.58;color:${C.muted};padding:10px 2px 0;">
             Подсказка: код — <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;">${esc(c)}</span>
           </div>
 
@@ -1754,6 +1780,7 @@ function buildOtpEmailHtml({
     </table>
   </div>`;
 }
+
 
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "";
 const PUBLIC_WEBAPP_AFTER_CONFIRM_PATH = process.env.PUBLIC_WEBAPP_AFTER_CONFIRM_PATH || "/?email_verified=1";
@@ -1771,37 +1798,56 @@ function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     }[c]));
 
+  const toRgba = (hex, a) => {
+    const h = String(hex).replace("#", "");
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  };
+
+  const C = {
+    bg: "#070B14",
+    card: "#0E1630",
+    border: "rgba(255,255,255,.12)",
+    text: "#F4F7FF",
+    muted: "rgba(244,247,255,.78)",
+    blue: "#123BFF",
+    orange: "#FF8A00",
+    yellow: "#FFD34D",
+  };
+
   const safeLink = esc(link);
   const pre = esc(preheader || "Подтвердите почту и входите через браузер по email.");
 
   const logoHtml = logoUrl
     ? `<img src="${esc(logoUrl)}" width="36" height="36" alt="${esc(brand)}"
-            style="display:block;border-radius:10px;object-fit:cover;" />`
+            style="display:block;border-radius:10px;object-fit:cover;border:1px solid rgba(255,255,255,.16);" />`
     : "";
 
   return `
-  <div style="display:none;font-size:1px;color:#0b0f19;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+  <div style="display:none;font-size:1px;color:${C.bg};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
     ${pre}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
   </div>
 
-  <div style="background:#0b0f19;padding:24px 0;">
+  <div style="background:${C.bg};padding:24px 0;">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%"
            style="max-width:560px;margin:0 auto;table-layout:fixed;">
       <tr>
         <td style="padding:0 16px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-                 style="background:#11162a;border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;">
+                 style="background:${C.card};border:1px solid ${C.border};border-radius:18px;overflow:hidden;">
             <tr>
-              <td style="padding:14px 16px;background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(17,22,42,0));">
+              <td style="padding:14px 16px;background:${C.card};background-image:linear-gradient(135deg, ${toRgba(C.blue, 0.55)} 0%, ${toRgba(C.orange, 0.38)} 55%, ${toRgba(C.yellow, 0.14)} 100%);">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                   <tr>
                     <td width="44" valign="middle">${logoHtml}</td>
                     <td valign="middle" style="padding-left:10px;">
                       <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.14em;
-                                  text-transform:uppercase;color:#e8ecff;opacity:.9;">
+                                  text-transform:uppercase;color:${C.text};opacity:.92;">
                         ${esc(brand)}
                       </div>
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#e8ecff;opacity:.7;margin-top:2px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${C.text};opacity:.75;margin-top:2px;">
                         Подтверждение почты
                       </div>
                     </td>
@@ -1811,33 +1857,37 @@ function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
             </tr>
 
             <tr>
-              <td style="padding:18px 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;color:#e8ecff;">
+              <td style="height:6px;background:linear-gradient(90deg, ${C.blue} 0%, ${C.orange} 50%, ${C.blue} 100%);"></td>
+            </tr>
+
+            <tr>
+              <td style="padding:18px 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;color:${C.text};">
                 <div style="font-size:20px;font-weight:900;margin:0 0 10px;">
                   Подтвердите email
                 </div>
 
-                <div style="font-size:14px;line-height:1.5;opacity:.9;margin:0 0 14px;">
+                <div style="font-size:14px;line-height:1.5;opacity:.9;margin:0 0 14px;color:${C.muted};">
                   Нажмите кнопку ниже, чтобы подтвердить почту. После этого вы сможете входить в приложение через браузер по email.
                 </div>
 
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">
                   <tr>
-                    <td bgcolor="#7c3aed" style="border-radius:12px;">
+                    <td bgcolor="${C.orange}" style="border-radius:12px;">
                       <a href="${safeLink}"
                          style="display:inline-block;padding:12px 16px;font-family:Arial,Helvetica,sans-serif;
-                                font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:12px;">
+                                font-size:14px;font-weight:900;color:#111318;text-decoration:none;border-radius:12px;">
                         Подтвердить почту
                       </a>
                     </td>
                   </tr>
                 </table>
 
-                <div style="font-size:12px;line-height:1.5;opacity:.65;margin-top:14px;">
+                <div style="font-size:12px;line-height:1.5;opacity:.68;margin-top:14px;color:${C.muted};">
                   Если кнопка не работает, нажмите сюда:
-                  <a href="${safeLink}" style="color:#a78bfa;text-decoration:underline;">открыть подтверждение</a>
+                  <a href="${safeLink}" style="color:${C.yellow};text-decoration:underline;">открыть подтверждение</a>
                 </div>
 
-                <div style="font-size:12px;opacity:.55;margin-top:12px;">
+                <div style="font-size:12px;opacity:.55;margin-top:12px;color:${C.muted};">
                   Если это были не вы — просто проигнорируйте письмо.
                 </div>
               </td>
@@ -1850,15 +1900,27 @@ function buildConfirmEmailHtml({ brand, logoUrl, link, preheader }) {
 }
 
 
+
 function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
   const esc = (s) =>
     String(s || "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     }[c]));
 
+  const C = {
+    bg: "#070B14",
+    card: "#0E1630",
+    border: "rgba(255,255,255,.12)",
+    text: "#F4F7FF",
+    muted: "rgba(244,247,255,.78)",
+    blue: "#123BFF",
+    orange: "#FF8A00",
+    yellow: "#FFD34D",
+  };
+
   const logo = logoUrl
     ? `<img src="${esc(logoUrl)}" width="44" height="44" alt="${esc(brand)}"
-            style="display:block;border-radius:14px;object-fit:cover;border:1px solid rgba(255,255,255,.14)" />`
+            style="display:block;border-radius:14px;object-fit:cover;border:1px solid rgba(255,255,255,.16)" />`
     : "";
 
   return `<!doctype html>
@@ -1868,20 +1930,22 @@ function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Почта подтверждена</title>
   <style>
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b0f19;color:#e8ecff}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:${C.bg};color:${C.text}}
     .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-    .card{max-width:560px;width:100%;background:#11162a;border:1px solid rgba(255,255,255,.12);
+    .card{max-width:560px;width:100%;background:${C.card};border:1px solid ${C.border};
       border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-    .head{padding:16px 18px;background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(17,22,42,0));
+    .head{padding:16px 18px;background:${C.card};
+      background-image:linear-gradient(135deg, rgba(18,59,255,.55) 0%, rgba(255,138,0,.35) 58%, rgba(255,211,77,.14) 100%);
       display:flex;gap:12px;align-items:center}
-    .brand{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.9}
-    .sub{font-size:12px;opacity:.7;margin-top:2px}
+    .stripe{height:6px;background:linear-gradient(90deg, ${C.blue} 0%, ${C.orange} 50%, ${C.blue} 100%)}
+    .brand{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.92}
+    .sub{font-size:12px;opacity:.75;margin-top:2px}
     .body{padding:18px}
     h1{margin:0 0 10px;font-size:22px}
-    p{margin:10px 0;line-height:1.5;color:rgba(232,236,255,.85)}
-    .btn{display:inline-block;margin-top:14px;background:#7c3aed;color:white;text-decoration:none;
-      padding:12px 16px;border-radius:12px;font-weight:800}
-    .muted{margin-top:14px;font-size:13px;color:rgba(232,236,255,.6)}
+    p{margin:10px 0;line-height:1.5;color:${C.muted}}
+    .btn{display:inline-block;margin-top:14px;background:${C.orange};color:#111318;text-decoration:none;
+      padding:12px 16px;border-radius:12px;font-weight:900}
+    .muted{margin-top:14px;font-size:13px;color:rgba(244,247,255,.62)}
   </style>
 </head>
 <body>
@@ -1894,6 +1958,7 @@ function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
           <div class="sub">Подтверждение почты</div>
         </div>
       </div>
+      <div class="stripe"></div>
       <div class="body">
         <h1>Почта подтверждена ✅</h1>
         <p>Теперь можно входить в приложение через браузер по этой почте (не только через Telegram).</p>
@@ -1909,6 +1974,7 @@ function renderEmailConfirmedHtml({ brand, logoUrl, nextUrl }) {
 </body>
 </html>`;
 }
+
 
 
 
