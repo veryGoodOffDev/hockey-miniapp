@@ -76,6 +76,7 @@ useEffect(() => {
     is_env_admin: !!player.is_env_admin,
     email: player.email || "",
     email_verified: !!player.email_verified,
+    photo_url: player.photo_url || "",
 
 
     joke_premium: !!player.joke_premium,
@@ -105,6 +106,7 @@ useEffect(() => {
       disabled: !!draft.disabled,
       email: (draft.email || "").trim(),
       email_verified: !!draft.email_verified,
+      photo_url: (draft.photo_url || "").trim(),
     };
 
     for (const k of SKILLS) body[k] = clampSkill(draft[k]);
@@ -253,6 +255,15 @@ useEffect(() => {
           placeholder="name@example.com"
           value={draft.email}
           onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+        />
+
+        <label>Ссылка на аватар (из профиля)</label>
+        <input
+          className="input"
+          type="url"
+          placeholder="https://..."
+          value={draft.photo_url}
+          onChange={(e) => setDraft((d) => ({ ...d, photo_url: e.target.value }))}
         />
 
         <div className="row" style={{ alignItems: "center" }}>
