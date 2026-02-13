@@ -4205,6 +4205,7 @@ const r = await q(
   `SELECT
     tg_id, first_name, last_name, username,
     display_name, jersey_number,
+    photo_url,
     is_guest, player_kind, created_by,
     position, skill, skating, iq, stamina, passing, shooting,
     notes, disabled,
@@ -4260,6 +4261,7 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
       email=CASE WHEN $14 THEN $15 ELSE email END,
       email_verified=CASE WHEN $16 THEN $17 ELSE email_verified END,
       email_verified_at=CASE WHEN $16 = TRUE AND $17 = TRUE THEN COALESCE(email_verified_at, NOW()) ELSE email_verified_at END,
+      photo_url=$18,
       updated_at=NOW()
      WHERE tg_id=$1`,
     [
@@ -4280,6 +4282,7 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
       emailValue,
       emailVerifiedProvided,
       emailVerifiedValue,
+      (b.photo_url || "").trim().slice(0, 500) || "",
     ]
   );
 
@@ -4287,6 +4290,7 @@ app.patch("/api/admin/players/:tg_id", async (req, res) => {
       `SELECT
         tg_id, first_name, last_name, username,
         display_name, jersey_number,
+        photo_url,
         is_guest, player_kind, created_by,
         position, skill, skating, iq, stamina, passing, shooting,
         notes, disabled, is_admin, updated_at,
@@ -7024,4 +7028,3 @@ console.log(`[BOOT] hockey-backend starting... ${new Date().toISOString()} commi
 console.log('куку все ок играем в хоккей')
 
 app.listen(port, () => console.log("Backend listening on", port));
-
