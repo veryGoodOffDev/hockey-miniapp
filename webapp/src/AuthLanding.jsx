@@ -290,7 +290,7 @@ export default function AuthLanding({
   }
   .heroImg{
     width: 100%;
-    height: 132px;
+    height: 228px;
     object-fit: cover;
     display:block;
     filter: saturate(1.05) contrast(1.02);
