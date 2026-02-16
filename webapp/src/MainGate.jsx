@@ -68,7 +68,7 @@ export default function MainGate({ onAuthed }) {
           onDone={checkMe}
           teamName="Mighty Sheep"
           teamSubtitle="Вход в Hockey MiniApp"
-          teamCoverSrc="/brand/teamcover.jpg"
+          teamCoverSrc="/brand/teamcover1.jpg"
           teamLogoSrc="/brand/commandlog.webp"
         />
     );
