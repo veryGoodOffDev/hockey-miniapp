@@ -752,6 +752,112 @@ function cleanUrl(v) {
   }
 }
 
+const AUTO_SCHEDULE_DEFAULTS = {
+  enabled: false,
+  target_count: 12,
+  weekday: 0, // 0=Sun..6=Sat
+  time: "07:45",
+  location: "",
+  geo_lat: null,
+  geo_lon: null,
+};
+
+async function getAutoScheduleConfig() {
+  const raw = await getSetting("auto_schedule_config", "");
+  if (!raw) return { ...AUTO_SCHEDULE_DEFAULTS };
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      ...AUTO_SCHEDULE_DEFAULTS,
+      ...parsed,
+      target_count: Math.max(1, Math.min(60, Number(parsed?.target_count ?? AUTO_SCHEDULE_DEFAULTS.target_count))),
+      weekday: Math.max(0, Math.min(6, Number(parsed?.weekday ?? AUTO_SCHEDULE_DEFAULTS.weekday))),
+      time: /^\d{2}:\d{2}$/.test(String(parsed?.time || "")) ? String(parsed.time) : AUTO_SCHEDULE_DEFAULTS.time,
+      location: String(parsed?.location || "").trim(),
+      geo_lat: parsed?.geo_lat === null || parsed?.geo_lat === "" ? null : Number(parsed?.geo_lat),
+      geo_lon: parsed?.geo_lon === null || parsed?.geo_lon === "" ? null : Number(parsed?.geo_lon),
+      enabled: !!parsed?.enabled,
+    };
+  } catch {
+    return { ...AUTO_SCHEDULE_DEFAULTS };
+  }
+}
+
+function nextTemplateDate(fromDate, weekday, hh, mm) {
+  const d = new Date(fromDate);
+  d.setUTCSeconds(0, 0);
+  d.setUTCHours(hh, mm, 0, 0);
+  const dayDiff = (weekday - d.getUTCDay() + 7) % 7;
+  d.setUTCDate(d.getUTCDate() + dayDiff);
+  if (d <= fromDate) d.setUTCDate(d.getUTCDate() + 7);
+  return d;
+}
+
+async function ensureAutoScheduledGames({ dryRun = false, ignoreEnabled = false } = {}) {
+  const cfg = await getAutoScheduleConfig();
+  const targetCount = Math.max(1, Math.min(60, Number(cfg.target_count || 12)));
+  const upcoming = await q(
+    `SELECT id, starts_at
+       FROM games
+      WHERE status='scheduled' AND starts_at >= NOW()
+      ORDER BY starts_at ASC`
+  );
+
+  const upcomingCount = upcoming.rows.length;
+  const result = { ok: true, enabled: !!cfg.enabled, target_count: targetCount, upcoming: upcomingCount, created: 0, created_games: [] };
+  if (!ignoreEnabled && !cfg.enabled) return { ...result, skipped: "disabled", cfg };
+  if (upcomingCount >= targetCount) return { ...result, skipped: "enough_games", cfg };
+
+  const time = String(cfg.time || "07:45");
+  const [hh, mm] = time.split(":").map((x) => Number(x));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+    return { ...result, ok: false, reason: "bad_time", cfg };
+  }
+
+  const lat = cfg.geo_lat === null ? null : Number(cfg.geo_lat);
+  const lon = cfg.geo_lon === null ? null : Number(cfg.geo_lon);
+  if ((lat === null) !== (lon === null)) return { ...result, ok: false, reason: "bad_geo_pair", cfg };
+  if ((lat !== null && !Number.isFinite(lat)) || (lon !== null && !Number.isFinite(lon))) {
+    return { ...result, ok: false, reason: "bad_geo", cfg };
+  }
+
+  const need = targetCount - upcomingCount;
+  const existingStarts = new Set(upcoming.rows.map((g) => new Date(g.starts_at).toISOString()));
+  let cursor = upcoming.rows.length
+    ? new Date(upcoming.rows[upcoming.rows.length - 1].starts_at)
+    : new Date();
+
+  for (let i = 0; i < need; i++) {
+    let candidate = nextTemplateDate(cursor, Number(cfg.weekday || 0), hh, mm);
+    let guard = 0;
+    while (existingStarts.has(candidate.toISOString()) && guard < 120) {
+      candidate = new Date(candidate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      guard++;
+    }
+    if (guard >= 120) break;
+
+    cursor = candidate;
+    existingStarts.add(candidate.toISOString());
+
+    if (dryRun) {
+      result.created += 1;
+      result.created_games.push({ starts_at: candidate.toISOString(), location: String(cfg.location || "").trim(), geo_lat: lat, geo_lon: lon });
+      continue;
+    }
+
+    const ins = await q(
+      `INSERT INTO games(starts_at, location, status, geo_lat, geo_lon)
+       VALUES($1,$2,'scheduled',$3,$4)
+       RETURNING id, starts_at, location, geo_lat, geo_lon, status`,
+      [candidate.toISOString(), String(cfg.location || "").trim(), lat, lon]
+    );
+    result.created += 1;
+    result.created_games.push(ins.rows[0]);
+  }
+
+  return { ...result, cfg };
+}
+
 async function setSetting(key, value) {
   await q(
     `INSERT INTO settings(key, value) VALUES($1,$2)
@@ -6332,6 +6438,92 @@ app.patch("/api/admin/games/reminder", async (req, res) => {
   const game = gr.rows?.[0] ?? null;
 
   res.json({ ok: true, game });
+});
+
+app.get("/api/admin/games/auto-schedule", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const cfg = await getAutoScheduleConfig();
+  const upcomingR = await q(`SELECT COUNT(*)::int AS cnt FROM games WHERE status='scheduled' AND starts_at >= NOW()`);
+  res.json({ ok: true, cfg, upcoming_count: Number(upcomingR.rows?.[0]?.cnt || 0) });
+});
+
+app.patch("/api/admin/games/auto-schedule", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const cur = await getAutoScheduleConfig();
+  const b = req.body || {};
+  const next = {
+    ...cur,
+    ...(b.enabled !== undefined ? { enabled: !!b.enabled } : {}),
+    ...(b.target_count !== undefined ? { target_count: Number(b.target_count) } : {}),
+    ...(b.weekday !== undefined ? { weekday: Number(b.weekday) } : {}),
+    ...(b.time !== undefined ? { time: String(b.time || "") } : {}),
+    ...(b.location !== undefined ? { location: String(b.location || "") } : {}),
+    ...(Object.prototype.hasOwnProperty.call(b, "geo_lat") ? { geo_lat: b.geo_lat === "" ? null : b.geo_lat } : {}),
+    ...(Object.prototype.hasOwnProperty.call(b, "geo_lon") ? { geo_lon: b.geo_lon === "" ? null : b.geo_lon } : {}),
+  };
+
+  if (!Number.isFinite(next.target_count) || next.target_count < 1 || next.target_count > 60) {
+    return res.status(400).json({ ok: false, reason: "bad_target_count" });
+  }
+  if (!Number.isFinite(next.weekday) || next.weekday < 0 || next.weekday > 6) {
+    return res.status(400).json({ ok: false, reason: "bad_weekday" });
+  }
+  if (!/^\d{2}:\d{2}$/.test(String(next.time || ""))) {
+    return res.status(400).json({ ok: false, reason: "bad_time" });
+  }
+  const [hh, mm] = String(next.time).split(":").map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+    return res.status(400).json({ ok: false, reason: "bad_time" });
+  }
+
+  const lat = next.geo_lat === null ? null : Number(next.geo_lat);
+  const lon = next.geo_lon === null ? null : Number(next.geo_lon);
+  if ((lat === null) !== (lon === null)) return res.status(400).json({ ok: false, reason: "bad_geo_pair" });
+  if ((lat !== null && !Number.isFinite(lat)) || (lon !== null && !Number.isFinite(lon))) {
+    return res.status(400).json({ ok: false, reason: "bad_geo" });
+  }
+
+  const cfg = {
+    enabled: !!next.enabled,
+    target_count: Math.round(next.target_count),
+    weekday: Math.round(next.weekday),
+    time: String(next.time),
+    location: String(next.location || "").trim(),
+    geo_lat: lat,
+    geo_lon: lon,
+  };
+
+  await setSetting("auto_schedule_config", JSON.stringify(cfg));
+  const ensure = await ensureAutoScheduledGames();
+  res.json({ ok: true, cfg, ensure });
+});
+
+app.post("/api/admin/games/auto-schedule/ensure", async (req, res) => {
+  const user = requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const force = req.body?.force === true || String(req.query?.force || "") === "1";
+  const result = await ensureAutoScheduledGames({ ignoreEnabled: force });
+  res.json(result);
+});
+
+app.post("/api/internal/auto-schedule/tick", async (req, res) => {
+  if (!checkInternalToken(req)) {
+    return res.status(403).json({ ok: false, reason: "forbidden" });
+  }
+  const dryRun = String(req.query?.dry_run || "") === "1";
+  const result = await ensureAutoScheduledGames({ dryRun });
+  res.json(result);
 });
 
 
