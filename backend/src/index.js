@@ -752,6 +752,49 @@ function cleanUrl(v) {
   }
 }
 
+
+const AUTO_SCHEDULE_TZ = process.env.TZ_NAME || "Europe/Moscow";
+
+function getZonedDateParts(date, timeZone) {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = dtf.formatToParts(date);
+  const get = (t) => Number(parts.find((x) => x.type === t)?.value || 0);
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: get("hour"),
+    minute: get("minute"),
+    second: get("second"),
+  };
+}
+
+function getTimeZoneOffsetMinutes(date, timeZone) {
+  const p = getZonedDateParts(date, timeZone);
+  const asUtcTs = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return (asUtcTs - date.getTime()) / 60000;
+}
+
+function zonedTimeToUtc({ year, month, day, hour, minute, second = 0 }, timeZone) {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const offset = getTimeZoneOffsetMinutes(utcGuess, timeZone);
+  return new Date(utcGuess.getTime() - offset * 60_000);
+}
+
+function getWeekdayInZone(date, timeZone) {
+  const raw = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(date);
+  const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return map[raw] ?? 0;
+}
 const AUTO_SCHEDULE_DEFAULTS = {
   enabled: false,
   target_count: 12,
@@ -783,14 +826,33 @@ async function getAutoScheduleConfig() {
   }
 }
 
-function nextTemplateDate(fromDate, weekday, hh, mm) {
-  const d = new Date(fromDate);
-  d.setUTCSeconds(0, 0);
-  d.setUTCHours(hh, mm, 0, 0);
-  const dayDiff = (weekday - d.getUTCDay() + 7) % 7;
-  d.setUTCDate(d.getUTCDate() + dayDiff);
-  if (d <= fromDate) d.setUTCDate(d.getUTCDate() + 7);
-  return d;
+function nextTemplateDate(fromDate, weekday, hh, mm, timeZone = AUTO_SCHEDULE_TZ) {
+  const local = getZonedDateParts(fromDate, timeZone);
+  const fromWeekday = getWeekdayInZone(fromDate, timeZone);
+
+  let dayShift = (weekday - fromWeekday + 7) % 7;
+
+  let y = local.year;
+  let m = local.month;
+  let d = local.day;
+
+  const addDays = (days) => {
+    const tmp = new Date(Date.UTC(y, m - 1, d + days));
+    y = tmp.getUTCFullYear();
+    m = tmp.getUTCMonth() + 1;
+    d = tmp.getUTCDate();
+  };
+
+  if (dayShift > 0) addDays(dayShift);
+
+  let candidate = zonedTimeToUtc({ year: y, month: m, day: d, hour: hh, minute: mm, second: 0 }, timeZone);
+
+  if (candidate <= fromDate) {
+    addDays(7);
+    candidate = zonedTimeToUtc({ year: y, month: m, day: d, hour: hh, minute: mm, second: 0 }, timeZone);
+  }
+
+  return candidate;
 }
 
 async function ensureAutoScheduledGames({ dryRun = false, ignoreEnabled = false } = {}) {
@@ -828,7 +890,7 @@ async function ensureAutoScheduledGames({ dryRun = false, ignoreEnabled = false 
     : new Date();
 
   for (let i = 0; i < need; i++) {
-    let candidate = nextTemplateDate(cursor, Number(cfg.weekday || 0), hh, mm);
+    let candidate = nextTemplateDate(cursor, Number(cfg.weekday || 0), hh, mm, AUTO_SCHEDULE_TZ);
     let guard = 0;
     while (existingStarts.has(candidate.toISOString()) && guard < 120) {
       candidate = new Date(candidate.getTime() + 7 * 24 * 60 * 60 * 1000);
