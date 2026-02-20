@@ -361,6 +361,15 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [time, setTime] = useState("19:00");
   const [location, setLocation] = useState("");
   const [weeks, setWeeks] = useState(4);
+  const [autoSchedule, setAutoSchedule] = useState({
+    enabled: false,
+    target_count: 12,
+    weekday: 0,
+    time: "07:45",
+    location: "",
+    geo_lat: "",
+    geo_lon: "",
+  });
 
   // reminders
   const [reminderMsg, setReminderMsg] = useState("");
@@ -656,9 +665,21 @@ function closePlayerSheet() {
     
       if (!silent) flashAdmin("Обновляю админ-данные…", "info", true, 0);
     
-      try {
-        const g = await apiGet("/api/games?scope=all&days=180&limit=100");
-        setGames(g.games || []);
+    try {
+      const g = await apiGet("/api/games?scope=all&days=180&limit=100");
+      setGames(g.games || []);
+
+      const auto = await apiGet("/api/admin/games/auto-schedule");
+      const cfg = auto?.cfg || {};
+      setAutoSchedule({
+        enabled: !!cfg.enabled,
+        target_count: Number(cfg.target_count || 12),
+        weekday: Number(cfg.weekday || 0),
+        time: String(cfg.time || "07:45"),
+        location: String(cfg.location || ""),
+        geo_lat: cfg.geo_lat == null ? "" : String(cfg.geo_lat),
+        geo_lon: cfg.geo_lon == null ? "" : String(cfg.geo_lon),
+      });
     
         const p = await apiGet("/api/admin/players");
         setPlayers(p.players || []);
@@ -940,6 +961,52 @@ async function createSeries() {
 
     setCreateGeo({ lat: "", lon: "", address: "" });
   }, { successText: "✅ Расписание создано" });
+}
+
+async function saveAutoSchedule() {
+  await runAdminOp("Сохраняю авто-расписание…", async () => {
+    const lat = autoSchedule.geo_lat.trim() ? Number(autoSchedule.geo_lat) : null;
+    const lon = autoSchedule.geo_lon.trim() ? Number(autoSchedule.geo_lon) : null;
+    if ((lat === null) !== (lon === null)) {
+      alert("❌ Для шаблона нужно заполнить и lat, и lon (или оставить пустыми)");
+      return;
+    }
+    if ((lat !== null && !Number.isFinite(lat)) || (lon !== null && !Number.isFinite(lon))) {
+      alert("❌ Геоточка шаблона некорректная");
+      return;
+    }
+
+    const r = await apiPatch("/api/admin/games/auto-schedule", {
+      enabled: !!autoSchedule.enabled,
+      target_count: Number(autoSchedule.target_count || 12),
+      weekday: Number(autoSchedule.weekday || 0),
+      time: String(autoSchedule.time || "07:45"),
+      location: String(autoSchedule.location || ""),
+      geo_lat: lat,
+      geo_lon: lon,
+    });
+
+    const cfg = r?.cfg || autoSchedule;
+    setAutoSchedule((s) => ({
+      ...s,
+      enabled: !!cfg.enabled,
+      target_count: Number(cfg.target_count || 12),
+      weekday: Number(cfg.weekday || 0),
+      time: String(cfg.time || "07:45"),
+      location: String(cfg.location || ""),
+      geo_lat: cfg.geo_lat == null ? "" : String(cfg.geo_lat),
+      geo_lon: cfg.geo_lon == null ? "" : String(cfg.geo_lon),
+    }));
+
+    await load({ silent: true });
+  }, { successText: "✅ Авто-расписание сохранено" });
+}
+
+async function ensureAutoScheduleNow() {
+  await runAdminOp("Проверяю и дополняю будущие игры…", async () => {
+    await apiPost("/api/admin/games/auto-schedule/ensure", {});
+    await load({ silent: true });
+  }, { successText: "✅ Проверка авто-расписания выполнена" });
 }
 
 
@@ -1789,6 +1856,96 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
      {/* ====== GAMES ====== */}
 {section === "games" && (
   <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+    <div className="card" style={{ border: "1px solid rgba(255,255,255,0.2)" }}>
+      <h2>Автосоздание игр (шаблон)</h2>
+      <div className="small" style={{ opacity: 0.85, marginBottom: 10 }}>
+        Поддерживает постоянное количество предстоящих игр: как только одна игра уходит в прошлое,
+        при следующем tick/проверке добавляется новая в конец по шаблону.
+      </div>
+
+      <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 10 }}>
+        <label style={{ margin: 0 }}>Включено</label>
+        <input
+          type="checkbox"
+          checked={!!autoSchedule.enabled}
+          onChange={(e) => setAutoSchedule((s) => ({ ...s, enabled: e.target.checked }))}
+        />
+      </div>
+
+      <div className="form2" style={{ marginBottom: 8 }}>
+        <div>
+          <label>Сколько предстоящих игр держать</label>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={60}
+            value={autoSchedule.target_count}
+            onChange={(e) => setAutoSchedule((s) => ({ ...s, target_count: Number(e.target.value) || 1 }))}
+          />
+        </div>
+        <div>
+          <label>День недели шаблона</label>
+          <select
+            className="input"
+            value={autoSchedule.weekday}
+            onChange={(e) => setAutoSchedule((s) => ({ ...s, weekday: Number(e.target.value) }))}
+          >
+            <option value={0}>Вс</option>
+            <option value={1}>Пн</option>
+            <option value={2}>Вт</option>
+            <option value={3}>Ср</option>
+            <option value={4}>Чт</option>
+            <option value={5}>Пт</option>
+            <option value={6}>Сб</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="form2" style={{ marginBottom: 8 }}>
+        <div>
+          <label>Время</label>
+          <input
+            className="input"
+            type="time"
+            value={autoSchedule.time}
+            onChange={(e) => setAutoSchedule((s) => ({ ...s, time: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label>Арена</label>
+          <input
+            className="input"
+            value={autoSchedule.location}
+            onChange={(e) => setAutoSchedule((s) => ({ ...s, location: e.target.value }))}
+            placeholder="Например: Шуваловский лед"
+          />
+        </div>
+      </div>
+
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <input
+          className="input"
+          style={{ flex: 1, minWidth: 140 }}
+          placeholder="lat"
+          value={autoSchedule.geo_lat}
+          onChange={(e) => setAutoSchedule((s) => ({ ...s, geo_lat: e.target.value.replace(",", ".") }))}
+        />
+        <input
+          className="input"
+          style={{ flex: 1, minWidth: 140 }}
+          placeholder="lon"
+          value={autoSchedule.geo_lon}
+          onChange={(e) => setAutoSchedule((s) => ({ ...s, geo_lon: e.target.value.replace(",", ".") }))}
+        />
+      </div>
+
+      <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+        <button className="btn" onClick={saveAutoSchedule}>Сохранить настройки</button>
+        <button className="btn secondary" onClick={ensureAutoScheduleNow}>Запустить проверку сейчас</button>
+      </div>
+    </div>
+
     <div className="card">
       <h2>Создать игру</h2>
 
