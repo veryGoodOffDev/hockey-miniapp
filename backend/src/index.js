@@ -793,7 +793,7 @@ function nextTemplateDate(fromDate, weekday, hh, mm) {
   return d;
 }
 
-async function ensureAutoScheduledGames({ dryRun = false } = {}) {
+async function ensureAutoScheduledGames({ dryRun = false, ignoreEnabled = false } = {}) {
   const cfg = await getAutoScheduleConfig();
   const targetCount = Math.max(1, Math.min(60, Number(cfg.target_count || 12)));
   const upcoming = await q(
@@ -805,7 +805,7 @@ async function ensureAutoScheduledGames({ dryRun = false } = {}) {
 
   const upcomingCount = upcoming.rows.length;
   const result = { ok: true, enabled: !!cfg.enabled, target_count: targetCount, upcoming: upcomingCount, created: 0, created_games: [] };
-  if (!cfg.enabled) return { ...result, skipped: "disabled", cfg };
+  if (!ignoreEnabled && !cfg.enabled) return { ...result, skipped: "disabled", cfg };
   if (upcomingCount >= targetCount) return { ...result, skipped: "enough_games", cfg };
 
   const time = String(cfg.time || "07:45");
@@ -6512,7 +6512,8 @@ app.post("/api/admin/games/auto-schedule/ensure", async (req, res) => {
   if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
-  const result = await ensureAutoScheduledGames();
+  const force = req.body?.force === true || String(req.query?.force || "") === "1";
+  const result = await ensureAutoScheduledGames({ ignoreEnabled: force });
   res.json(result);
 });
 

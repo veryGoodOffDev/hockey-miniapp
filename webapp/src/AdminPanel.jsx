@@ -1004,7 +1004,20 @@ async function saveAutoSchedule() {
 
 async function ensureAutoScheduleNow() {
   await runAdminOp("Проверяю и дополняю будущие игры…", async () => {
-    await apiPost("/api/admin/games/auto-schedule/ensure", {});
+    const r = await apiPost("/api/admin/games/auto-schedule/ensure", { force: true });
+    if (!r?.ok) throw new Error(r?.reason || "ensure_failed");
+
+    const created = Number(r?.created || 0);
+    const skipped = String(r?.skipped || "");
+
+    if (created > 0) {
+      flashAdmin(`✅ Добавлено игр: ${created}`, "success", false, 2200);
+    } else if (skipped === "enough_games") {
+      flashAdmin("ℹ️ Новые игры не нужны: уже достаточно предстоящих", "info", false, 2200);
+    } else if (skipped === "disabled") {
+      flashAdmin("ℹ️ Авто-расписание выключено. Для ручной проверки используется force-режим, но шаблон нужно сохранить.", "info", false, 2800);
+    }
+
     await load({ silent: true });
   }, { successText: "✅ Проверка авто-расписания выполнена" });
 }
