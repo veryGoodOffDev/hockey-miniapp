@@ -1640,7 +1640,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       style={{ marginTop: 8 }}
     />
 
-    <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+    <div className="adminActionRow">
       <button className="btn" onClick={sendCustomToChat} disabled={!customMsg.trim()}>
         Отправить в чат
       </button>
@@ -1868,24 +1868,29 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
      {/* ====== GAMES ====== */}
 {section === "games" && (
-  <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-    <div className="card" style={{ border: "1px solid rgba(255,255,255,0.2)" }}>
+  <div className="adminGamesSection">
+    <div className="card adminGamesCard adminGamesCard--auto">
       <h2>Автосоздание игр (шаблон)</h2>
-      <div className="small" style={{ opacity: 0.85, marginBottom: 10 }}>
+      <div className="small adminGamesHint">
         Поддерживает постоянное количество предстоящих игр: как только одна игра уходит в прошлое,
         при следующем tick/проверке добавляется новая в конец по шаблону.
       </div>
 
-      <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 10 }}>
-        <label style={{ margin: 0 }}>Включено</label>
-        <input
-          type="checkbox"
-          checked={!!autoSchedule.enabled}
-          onChange={(e) => setAutoSchedule((s) => ({ ...s, enabled: e.target.checked }))}
-        />
+      <div className="adminToggleRow">
+        <label className="adminToggleLabel" style={{ margin: 0 }}>Включено</label>
+        <button
+          type="button"
+          className={`adminSwitch ${autoSchedule.enabled ? "isOn" : ""}`}
+          role="switch"
+          aria-checked={!!autoSchedule.enabled}
+          aria-label="Включить автосоздание игр"
+          onClick={() => setAutoSchedule((s) => ({ ...s, enabled: !s.enabled }))}
+        >
+          <span className="adminSwitch__thumb" />
+        </button>
       </div>
 
-      <div className="form2" style={{ marginBottom: 8 }}>
+      <div className="form2 adminGamesForm2">
         <div>
           <label>Сколько предстоящих игр держать</label>
           <input
@@ -1915,7 +1920,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </div>
       </div>
 
-      <div className="form2" style={{ marginBottom: 8 }}>
+      <div className="form2 adminGamesForm2">
         <div>
           <label>Время</label>
           <input
@@ -1936,7 +1941,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </div>
       </div>
 
-      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+      <div className="adminCoordRow">
         <input
           className="input"
           style={{ flex: 1, minWidth: 140 }}
@@ -1953,16 +1958,16 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         />
       </div>
 
-      <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+      <div className="adminActionRow">
         <button className="btn" onClick={saveAutoSchedule}>Сохранить настройки</button>
         <button className="btn secondary" onClick={ensureAutoScheduleNow}>Запустить проверку сейчас</button>
       </div>
     </div>
 
-    <div className="card">
+    <div className="card adminGamesCard">
       <h2>Создать игру</h2>
 
-      <div className="datetimeRow" style={{ paddingRight: 15 }}>
+      <div className="datetimeRow adminDateTimeRow">
         <label>Дата</label>
         <input
           className="input"
@@ -1972,7 +1977,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         />
       </div>
 
-      <div className="datetimeRow" style={{ marginTop: 10, paddingRight: 15 }}>
+      <div className="datetimeRow adminDateTimeRow" style={{ marginTop: 10 }}>
         <label>Время</label>
         <input
           className="input"
@@ -1991,7 +1996,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       />
 <label>Геоточка (необязательно)</label>
 
-<div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+<div className="adminCoordRow">
   <input
     className="input"
     style={{ flex: 1, minWidth: 140 }}
@@ -2008,7 +2013,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
   />
 </div>
 
-<div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+<div className="adminActionRow">
 <button className="btn secondary" onClick={() => setCreateGeoPickOpen(true)}>
   🗺️ Выбрать на карте
 </button>
@@ -2030,7 +2035,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
 
 
-      <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
+      <div className="adminCreateRow">
         <button className="btn" onClick={createOne}>
           Создать
         </button>

@@ -3461,3 +3461,132 @@ html[data-theme="light"] .btn.outline.active{
 .themeSwitch--compact .themeSwitch__thumbIcon {
   font-size: 13px;
 }
+
+/* ===== AdminPanel / Games (mobile polish) ===== */
+.adminGamesSection{
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.adminGamesCard{
+  border: 1px solid color-mix(in srgb, var(--tg-text) 12%, transparent);
+  border-radius: 16px;
+}
+
+.adminGamesCard--auto{
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tg-btn) 7%, var(--card-bg)) 0%,
+    var(--card-bg) 100%
+  );
+}
+
+.adminGamesHint{
+  opacity: 0.88;
+  line-height: 1.35;
+  margin-bottom: 12px;
+}
+
+.adminGamesForm2{
+  margin-bottom: 10px;
+}
+
+.adminToggleRow{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tg-text) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tg-text) 10%, transparent);
+}
+
+.adminToggleLabel{
+  font-weight: 700;
+  color: var(--tg-text);
+}
+
+.adminSwitch{
+  position: relative;
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tg-text) 20%, transparent);
+  background: color-mix(in srgb, var(--tg-text) 14%, transparent);
+  cursor: pointer;
+  transition: all .18s ease;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.adminSwitch__thumb{
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  transition: transform .18s ease;
+}
+
+.adminSwitch.isOn{
+  background: var(--tg-btn);
+  border-color: color-mix(in srgb, var(--tg-btn) 68%, transparent);
+}
+.adminSwitch.isOn .adminSwitch__thumb{
+  transform: translateX(22px);
+}
+
+.adminCoordRow,
+.adminActionRow,
+.adminCreateRow{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.adminActionRow,
+.adminCreateRow{
+  margin-top: 10px;
+}
+
+.adminDateTimeRow{
+  padding-right: 0 !important;
+}
+
+.adminGamesSection .input,
+.adminGamesSection select,
+.adminGamesSection input{
+  min-height: 44px;
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--tg-text) 16%, transparent);
+  background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+}
+
+.adminGamesSection .input:focus,
+.adminGamesSection select:focus,
+.adminGamesSection input:focus{
+  border-color: color-mix(in srgb, var(--tg-btn) 62%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-btn) 20%, transparent);
+}
+
+@media (min-width: 560px){
+  .adminCoordRow,
+  .adminActionRow,
+  .adminCreateRow{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+  }
+  .adminCreateRow > :first-child{ max-width: 180px; }
+}
+
+@media (max-width: 430px){
+  .adminGamesSection .btn{
+    width: 100%;
+  }
+}
