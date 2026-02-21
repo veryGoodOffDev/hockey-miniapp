@@ -1615,6 +1615,86 @@ textarea:focus{
   gap: 8px;
 }
 
+/* ===== TelegramApp: modernized game cards (visual only) ===== */
+.gameCard{
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow:
+    0 12px 28px rgba(0,0,0,.28),
+    0 2px 0 rgba(255,255,255,.10) inset;
+  transition:
+    transform .22s ease,
+    box-shadow .22s ease,
+    border-color .22s ease,
+    filter .22s ease;
+  will-change: transform;
+}
+
+.gameCard::selection{ background: rgba(255,255,255,.2); }
+
+.gameCard::before{
+  transform: scale(1.04);
+  transition: transform .35s ease;
+}
+
+.gameCard::after{
+  background:
+    linear-gradient(120deg, rgba(255,255,255,.14), rgba(255,255,255,0) 36%),
+    linear-gradient(90deg, var(--toneEdge) 0 4px, rgba(0,0,0,0) 4px 100%),
+    radial-gradient(120% 90% at 15% 10%, var(--toneGlow) 0%, rgba(0,0,0,0) 60%),
+    linear-gradient(180deg, rgba(0,0,0,.52), rgba(0,0,0,.60));
+}
+
+.gameCard:hover{
+  transform: translateY(-3px);
+  border-color: rgba(255,255,255,.24);
+  box-shadow:
+    0 16px 34px rgba(0,0,0,.32),
+    0 2px 0 rgba(255,255,255,.14) inset;
+}
+
+.gameCard:hover::before{
+  transform: scale(1.07);
+}
+
+.gameCard:active{
+  transform: translateY(-1px) scale(.997);
+}
+
+.gameCard__topbar,
+.gameCard__date,
+.ringCenter,
+.rsvpBtn{
+  border-color: rgba(255,255,255,.16);
+}
+
+.gameCard__pill{
+  background: rgba(255,255,255,.16);
+  border-color: rgba(255,255,255,.22);
+  box-shadow: 0 6px 14px rgba(0,0,0,.2);
+}
+
+.gameCard__when{
+  letter-spacing: .1px;
+}
+
+.gameCard.isNext{
+  border-color: rgba(0, 255, 140, .55);
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 140, .35),
+    0 18px 36px rgba(0, 255, 140, .14),
+    0 2px 0 rgba(255,255,255,.14) inset;
+}
+
+@media (hover: none){
+  .gameCard:hover{
+    transform: none;
+    border-color: rgba(255,255,255,.14);
+    box-shadow:
+      0 12px 28px rgba(0,0,0,.28),
+      0 2px 0 rgba(255,255,255,.10) inset;
+  }
+}
+
 .talismanIcon{
   width: 45px;
   height: 45px;
