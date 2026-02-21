@@ -3488,6 +3488,40 @@ html[data-theme="light"] .btn.outline.active{
   margin-bottom: 12px;
 }
 
+
+.adminAccordionBtn{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--tg-text) 12%, transparent);
+  background: color-mix(in srgb, var(--tg-text) 5%, transparent);
+  color: var(--tg-text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adminAccordionChevron{
+  transition: transform .18s ease;
+}
+
+.adminAccordionBtn.isOpen .adminAccordionChevron{
+  transform: rotate(180deg);
+}
+
+.adminAccordionBody{
+  margin-top: 10px;
+}
+
+.adminStackFields{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
 .adminGamesForm2{
   margin-bottom: 10px;
 }
