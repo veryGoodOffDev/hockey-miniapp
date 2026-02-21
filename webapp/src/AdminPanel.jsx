@@ -431,6 +431,8 @@ const [playerSheetOpen, setPlayerSheetOpen] = useState(false);
 const [sheetPlayer, setSheetPlayer] = useState(null);
 
 const [createGeoPickOpen, setCreateGeoPickOpen] = useState(false);
+const [autoGeoPickOpen, setAutoGeoPickOpen] = useState(false);
+const [templateAccordionOpen, setTemplateAccordionOpen] = useState(false);
 
 const [videoNotifySilent, setVideoNotifySilent] = useState(false);
 
@@ -1869,101 +1871,6 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
      {/* ====== GAMES ====== */}
 {section === "games" && (
   <div className="adminGamesSection">
-    <div className="card adminGamesCard adminGamesCard--auto">
-      <h2>Автосоздание игр (шаблон)</h2>
-      <div className="small adminGamesHint">
-        Поддерживает постоянное количество предстоящих игр: как только одна игра уходит в прошлое,
-        при следующем tick/проверке добавляется новая в конец по шаблону.
-      </div>
-
-      <div className="adminToggleRow">
-        <label className="adminToggleLabel" style={{ margin: 0 }}>Включено</label>
-        <button
-          type="button"
-          className={`adminSwitch ${autoSchedule.enabled ? "isOn" : ""}`}
-          role="switch"
-          aria-checked={!!autoSchedule.enabled}
-          aria-label="Включить автосоздание игр"
-          onClick={() => setAutoSchedule((s) => ({ ...s, enabled: !s.enabled }))}
-        >
-          <span className="adminSwitch__thumb" />
-        </button>
-      </div>
-
-      <div className="form2 adminGamesForm2">
-        <div>
-          <label>Сколько предстоящих игр держать</label>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            max={60}
-            value={autoSchedule.target_count}
-            onChange={(e) => setAutoSchedule((s) => ({ ...s, target_count: Number(e.target.value) || 1 }))}
-          />
-        </div>
-        <div>
-          <label>День недели шаблона</label>
-          <select
-            className="input"
-            value={autoSchedule.weekday}
-            onChange={(e) => setAutoSchedule((s) => ({ ...s, weekday: Number(e.target.value) }))}
-          >
-            <option value={0}>Вс</option>
-            <option value={1}>Пн</option>
-            <option value={2}>Вт</option>
-            <option value={3}>Ср</option>
-            <option value={4}>Чт</option>
-            <option value={5}>Пт</option>
-            <option value={6}>Сб</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="form2 adminGamesForm2">
-        <div>
-          <label>Время</label>
-          <input
-            className="input"
-            type="time"
-            value={autoSchedule.time}
-            onChange={(e) => setAutoSchedule((s) => ({ ...s, time: e.target.value }))}
-          />
-        </div>
-        <div>
-          <label>Арена</label>
-          <input
-            className="input"
-            value={autoSchedule.location}
-            onChange={(e) => setAutoSchedule((s) => ({ ...s, location: e.target.value }))}
-            placeholder="Например: Шуваловский лед"
-          />
-        </div>
-      </div>
-
-      <div className="adminCoordRow">
-        <input
-          className="input"
-          style={{ flex: 1, minWidth: 140 }}
-          placeholder="lat"
-          value={autoSchedule.geo_lat}
-          onChange={(e) => setAutoSchedule((s) => ({ ...s, geo_lat: e.target.value.replace(",", ".") }))}
-        />
-        <input
-          className="input"
-          style={{ flex: 1, minWidth: 140 }}
-          placeholder="lon"
-          value={autoSchedule.geo_lon}
-          onChange={(e) => setAutoSchedule((s) => ({ ...s, geo_lon: e.target.value.replace(",", ".") }))}
-        />
-      </div>
-
-      <div className="adminActionRow">
-        <button className="btn" onClick={saveAutoSchedule}>Сохранить настройки</button>
-        <button className="btn secondary" onClick={ensureAutoScheduleNow}>Запустить проверку сейчас</button>
-      </div>
-    </div>
-
     <div className="card adminGamesCard">
       <h2>Создать игру</h2>
 
@@ -2056,6 +1963,138 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           Создать расписание
         </button>
       </div>
+    </div>
+
+
+    <div className="card adminGamesCard adminGamesCard--auto">
+      <button
+        type="button"
+        className={`adminAccordionBtn ${templateAccordionOpen ? "isOpen" : ""}`}
+        onClick={() => setTemplateAccordionOpen((v) => !v)}
+        aria-expanded={templateAccordionOpen}
+        aria-controls="template-settings"
+      >
+        <span>Создать по шаблону</span>
+        <span className="adminAccordionChevron">▾</span>
+      </button>
+
+      {templateAccordionOpen ? (
+        <div id="template-settings" className="adminAccordionBody">
+          <div className="small adminGamesHint">
+            Поддерживает постоянное количество предстоящих игр: как только одна игра уходит в прошлое,
+            при следующем tick/проверке добавляется новая в конец по шаблону.
+          </div>
+
+          <div className="adminToggleRow">
+            <label className="adminToggleLabel" style={{ margin: 0 }}>Включено</label>
+            <button
+              type="button"
+              className={`adminSwitch ${autoSchedule.enabled ? "isOn" : ""}`}
+              role="switch"
+              aria-checked={!!autoSchedule.enabled}
+              aria-label="Включить автосоздание игр"
+              onClick={() => setAutoSchedule((s) => ({ ...s, enabled: !s.enabled }))}
+            >
+              <span className="adminSwitch__thumb" />
+            </button>
+          </div>
+
+          <div className="adminStackFields">
+            <div>
+              <label>Сколько предстоящих игр держать</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={60}
+                value={autoSchedule.target_count}
+                onChange={(e) => setAutoSchedule((s) => ({ ...s, target_count: Number(e.target.value) || 1 }))}
+              />
+            </div>
+
+            <div>
+              <label>День недели шаблона</label>
+              <select
+                className="input"
+                value={autoSchedule.weekday}
+                onChange={(e) => setAutoSchedule((s) => ({ ...s, weekday: Number(e.target.value) }))}
+              >
+                <option value={0}>Вс</option>
+                <option value={1}>Пн</option>
+                <option value={2}>Вт</option>
+                <option value={3}>Ср</option>
+                <option value={4}>Чт</option>
+                <option value={5}>Пт</option>
+                <option value={6}>Сб</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Время</label>
+              <input
+                className="input"
+                type="time"
+                value={autoSchedule.time}
+                onChange={(e) => setAutoSchedule((s) => ({ ...s, time: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <label>Арена</label>
+              <input
+                className="input"
+                value={autoSchedule.location}
+                onChange={(e) => setAutoSchedule((s) => ({ ...s, location: e.target.value }))}
+                placeholder="Например: Шуваловский лед"
+              />
+            </div>
+
+            <div>
+              <label>Геоточка (необязательно)</label>
+              <div className="adminCoordRow">
+                <input
+                  className="input"
+                  style={{ flex: 1, minWidth: 140 }}
+                  placeholder="lat"
+                  value={autoSchedule.geo_lat}
+                  onChange={(e) => setAutoSchedule((s) => ({ ...s, geo_lat: e.target.value.replace(",", ".") }))}
+                />
+                <input
+                  className="input"
+                  style={{ flex: 1, minWidth: 140 }}
+                  placeholder="lon"
+                  value={autoSchedule.geo_lon}
+                  onChange={(e) => setAutoSchedule((s) => ({ ...s, geo_lon: e.target.value.replace(",", ".") }))}
+                />
+              </div>
+
+              <div className="adminActionRow">
+                <button className="btn secondary" onClick={() => setAutoGeoPickOpen(true)}>
+                  🗺️ Выбрать на карте
+                </button>
+
+                <button
+                  className="btn secondary"
+                  onClick={() => setAutoSchedule((s) => ({ ...s, geo_lat: "", geo_lon: "" }))}
+                >
+                  🗑 Убрать точку
+                </button>
+
+                {autoSchedule.geo_lat && autoSchedule.geo_lon ? (
+                  <span className="badge">✅ {Number(autoSchedule.geo_lat).toFixed(6)}, {Number(autoSchedule.geo_lon).toFixed(6)}</span>
+                ) : (
+                  <span className="badge">—</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="adminActionRow">
+            <button className="btn" onClick={saveAutoSchedule}>Сохранить настройки</button>
+            <button className="btn secondary" onClick={ensureAutoScheduleNow}>Запустить проверку сейчас</button>
+          </div>
+        </div>
+      ) : null}
     </div>
 
     <div className="card">
@@ -2232,6 +2271,24 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     setCreateGeoPickOpen(false);
   }}
 />
+
+<MapPickModal
+  open={autoGeoPickOpen}
+  initial={{
+    lat: autoSchedule.geo_lat ? Number(autoSchedule.geo_lat) : null,
+    lon: autoSchedule.geo_lon ? Number(autoSchedule.geo_lon) : null,
+  }}
+  onClose={() => setAutoGeoPickOpen(false)}
+  onPick={(v) => {
+    setAutoSchedule((s) => ({
+      ...s,
+      geo_lat: v.lat != null ? String(v.lat) : "",
+      geo_lon: v.lon != null ? String(v.lon) : "",
+    }));
+    setAutoGeoPickOpen(false);
+  }}
+/>
+
 
 <GameSheet
   open={gameSheetOpen}
