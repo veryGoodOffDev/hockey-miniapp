@@ -148,7 +148,7 @@ body::before{
   content:"";
   position: fixed;
   inset: 0;
-  background: url("/app-bg.webp") center / cover no-repeat;
+  background: url("/hockey-bg.webp") center / cover no-repeat;
   z-index: -2;
   transform: scale(1.02); /* чтобы не было “краёв” */
 }
