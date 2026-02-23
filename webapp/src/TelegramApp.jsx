@@ -2861,9 +2861,9 @@ function openYandexRoute(lat, lon) {
                 ) : (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {!showPast && (
-                    <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                    <div className="bulkRsvpRow" style={{ marginTop: 10 }}>
                       <button
-                        className="btn secondary"
+                        className="bulkRsvpBtn in"
                         disabled={opBusy}
                         onClick={async () => {
                           if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
@@ -2881,11 +2881,11 @@ function openYandexRoute(lat, lon) {
                           );
                         }}
                       >
-                        ✅ Буду на все будущие
+                        👍 IN на все
                       </button>
                       
                       <button
-                        className="btn secondary"
+                        className="bulkRsvpBtn out"
                         disabled={opBusy}
                         onClick={async () => {
                           if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
@@ -2903,7 +2903,7 @@ function openYandexRoute(lat, lon) {
                           );
                         }}
                       >
-                        ❌ Не буду на все будущие
+                        🚫 OUT на все
                       </button>
 
                     </div>
