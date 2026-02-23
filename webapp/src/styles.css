@@ -141,6 +141,33 @@ body{
   line-height: 1.35;
 }
 
+html, body, #root { height: 100%; }
+
+/* фон-картинка на всё приложение */
+body::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  background: url("/app-bg.webp") center / cover no-repeat;
+  z-index: -2;
+  transform: scale(1.02); /* чтобы не было “краёв” */
+}
+
+/* дымка/затемнение для читабельности */
+body::after{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(700px 520px at 50% 30%, rgba(120,200,255,0.18), transparent 60%),
+    linear-gradient(180deg, rgba(2,6,23,0.82), rgba(2,6,23,0.55) 45%, rgba(2,6,23,0.86));
+}
+
+/* страховка: всё поверх фона */
+#root{ position: relative; min-height: 100%; }
+
 a{ color: var(--tg-link); text-decoration: none; }
 a:hover{ text-decoration: underline; }
 
