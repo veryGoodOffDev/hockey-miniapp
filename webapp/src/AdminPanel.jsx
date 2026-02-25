@@ -84,6 +84,48 @@ function formatLastSeenLabel(ts) {
   })}`;
 }
 
+function mskDateParts(base = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(base);
+
+  const pick = (t) => parts.find((p) => p.type === t)?.value || "";
+  return {
+    year: Number(pick("year")),
+    month: Number(pick("month")),
+    day: Number(pick("day")),
+    key: `${pick("year")}-${pick("month")}-${pick("day")}`,
+  };
+}
+
+function monthTitleRu(year, month) {
+  const dt = new Date(Date.UTC(year, month - 1, 1));
+  return dt.toLocaleDateString("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+function toneByCount(count) {
+  if (count >= 17) return "high";
+  if (count >= 11) return "mid";
+  if (count >= 6) return "warn";
+  return "low";
+}
+
+function buildMonthGrid(year, month) {
+  const first = new Date(year, month - 1, 1);
+  const jsStart = first.getDay();
+  const startOffset = (jsStart + 6) % 7;
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < startOffset; i += 1) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
 function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
   return new Promise((resolve) => {
     const tg = window.Telegram?.WebApp;
@@ -371,7 +413,7 @@ function MapPickModal({ open, initial, onClose, onPick }) {
 
 
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
-  const [section, setSection] = useState("games"); // games | players | applications | reminders | jersey
+  const [section, setSection] = useState("games"); // games | players | applications | reminders | jersey | engagement
 
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
@@ -456,6 +498,13 @@ const [sheetPlayer, setSheetPlayer] = useState(null);
 const [createGeoPickOpen, setCreateGeoPickOpen] = useState(false);
 const [autoGeoPickOpen, setAutoGeoPickOpen] = useState(false);
 const [templateAccordionOpen, setTemplateAccordionOpen] = useState(false);
+
+const mskToday = useMemo(() => mskDateParts(new Date()), []);
+const [engMonth, setEngMonth] = useState(mskToday.month);
+const [engYear, setEngYear] = useState(mskToday.year);
+const [engLoading, setEngLoading] = useState(false);
+const [engError, setEngError] = useState("");
+const [engData, setEngData] = useState({ team_size: 0, by_day: {} });
 
 const [videoNotifySilent, setVideoNotifySilent] = useState(false);
 
@@ -1490,6 +1539,25 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     );
   }
 
+  async function loadEngagement(year = engYear, month = engMonth) {
+    setEngLoading(true);
+    setEngError("");
+    try {
+      const r = await apiGet(`/api/admin/engagement?year=${year}&month=${month}`);
+      setEngData({ team_size: Number(r.team_size) || 0, by_day: r.by_day || {} });
+    } catch (e) {
+      setEngError(e?.message || "Не удалось загрузить вовлеченность");
+    } finally {
+      setEngLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (section !== "engagement") return;
+    loadEngagement(engYear, engMonth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, engYear, engMonth]);
+
   /** ===================== UI ===================== */
   return (
     <div className="card">
@@ -1601,6 +1669,109 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         @media (max-width: 520px){
           .guestFormGrid{ grid-template-columns:1fr; }
         }
+        .engHeader{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
+        .engMonthTitle{ font-weight:900; text-transform:capitalize; }
+        .engMonthBtn{ min-width:36px; height:36px; border-radius:10px; border:1px solid var(--border); background:transparent; }
+        .engTodayBadge{
+          margin-top:10px;
+          border:1px solid var(--border);
+          border-radius:14px;
+          padding:12px;
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          gap:8px;
+          background: var(--card-bg);
+        }
+        .engTodayCircle{
+          width:92px; height:92px; border-radius:999px;
+          border:2px solid var(--border);
+          display:grid; place-items:center;
+          font-weight:1000; font-size:22px;
+        }
+        .engLegend{
+          margin-top: 10px;
+          display:grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 6px;
+        }
+        .engLegendItem{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          font-size:12px;
+          font-weight:700;
+          opacity:.92;
+        }
+        .engLegendSwatch{
+          width:14px;
+          height:14px;
+          border-radius:4px;
+          border:1px solid rgba(255,255,255,.25);
+        }
+        .engLegendSwatch.low{ background:#64748b; }
+        .engLegendSwatch.warn{ background:#facc15; }
+        .engLegendSwatch.mid{ background:#84cc16; }
+        .engLegendSwatch.high{ background:#22c55e; }
+        .engGrid{ margin-top:12px; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
+        .engDow{ text-align:center; font-size:12px; opacity:.8; font-weight:700; }
+        .engCell{
+          min-height:86px;
+          border-radius:12px;
+          border:1px solid color-mix(in srgb, var(--border) 70%, white 30%);
+          padding:6px;
+          background: var(--card-bg);
+          position:relative;
+          overflow:hidden;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+        }
+        .engCell.isMuted{ opacity:.35; }
+        .engCell.isFuture{ opacity:.45; background: color-mix(in srgb, var(--card-bg) 84%, #9ca3af); }
+        .engCell.low{ background: linear-gradient(160deg, color-mix(in srgb, #64748b 64%, var(--card-bg)), color-mix(in srgb, #334155 52%, var(--card-bg))); }
+        .engCell.warn{ background: linear-gradient(160deg, color-mix(in srgb, #facc15 70%, var(--card-bg)), color-mix(in srgb, #ca8a04 45%, var(--card-bg))); }
+        .engCell.mid{ background: linear-gradient(160deg, color-mix(in srgb, #84cc16 72%, var(--card-bg)), color-mix(in srgb, #65a30d 45%, var(--card-bg))); }
+        .engCell.high{ background: linear-gradient(160deg, color-mix(in srgb, #22c55e 82%, var(--card-bg)), color-mix(in srgb, #16a34a 60%, var(--card-bg))); }
+        .engDay{
+          position:absolute;
+          top:6px;
+          left:8px;
+          font-size:12px;
+          font-weight:900;
+          opacity:.95;
+          z-index:2;
+        }
+        .engCount{
+          position:absolute;
+          inset:0;
+          display:grid;
+          place-items:center;
+          font-size:30px;
+          font-weight:1000;
+          color: rgba(255,255,255,.58);
+          text-shadow: 0 1px 2px rgba(0,0,0,.25);
+          pointer-events:none;
+        }
+        .engBattery{
+          position:absolute;
+          inset:0;
+          display:grid;
+          grid-template-columns:repeat(var(--team-slots,1), minmax(0,1fr));
+          gap:3px;
+          align-content:end;
+          padding:26px 7px 8px;
+          pointer-events:none;
+        }
+        .engSegment{
+          height:100%;
+          border-radius:3px;
+          background: rgba(255,255,255,.15);
+          border:1px solid rgba(255,255,255,.10);
+        }
+        .engSegment.fill{ background: rgba(255,255,255,.5); }
+        .engCell.low .engSegment.fill{ background: #60a5fa; }
+        .engCell.warn .engSegment.fill{ background: #facc15; }
+        .engCell.mid .engSegment.fill{ background: #84cc16; }
+        .engCell.high .engSegment.fill{ background: #22c55e; }
       `}</style>
 
       <h2 style={{ marginTop: 0 }}>Админ</h2>
@@ -1642,6 +1813,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
         <button className={`segBtn ${section === "reminders" ? "active" : ""}`} onClick={() => setSection("reminders")}>
           Напоминания
+        </button>
+        <button className={`segBtn ${section === "engagement" ? "active" : ""}`} onClick={() => setSection("engagement")}>
+          Вовлеченность
         </button>
       </div>
 
@@ -2212,6 +2386,76 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     </div>
   </div>
 )}
+
+
+      {/* ====== ENGAGEMENT ====== */}
+      {section === "engagement" && (() => {
+        const grid = buildMonthGrid(engYear, engMonth);
+        const teamSize = Math.max(1, engData.team_size || 1);
+        const todayKey = mskToday.key;
+        const todayCount = Number(engData.by_day?.[todayKey] || 0);
+        const dow = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+        return (
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="rowBetween">
+              <h2 style={{ margin: 0 }}>Вовлеченность</h2>
+              <button className="btn secondary" onClick={() => loadEngagement(engYear, engMonth)} disabled={engLoading}>
+                {engLoading ? "…" : "Обновить"}
+              </button>
+            </div>
+
+            <div className="engHeader">
+              <button className="engMonthBtn" onClick={() => {
+                if (engMonth === 1) { setEngMonth(12); setEngYear((y) => y - 1); }
+                else setEngMonth((m) => m - 1);
+              }}>←</button>
+              <div className="engMonthTitle">{monthTitleRu(engYear, engMonth)}</div>
+              <button className="engMonthBtn" onClick={() => {
+                if (engMonth === 12) { setEngMonth(1); setEngYear((y) => y + 1); }
+                else setEngMonth((m) => m + 1);
+              }}>→</button>
+            </div>
+
+            <div className="engTodayBadge">
+              <div className="small">Сегодня (уникальных заходов)</div>
+              <div className={`engTodayCircle ${toneByCount(todayCount)}`}>{todayCount}</div>
+              <div className="small">Размер команды: {engData.team_size || 0}</div>
+            </div>
+
+            {engError ? <div className="small" style={{ marginTop: 8, color: "#ef4444" }}>{engError}</div> : null}
+
+            <div className="engLegend" aria-label="Шкала вовлеченности">
+              <div className="engLegendItem"><span className="engLegendSwatch low" /> ≤ 5 — серо-синяя</div>
+              <div className="engLegendItem"><span className="engLegendSwatch warn" /> 6..10 — жёлтая</div>
+              <div className="engLegendItem"><span className="engLegendSwatch mid" /> 11..16 — тускло-зелёная</div>
+              <div className="engLegendItem"><span className="engLegendSwatch high" /> ≥ 17 — ярко-зелёная</div>
+            </div>
+
+            <div className="engGrid" style={{ marginTop: 14 }}>
+              {dow.map((d) => <div key={d} className="engDow">{d}</div>)}
+              {grid.map((d, idx) => {
+                if (!d) return <div key={`empty-${idx}`} className="engCell isMuted" />;
+                const key = `${engYear}-${String(engMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+                const count = Number(engData.by_day?.[key] || 0);
+                const isFuture = key > mskToday.key;
+                const fill = Math.max(0, Math.min(teamSize, count));
+                const segments = Array.from({ length: teamSize }, (_, i) => i < fill);
+
+                return (
+                  <div key={key} className={`engCell ${isFuture ? "isFuture" : toneByCount(count)}`}>
+                    <div className="engDay">{d}</div>
+                    <div className="engCount">{count}</div>
+                    <div className="engBattery" style={{ "--team-slots": teamSize }}>
+                      {segments.map((on, i) => <span key={i} className={`engSegment ${on ? "fill" : ""}`} />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
 
 {/* ====== APPLICATIONS ====== */}
