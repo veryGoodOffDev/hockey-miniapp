@@ -4776,7 +4776,10 @@ function openYandexRoute(lat, lon) {
                             <div className="small" style={{ opacity: 0.8 }}>
                               {posHuman(p.position)}
                             </div>
-                            {isAdmin && p.last_seen_at ? (
+                          </div>
+                        </div>
+                        {isAdmin && p.last_seen_at ? (
+                          <div className="row" style={{marginTop: 2 }}>
                               <div
                                 className="small"
                                 style={{
@@ -4792,9 +4795,8 @@ function openYandexRoute(lat, lon) {
                               >
                                 🕒 {formatLastSeenLabel(p.last_seen_at)}
                               </div>
+                              </div>
                             ) : null}
-                          </div>
-                        </div>
                       </div>
                     );
                   })}
