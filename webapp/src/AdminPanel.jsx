@@ -1751,17 +1751,27 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           text-shadow: 0 1px 2px rgba(0,0,0,.25);
           pointer-events:none;
         }
-        .engBars{
+        .engBattery{
           position:absolute;
-          left:6px;
-          right:6px;
-          bottom:7px;
+          inset:0;
           display:grid;
-          grid-template-columns:repeat(var(--team-slots,1),minmax(0,1fr));
-          gap:2px;
+          grid-template-columns:repeat(var(--team-slots,1), minmax(0,1fr));
+          gap:3px;
+          align-content:end;
+          padding:26px 7px 8px;
+          pointer-events:none;
         }
-        .engBar{ height:5px; border-radius:999px; background: rgba(255,255,255,.26); }
-        .engBar.fill{ background: rgba(255,255,255,.95); }
+        .engSegment{
+          height:100%;
+          border-radius:3px;
+          background: rgba(255,255,255,.15);
+          border:1px solid rgba(255,255,255,.10);
+        }
+        .engSegment.fill{ background: rgba(255,255,255,.5); }
+        .engCell.low .engSegment.fill{ background: #60a5fa; }
+        .engCell.warn .engSegment.fill{ background: #facc15; }
+        .engCell.mid .engSegment.fill{ background: #84cc16; }
+        .engCell.high .engSegment.fill{ background: #22c55e; }
       `}</style>
 
       <h2 style={{ marginTop: 0 }}>Админ</h2>
@@ -2430,14 +2440,14 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 const count = Number(engData.by_day?.[key] || 0);
                 const isFuture = key > mskToday.key;
                 const fill = Math.max(0, Math.min(teamSize, count));
-                const bars = Array.from({ length: teamSize }, (_, i) => i < fill);
+                const segments = Array.from({ length: teamSize }, (_, i) => i < fill);
 
                 return (
                   <div key={key} className={`engCell ${isFuture ? "isFuture" : toneByCount(count)}`}>
                     <div className="engDay">{d}</div>
                     <div className="engCount">{count}</div>
-                    <div className="engBars" style={{ "--team-slots": teamSize }}>
-                      {bars.map((on, i) => <span key={i} className={`engBar ${on ? "fill" : ""}`} />)}
+                    <div className="engBattery" style={{ "--team-slots": teamSize }}>
+                      {segments.map((on, i) => <span key={i} className={`engSegment ${on ? "fill" : ""}`} />)}
                     </div>
                   </div>
                 );
