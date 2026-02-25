@@ -288,6 +288,13 @@ app.use(async (req, res, next) => {
 
   try {
     await q(`UPDATE players SET last_seen_at=NOW() WHERE tg_id=$1`, [user.id]);
+    await q(
+      `INSERT INTO app_daily_visits(visit_date, tg_id, source)
+       VALUES((NOW() AT TIME ZONE 'Europe/Moscow')::date, $1, 'webapp')
+       ON CONFLICT (visit_date, tg_id)
+       DO UPDATE SET last_seen_at=NOW()`,
+      [user.id]
+    );
   } catch (e) {
     console.error("[last_seen] touch failed:", e?.message || e);
   }
@@ -4395,6 +4402,53 @@ app.post("/api/admin/rsvp", async (req, res) => {
 
 
 /** ====== ADMIN: players list + patch ====== */
+
+app.get("/api/admin/engagement", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const y = int(req.query.year, Number.NaN);
+  const m = int(req.query.month, Number.NaN);
+
+  const nowMsk = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" }));
+  const reqYear = Number.isFinite(y) && y >= 2000 && y <= 2200 ? y : nowMsk.getFullYear();
+  const reqMonth = Number.isFinite(m) && m >= 1 && m <= 12 ? m : nowMsk.getMonth() + 1;
+
+  const monthKey = `${reqYear}-${String(reqMonth).padStart(2, "0")}-01`;
+
+  const stats = await q(
+    `SELECT to_char(visit_date, 'YYYY-MM-DD') AS day_key, COUNT(*)::int AS visitors
+     FROM app_daily_visits
+     WHERE visit_date >= DATE_TRUNC('month', $1::date)::date
+       AND visit_date < (DATE_TRUNC('month', $1::date) + INTERVAL '1 month')::date
+     GROUP BY visit_date
+     ORDER BY visit_date ASC`,
+    [monthKey]
+  );
+
+  const playersCountRes = await q(
+    `SELECT COUNT(*)::int AS total
+     FROM players
+     WHERE disabled = FALSE
+       AND player_kind IN ('tg', 'manual')`
+  );
+
+  const byDay = {};
+  for (const row of stats.rows) {
+    byDay[row.day_key] = Number(row.visitors) || 0;
+  }
+
+  res.json({
+    ok: true,
+    year: reqYear,
+    month: reqMonth,
+    team_size: Number(playersCountRes.rows?.[0]?.total || 0),
+    by_day: byDay,
+  });
+});
+
 app.get("/api/admin/players", async (req, res) => {
   const user = req.webappUser || requireWebAppAuth(req, res);
   if (!user) return;
