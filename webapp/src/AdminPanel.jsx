@@ -1757,8 +1757,8 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           display:grid;
           grid-template-rows:repeat(var(--team-slots,1), minmax(0,1fr));
           gap:2px;
-          padding:24px 7px 8px;
           pointer-events:none;
+          width:100%;
         }
         .engSegment{
           width:100%;
