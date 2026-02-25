@@ -188,6 +188,7 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pending_email TEXT;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS pending_email_requested_at TIMESTAMPTZ;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;`);
 
   await q(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_players_email_unique
@@ -216,6 +217,7 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ALTER COLUMN player_kind SET NOT NULL;`);
 
   await q(`CREATE INDEX IF NOT EXISTS idx_players_kind ON players(player_kind);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_players_last_seen_at ON players(last_seen_at DESC);`);
 
   /** ===================== RSVPS ===================== */
   await q(`
