@@ -219,6 +219,21 @@ export async function ensureSchema(q) {
   await q(`CREATE INDEX IF NOT EXISTS idx_players_kind ON players(player_kind);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_players_last_seen_at ON players(last_seen_at DESC);`);
 
+  /** ===================== APP ENGAGEMENT ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS app_daily_visits (
+      visit_date DATE NOT NULL,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      source TEXT NOT NULL DEFAULT 'webapp',
+      PRIMARY KEY (visit_date, tg_id)
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_app_daily_visits_date ON app_daily_visits(visit_date DESC);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_app_daily_visits_tg ON app_daily_visits(tg_id);`);
+
   /** ===================== RSVPS ===================== */
   await q(`
     CREATE TABLE IF NOT EXISTS rsvps (
