@@ -4776,6 +4776,23 @@ function openYandexRoute(lat, lon) {
                             <div className="small" style={{ opacity: 0.8 }}>
                               {posHuman(p.position)}
                             </div>
+                            {isAdmin && p.last_seen_at ? (
+                              <div
+                                className="small"
+                                style={{
+                                  marginTop: 6,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 999,
+                                  padding: "3px 9px",
+                                  opacity: 0.9,
+                                }}
+                              >
+                                🕒 {formatLastSeenLabel(p.last_seen_at)}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -5023,6 +5040,29 @@ function showNum(p) {
   const nn = Number(n);
   if (!Number.isFinite(nn)) return "";
   return `${Math.trunc(nn)}`;
+}
+
+
+function formatLastSeenLabel(ts) {
+  if (!ts) return "";
+
+  const d = new Date(ts);
+  const t = d.getTime();
+  if (!Number.isFinite(t)) return "";
+
+  const diffMs = Date.now() - t;
+  const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (diffMin <= 0) return "Был только что";
+  if (diffMin <= 5) return `Был ${diffMin} ${diffMin === 1 ? "минуту" : diffMin < 5 ? "минуты" : "минут"} назад`;
+
+  return `Заходил ${d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
 
 function formatWhen(starts_at) {
