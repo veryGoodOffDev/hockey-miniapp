@@ -1689,20 +1689,79 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           display:grid; place-items:center;
           font-weight:1000; font-size:22px;
         }
+        .engLegend{
+          margin-top: 10px;
+          display:grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 6px;
+        }
+        .engLegendItem{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          font-size:12px;
+          font-weight:700;
+          opacity:.92;
+        }
+        .engLegendSwatch{
+          width:14px;
+          height:14px;
+          border-radius:4px;
+          border:1px solid rgba(255,255,255,.25);
+        }
+        .engLegendSwatch.low{ background:#64748b; }
+        .engLegendSwatch.warn{ background:#facc15; }
+        .engLegendSwatch.mid{ background:#84cc16; }
+        .engLegendSwatch.high{ background:#22c55e; }
         .engGrid{ margin-top:12px; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
         .engDow{ text-align:center; font-size:12px; opacity:.8; font-weight:700; }
-        .engCell{ min-height:68px; border-radius:10px; border:1px solid var(--border); padding:6px; background: var(--card-bg); }
+        .engCell{
+          min-height:86px;
+          border-radius:12px;
+          border:1px solid color-mix(in srgb, var(--border) 70%, white 30%);
+          padding:6px;
+          background: var(--card-bg);
+          position:relative;
+          overflow:hidden;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+        }
         .engCell.isMuted{ opacity:.35; }
-        .engCell.isFuture{ opacity:.45; background: color-mix(in srgb, var(--card-bg) 80%, #9ca3af); }
-        .engCell.low{ background: color-mix(in srgb, #64748b 24%, var(--card-bg)); }
-        .engCell.warn{ background: color-mix(in srgb, #facc15 40%, var(--card-bg)); }
-        .engCell.mid{ background: color-mix(in srgb, #84cc16 34%, var(--card-bg)); }
-        .engCell.high{ background: color-mix(in srgb, #22c55e 52%, var(--card-bg)); }
-        .engDay{ font-size:12px; font-weight:800; }
-        .engCount{ font-size:14px; font-weight:900; margin-top:4px; }
-        .engBars{ margin-top:6px; display:grid; grid-template-columns:repeat(var(--team-slots,1),minmax(0,1fr)); gap:2px; }
-        .engBar{ height:4px; border-radius:999px; background: rgba(255,255,255,.28); }
-        .engBar.fill{ background: rgba(255,255,255,.92); }
+        .engCell.isFuture{ opacity:.45; background: color-mix(in srgb, var(--card-bg) 84%, #9ca3af); }
+        .engCell.low{ background: linear-gradient(160deg, color-mix(in srgb, #64748b 64%, var(--card-bg)), color-mix(in srgb, #334155 52%, var(--card-bg))); }
+        .engCell.warn{ background: linear-gradient(160deg, color-mix(in srgb, #facc15 70%, var(--card-bg)), color-mix(in srgb, #ca8a04 45%, var(--card-bg))); }
+        .engCell.mid{ background: linear-gradient(160deg, color-mix(in srgb, #84cc16 72%, var(--card-bg)), color-mix(in srgb, #65a30d 45%, var(--card-bg))); }
+        .engCell.high{ background: linear-gradient(160deg, color-mix(in srgb, #22c55e 82%, var(--card-bg)), color-mix(in srgb, #16a34a 60%, var(--card-bg))); }
+        .engDay{
+          position:absolute;
+          top:6px;
+          left:8px;
+          font-size:12px;
+          font-weight:900;
+          opacity:.95;
+          z-index:2;
+        }
+        .engCount{
+          position:absolute;
+          inset:0;
+          display:grid;
+          place-items:center;
+          font-size:30px;
+          font-weight:1000;
+          color: rgba(255,255,255,.58);
+          text-shadow: 0 1px 2px rgba(0,0,0,.25);
+          pointer-events:none;
+        }
+        .engBars{
+          position:absolute;
+          left:6px;
+          right:6px;
+          bottom:7px;
+          display:grid;
+          grid-template-columns:repeat(var(--team-slots,1),minmax(0,1fr));
+          gap:2px;
+        }
+        .engBar{ height:5px; border-radius:999px; background: rgba(255,255,255,.26); }
+        .engBar.fill{ background: rgba(255,255,255,.95); }
       `}</style>
 
       <h2 style={{ marginTop: 0 }}>Админ</h2>
@@ -2355,6 +2414,13 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             </div>
 
             {engError ? <div className="small" style={{ marginTop: 8, color: "#ef4444" }}>{engError}</div> : null}
+
+            <div className="engLegend" aria-label="Шкала вовлеченности">
+              <div className="engLegendItem"><span className="engLegendSwatch low" /> ≤ 5 — серо-синяя</div>
+              <div className="engLegendItem"><span className="engLegendSwatch warn" /> 6..10 — жёлтая</div>
+              <div className="engLegendItem"><span className="engLegendSwatch mid" /> 11..16 — тускло-зелёная</div>
+              <div className="engLegendItem"><span className="engLegendSwatch high" /> ≥ 17 — ярко-зелёная</div>
+            </div>
 
             <div className="engGrid" style={{ marginTop: 14 }}>
               {dow.map((d) => <div key={d} className="engDow">{d}</div>)}
