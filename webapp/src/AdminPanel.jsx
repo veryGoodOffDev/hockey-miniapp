@@ -1755,17 +1755,16 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           position:absolute;
           inset:0;
           display:grid;
-          grid-template-columns:repeat(var(--team-slots,1), minmax(0,1fr));
-          gap:3px;
-          align-content:end;
-          padding:26px 7px 8px;
+          grid-template-rows:repeat(var(--team-slots,1), minmax(0,1fr));
+          gap:2px;
+          padding:24px 7px 8px;
           pointer-events:none;
         }
         .engSegment{
-          height:100%;
-          border-radius:3px;
-          background: rgba(255,255,255,.15);
-          border:1px solid rgba(255,255,255,.10);
+          width:100%;
+          border-radius:2px;
+          background: rgba(255,255,255,.14);
+          border:1px solid rgba(255,255,255,.09);
         }
         .engSegment.fill{ background: rgba(255,255,255,.5); }
         .engCell.low .engSegment.fill{ background: #60a5fa; }
@@ -2440,7 +2439,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 const count = Number(engData.by_day?.[key] || 0);
                 const isFuture = key > mskToday.key;
                 const fill = Math.max(0, Math.min(teamSize, count));
-                const segments = Array.from({ length: teamSize }, (_, i) => i < fill);
+                const segments = Array.from({ length: teamSize }, (_, i) => i >= teamSize - fill);
 
                 return (
                   <div key={key} className={`engCell ${isFuture ? "isFuture" : toneByCount(count)}`}>
