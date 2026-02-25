@@ -61,6 +61,29 @@ function posLabel(pos) {
   return "F";
 }
 
+
+function formatLastSeenLabel(ts) {
+  if (!ts) return "";
+
+  const d = new Date(ts);
+  const t = d.getTime();
+  if (!Number.isFinite(t)) return "";
+
+  const diffMs = Date.now() - t;
+  const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (diffMin <= 0) return "Был только что";
+  if (diffMin <= 5) return `Был ${diffMin} ${diffMin === 1 ? "минуту" : diffMin < 5 ? "минуты" : "минут"} назад`;
+
+  return `Заходил ${d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
 function tgConfirm({ title, message, okText = "OK", cancelText = "Отмена" }) {
   return new Promise((resolve) => {
     const tg = window.Telegram?.WebApp;
@@ -1480,6 +1503,18 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         }
         .listItem:active{ transform: translateY(1px); }
         .listMeta{ opacity:.85; font-size:13px; margin-top:3px; }
+        .lastSeenPill{
+          margin-top: 8px;
+          display: inline-flex;
+          align-items: center;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          padding: 4px 10px;
+          font-size: 12px;
+          font-weight: 700;
+          opacity: .92;
+          background: color-mix(in srgb, var(--card-bg) 88%, black);
+        }
         .badgeMini{
           border:1px solid var(--border);
           border-radius:999px;
@@ -2247,6 +2282,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                   {p.is_env_admin ? " · 🔒 env-админ" : ""}
                   {p.joke_premium_active ? " · 🌟 премиум" : ""}
                 </div>
+                {p.last_seen_at ? (
+                  <div className="lastSeenPill">🕒 {formatLastSeenLabel(p.last_seen_at)}</div>
+                ) : null}
               </div>
             ))}
             {filteredPlayers.length === 0 && <div className="small">Игроков не найдено.</div>}
