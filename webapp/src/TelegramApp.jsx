@@ -5056,8 +5056,28 @@ function formatLastSeenLabel(ts) {
   const diffMin = Math.max(0, Math.floor(diffMs / 60000));
 
   if (diffMin <= 0) return "Был только что";
-  if (diffMin <= 5) return `Был ${diffMin} ${diffMin === 1 ? "минуту" : diffMin < 5 ? "минуты" : "минут"} назад`;
+  if (diffMin <= 5) {
+    return `Был ${diffMin} ${
+      diffMin === 1 ? "минуту" : diffMin < 5 ? "минуты" : "минут"
+    } назад`;
+  }
 
+  // новое: если тот же календарный день (локально), пишем "сегодня в ..."
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
+  if (isToday) {
+    const time = d.toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `Был сегодня в ${time}`;
+  }
+
+  // иначе — как раньше (дата + время)
   return `Заходил ${d.toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
