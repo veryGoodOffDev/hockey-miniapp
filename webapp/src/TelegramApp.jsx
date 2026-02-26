@@ -2618,7 +2618,7 @@ function openYandexRoute(lat, lon) {
   if (!inTelegramWebApp && !hasWebAuth) {
     return (
       <div className="container">
-        <h1>🏒 Хоккей: отметки и составы</h1>
+        <h1 className="mainTitle">🏒 Хоккей: отметки и составы</h1>
         <div className="toastWrap" aria-live="polite" aria-atomic="true">
           <div className={`toast tone-${op.tone} ${op.text ? "isShow" : ""}`}>
             <div className="toastRow">

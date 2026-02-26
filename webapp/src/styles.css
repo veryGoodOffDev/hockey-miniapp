@@ -279,6 +279,10 @@ h1{
   line-height: 1.15;
 }
 
+.mainTitle {
+  color: #fff;
+}
+
 h2{
   font-size: var(--fs-h2);
   margin: 6px 0 10px;
