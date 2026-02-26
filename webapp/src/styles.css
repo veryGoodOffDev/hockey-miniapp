@@ -1693,6 +1693,18 @@ textarea:focus{
 }
 
 /* ===== TelegramApp: modernized game cards (visual only) ===== */
+
+@keyframes gameCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .gameCard{
   border: 1px solid rgba(255,255,255,.14);
   box-shadow:
@@ -1704,6 +1716,8 @@ textarea:focus{
     border-color .22s ease,
     filter .22s ease;
   will-change: transform;
+  animation: gameCardEnter .42s cubic-bezier(.22,.61,.36,1) both;
+  animation-delay: var(--enter-delay, 0ms);
 }
 
 .gameCard::selection{ background: rgba(255,255,255,.2); }
@@ -1760,6 +1774,13 @@ textarea:focus{
     0 0 0 1px rgba(0, 255, 140, .35),
     0 18px 36px rgba(0, 255, 140, .14),
     0 2px 0 rgba(255,255,255,.14) inset;
+}
+
+
+@media (prefers-reduced-motion: reduce){
+  .gameCard{
+    animation: none;
+  }
 }
 
 @media (hover: none){

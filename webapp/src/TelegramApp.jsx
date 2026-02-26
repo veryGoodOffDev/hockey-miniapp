@@ -2935,6 +2935,7 @@ function openYandexRoute(lat, lon) {
                           key={g.id}
                           className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
                           style={{
+                            "--enter-delay": `${Math.min(idx, 10) * 70}ms`,
                             cursor: "pointer",
                             opacity: past ? 0.85 : 1,
                             backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.65)), url(${bgUrl})`,
