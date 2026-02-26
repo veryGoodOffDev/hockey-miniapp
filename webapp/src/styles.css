@@ -279,8 +279,18 @@ h1{
   line-height: 1.15;
 }
 
-.mainTitle {
-  color: #fff;
+/* Светлая подложка над фоновым фото в light-темах: текст остаётся читаемым,
+   но изображение по-прежнему видно. */
+:root[data-web="1"][data-web-theme="light"] h1,
+:root[data-tg="light"] h1{
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #ffffff 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 52%, #cbd5e1);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  box-shadow: 0 6px 20px rgba(15,23,42,.10);
 }
 
 h2{
@@ -1722,6 +1732,15 @@ textarea:focus{
   will-change: transform;
   animation: gameCardEnter .42s cubic-bezier(.22,.61,.36,1) both;
   animation-delay: var(--enter-delay, 0ms);
+}
+
+.gameCard.scrollEnter{
+  opacity: 0;
+  transform: translateX(26px);
+}
+
+.gameCard.scrollEnter.isVisible{
+  animation: gameCardEnter .45s cubic-bezier(.22,.61,.36,1) both;
 }
 
 .gameCard.scrollEnter{
