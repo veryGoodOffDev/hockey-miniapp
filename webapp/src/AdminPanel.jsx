@@ -479,6 +479,8 @@ const [jerseySelectedId, setJerseySelectedId] = useState(null);
   const [msgHistory, setMsgHistory] = useState([]);
   const [msgLoading, setMsgLoading] = useState(false);
   const [showDeletedMsgs, setShowDeletedMsgs] = useState(false);
+  const [msgHistoryOpened, setMsgHistoryOpened] = useState(false);
+  const [msgHistoryHasMore, setMsgHistoryHasMore] = useState(false);
   const [showPastAdmin, setShowPastAdmin] = useState(false);
   const [tokenMsg, setTokenMsg] = useState("");
   const [tokenBusy, setTokenBusy] = useState(false);
@@ -504,7 +506,8 @@ const [engMonth, setEngMonth] = useState(mskToday.month);
 const [engYear, setEngYear] = useState(mskToday.year);
 const [engLoading, setEngLoading] = useState(false);
 const [engError, setEngError] = useState("");
-const [engData, setEngData] = useState({ team_size: 0, by_day: {} });
+const [engData, setEngData] = useState({ team_size: 0, by_day: {}, users_by_day: {} });
+const [engSelectedDay, setEngSelectedDay] = useState(mskToday.key);
 
 const [videoNotifySilent, setVideoNotifySilent] = useState(false);
 
@@ -561,12 +564,21 @@ function fmtTs(ts) {
   } catch { return ""; }
 }
 
-async function loadMsgHistory() {
+async function loadMsgHistory({ append = false, forceOpen = true } = {}) {
   if (!isSuperAdmin) return;
+
+  const limit = 10;
+  const offset = append ? msgHistory.length : 0;
+
   setMsgLoading(true);
   try {
-    const r = await apiGet(`/api/admin/bot-messages?limit=50&include_deleted=${showDeletedMsgs ? 1 : 0}`);
-    setMsgHistory(r.messages || []);
+    const r = await apiGet(`/api/admin/bot-messages?limit=${limit}&offset=${offset}&include_deleted=${showDeletedMsgs ? 1 : 0}`);
+    const chunk = Array.isArray(r.messages) ? r.messages : [];
+
+    setMsgHistory((prev) => (append ? [...prev, ...chunk] : chunk));
+    setMsgHistoryHasMore(!!r.has_more);
+
+    if (forceOpen) setMsgHistoryOpened(true);
   } finally {
     setMsgLoading(false);
   }
@@ -579,7 +591,7 @@ async function sendCustomToChat() {
     await apiPost("/api/admin/bot-messages/send", { text: customMsg.trim() });
     setCustomMsg("");
     setReminderMsg("✅ Сообщение отправлено в чат");
-    await loadMsgHistory();
+    if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   } catch (e) {
     setReminderMsg("❌ Не удалось отправить сообщение");
   }
@@ -592,7 +604,7 @@ async function deleteHistoryMsg(id) {
   setReminderMsg("");
   try {
     await apiPost(`/api/admin/bot-messages/${id}/delete`, {});
-    await loadMsgHistory();
+    if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   } catch (e) {
     setReminderMsg("❌ Не удалось удалить");
   }
@@ -603,7 +615,7 @@ async function syncHistory() {
   try {
     const r = await apiPost("/api/admin/bot-messages/sync", { limit: 50 });
     setReminderMsg(`🔄 Проверено: ${r.checked || 0}, удалено из истории: ${r.missing || 0}`);
-    await loadMsgHistory();
+    if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   } catch (e) {
     setReminderMsg("❌ Ошибка синхронизации");
   }
@@ -1223,7 +1235,7 @@ async function sendVideoToChat() {
     });
 
     // если хочешь — обновляй историю сообщений
-    // await loadMsgHistory();
+    // if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   }, { successText: "✅ Отправлено в чат", errorText: "❌ Не удалось отправить" });
 }
 
@@ -1493,9 +1505,10 @@ const pastAdminGames = useMemo(() => {
 const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
   useEffect(() => {
-  if (section === "reminders" && isSuperAdmin) loadMsgHistory();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [section, isSuperAdmin, showDeletedMsgs]);
+    if (section !== "reminders" || !isSuperAdmin || !msgHistoryOpened) return;
+    loadMsgHistory({ append: false, forceOpen: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, isSuperAdmin, showDeletedMsgs, msgHistoryOpened]);
 
 
   function GuestPill({ g }) {
@@ -1544,7 +1557,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     setEngError("");
     try {
       const r = await apiGet(`/api/admin/engagement?year=${year}&month=${month}`);
-      setEngData({ team_size: Number(r.team_size) || 0, by_day: r.by_day || {} });
+      setEngData({ team_size: Number(r.team_size) || 0, by_day: r.by_day || {}, users_by_day: r.users_by_day || {} });
     } catch (e) {
       setEngError(e?.message || "Не удалось загрузить вовлеченность");
     } finally {
@@ -1558,220 +1571,13 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, engYear, engMonth]);
 
+  useEffect(() => {
+    setEngSelectedDay(mskToday.key);
+  }, [engMonth, engYear, mskToday.key]);
+
   /** ===================== UI ===================== */
   return (
     <div className="card">
-      <style>{`
-        .listItem{
-          padding:12px;
-          border:1px solid var(--border);
-          border-radius:14px;
-          background: var(--card-bg);
-          cursor:pointer;
-        }
-        .listItem:active{ transform: translateY(1px); }
-        .listMeta{ opacity:.85; font-size:13px; margin-top:3px; }
-        .lastSeenPill{
-          margin-top: 8px;
-          display: inline-flex;
-          align-items: center;
-          border: 1px solid var(--border);
-          border-radius: 999px;
-          padding: 4px 10px;
-          font-size: 12px;
-          font-weight: 700;
-          opacity: .92;
-          background: color-mix(in srgb, var(--card-bg) 88%, black);
-        }
-        .badgeMini{
-          border:1px solid var(--border);
-          border-radius:999px;
-          padding:4px 10px;
-          font-size:12px;
-          font-weight:800;
-          opacity:.9;
-        }
-        .rowBetween{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
-
-        .sheetBackdrop{
-          position:fixed; inset:0;
-          background: rgba(0,0,0,.5);
-          z-index: 9999;
-          display:flex;
-          align-items:flex-end;
-        }
-        .sheet{
-          width:100%;
-          max-height: 92vh;
-          background: var(--bg);
-          border-top-left-radius: 18px;
-          border-top-right-radius: 18px;
-          border:1px solid var(--border);
-          overflow:hidden;
-        }
-        .sheetHeader{
-          display:flex; align-items:center; justify-content:space-between;
-          gap:10px;
-          padding:10px 12px;
-          border-bottom:1px solid var(--border);
-          background: color-mix(in srgb, var(--bg) 85%, black);
-        }
-        .sheetTitle{
-          font-weight: 1000;
-          text-align:center;
-          flex:1;
-          overflow:hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .sheetBody{
-          padding:12px;
-          overflow:auto;
-          -webkit-overflow-scrolling: touch;
-          max-height: 82vh;
-          padding-bottom: calc(18px + env(safe-area-inset-bottom));
-        }
-
-        .guestPill{
-          display:flex; align-items:center; justify-content:space-between;
-          gap:10px; padding:10px 12px;
-          border:1px solid var(--border);
-          border-radius:999px;
-          background: var(--card-bg);
-          margin-top:8px;
-        }
-        .guestPill.yes{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #16a34a 10%, transparent); }
-        .guestPill.maybe{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #f59e0b 12%, transparent); }
-        .guestPill.no{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #ef4444 10%, transparent); }
-        .guestPillMain{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-        .guestTag{
-          font-weight:800; font-size:12px;
-          padding:4px 8px; border-radius:999px;
-          border:1px solid var(--border);
-          background: color-mix(in srgb, var(--tg-text) 6%, transparent);
-        }
-        .guestName{ font-weight:800; }
-        .guestMeta{ opacity:.85; font-size:13px; }
-        .guestStatus{ opacity:.9; font-size:13px; }
-        .guestPillActions{ display:flex; gap:8px; }
-        .iconBtn{
-          border:1px solid var(--border);
-          background: transparent;
-          border-radius:10px;
-          padding:6px 8px;
-          cursor:pointer;
-          line-height:1;
-        }
-        .iconBtn:active{ transform: translateY(1px); }
-
-        .guestFormGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-        .guestFormGrid .full{ grid-column: 1 / -1; }
-        @media (max-width: 520px){
-          .guestFormGrid{ grid-template-columns:1fr; }
-        }
-        .engHeader{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
-        .engMonthTitle{ font-weight:900; text-transform:capitalize; }
-        .engMonthBtn{ min-width:36px; height:36px; border-radius:10px; border:1px solid var(--border); background:transparent; }
-        .engTodayBadge{
-          margin-top:10px;
-          border:1px solid var(--border);
-          border-radius:14px;
-          padding:12px;
-          display:flex;
-          flex-direction:column;
-          align-items:center;
-          gap:8px;
-          background: var(--card-bg);
-        }
-        .engTodayCircle{
-          width:92px; height:92px; border-radius:999px;
-          border:2px solid var(--border);
-          display:grid; place-items:center;
-          font-weight:1000; font-size:22px;
-        }
-        .engLegend{
-          margin-top: 10px;
-          display:grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 6px;
-        }
-        .engLegendItem{
-          display:flex;
-          align-items:center;
-          gap:8px;
-          font-size:12px;
-          font-weight:700;
-          opacity:.92;
-        }
-        .engLegendSwatch{
-          width:14px;
-          height:14px;
-          border-radius:4px;
-          border:1px solid rgba(255,255,255,.25);
-        }
-        .engLegendSwatch.low{ background:#64748b; }
-        .engLegendSwatch.warn{ background:#facc15; }
-        .engLegendSwatch.mid{ background:#84cc16; }
-        .engLegendSwatch.high{ background:#22c55e; }
-        .engGrid{ margin-top:12px; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
-        .engDow{ text-align:center; font-size:12px; opacity:.8; font-weight:700; }
-        .engCell{
-          min-height:86px;
-          border-radius:12px;
-          border:1px solid color-mix(in srgb, var(--border) 70%, white 30%);
-          padding:6px;
-          background: var(--card-bg);
-          position:relative;
-          overflow:hidden;
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
-        }
-        .engCell.isMuted{ opacity:.35; }
-        .engCell.isFuture{ opacity:.45; background: color-mix(in srgb, var(--card-bg) 84%, #9ca3af); }
-        .engCell.low{ background: linear-gradient(160deg, color-mix(in srgb, #64748b 64%, var(--card-bg)), color-mix(in srgb, #334155 52%, var(--card-bg))); }
-        .engCell.warn{ background: linear-gradient(160deg, color-mix(in srgb, #facc15 70%, var(--card-bg)), color-mix(in srgb, #ca8a04 45%, var(--card-bg))); }
-        .engCell.mid{ background: linear-gradient(160deg, color-mix(in srgb, #84cc16 72%, var(--card-bg)), color-mix(in srgb, #65a30d 45%, var(--card-bg))); }
-        .engCell.high{ background: linear-gradient(160deg, color-mix(in srgb, #22c55e 82%, var(--card-bg)), color-mix(in srgb, #16a34a 60%, var(--card-bg))); }
-        .engDay{
-          position:absolute;
-          top:6px;
-          left:8px;
-          font-size:12px;
-          font-weight:900;
-          opacity:.95;
-          z-index:2;
-        }
-        .engCount{
-          position:absolute;
-          inset:0;
-          display:grid;
-          place-items:center;
-          font-size:30px;
-          font-weight:1000;
-          color: rgba(255,255,255,.58);
-          text-shadow: 0 1px 2px rgba(0,0,0,.25);
-          pointer-events:none;
-        }
-        .engBattery{
-          position:absolute;
-          inset:0;
-          display:grid;
-          grid-template-rows:repeat(var(--team-slots,1), minmax(0,1fr));
-          gap:2px;
-          pointer-events:none;
-          width:100%;
-        }
-        .engSegment{
-          width:100%;
-          border-radius:2px;
-          background: rgba(255,255,255,.14);
-          border:1px solid rgba(255,255,255,.09);
-        }
-        .engSegment.fill{ background: rgba(255,255,255,.5); }
-        .engCell.low .engSegment.fill{ background: #60a5fa; }
-        .engCell.warn .engSegment.fill{ background: #facc15; }
-        .engCell.mid .engSegment.fill{ background: #84cc16; }
-        .engCell.high .engSegment.fill{ background: #22c55e; }
-      `}</style>
 
       <h2 style={{ marginTop: 0 }}>Админ</h2>
         <div className="toastWrap" aria-live="polite" aria-atomic="true">
@@ -1859,8 +1665,8 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         🔄 Синхронизировать (убрать удалённые)
       </button>
 
-      <button className="btn secondary" onClick={loadMsgHistory} disabled={msgLoading}>
-        {msgLoading ? "…" : "Обновить историю"}
+      <button className="btn secondary" onClick={() => loadMsgHistory({ append: false, forceOpen: true })} disabled={msgLoading}>
+        {msgLoading ? "…" : "Загрузить историю"}
       </button>
 
       <button className="btn secondary" onClick={() => setShowDeletedMsgs(v => !v)}>
@@ -1869,7 +1675,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     </div>
 
     <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-      {msgHistory.length === 0 ? (
+      {!msgHistoryOpened ? (
+        <div className="small" style={{ opacity: 0.8 }}>История скрыта. Нажми «Загрузить историю».</div>
+      ) : msgHistory.length === 0 ? (
         <div className="small" style={{ opacity: 0.8 }}>История пустая.</div>
       ) : (
         msgHistory.map((m) => (
@@ -1905,6 +1713,18 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           </div>
         ))
       )}
+
+      {msgHistoryOpened ? (
+        <>
+          {msgHistoryHasMore ? (
+            <button className="btn secondary" onClick={() => loadMsgHistory({ append: true, forceOpen: false })} disabled={msgLoading}>
+              {msgLoading ? "Загружаю…" : "Показать ранее (+10)"}
+            </button>
+          ) : msgHistory.length > 0 ? (
+            <div className="small" style={{ opacity: 0.75 }}>Сообщений больше нет.</div>
+          ) : null}
+        </>
+      ) : null}
     </div>
   </>
 )}
@@ -2392,7 +2212,15 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         const grid = buildMonthGrid(engYear, engMonth);
         const teamSize = Math.max(1, engData.team_size || 1);
         const todayKey = mskToday.key;
-        const todayCount = Number(engData.by_day?.[todayKey] || 0);
+        const safeSelectedDay = engSelectedDay || todayKey;
+        const selectedCount = Number(engData.by_day?.[safeSelectedDay] || 0);
+        const selectedUsers = Array.isArray(engData.users_by_day?.[safeSelectedDay]) ? engData.users_by_day[safeSelectedDay] : [];
+        const isSelectedToday = safeSelectedDay === todayKey;
+        const selectedDateTitle = (() => {
+          const [y, m, d] = safeSelectedDay.split("-").map(Number);
+          if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return safeSelectedDay;
+          return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" });
+        })();
         const dow = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
         return (
@@ -2417,9 +2245,12 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             </div>
 
             <div className="engTodayBadge">
-              <div className="small">Сегодня (уникальных заходов)</div>
-              <div className={`engTodayCircle ${toneByCount(todayCount)}`}>{todayCount}</div>
-              <div className="small">Размер команды: {engData.team_size || 0}</div>
+              <div className="small">{isSelectedToday ? "Сегодня" : "Выбранный день"} (уникальных заходов)</div>
+              <div className={`engTodayCircle ${toneByCount(selectedCount)}`}>{selectedCount}</div>
+              <div className="small">{selectedDateTitle} · Размер команды: {engData.team_size || 0}</div>
+              {!isSelectedToday ? (
+                <button className="btn secondary engJumpToday" onClick={() => setEngSelectedDay(todayKey)}>Перейти к Сегодня</button>
+              ) : null}
             </div>
 
             {engError ? <div className="small" style={{ marginTop: 8, color: "#ef4444" }}>{engError}</div> : null}
@@ -2440,17 +2271,40 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 const isFuture = key > mskToday.key;
                 const fill = Math.max(0, Math.min(teamSize, count));
                 const segments = Array.from({ length: teamSize }, (_, i) => i >= teamSize - fill);
+                const isSelected = key === safeSelectedDay;
 
                 return (
-                  <div key={key} className={`engCell ${isFuture ? "isFuture" : toneByCount(count)}`}>
+                  <button
+                    key={key}
+                    type="button"
+                    className={`engCell ${isFuture ? "isFuture" : toneByCount(count)} ${isSelected ? "isSelected" : ""}`}
+                    onClick={() => setEngSelectedDay(key)}
+                  >
                     <div className="engDay">{d}</div>
                     <div className="engCount">{count}</div>
                     <div className="engBattery" style={{ "--team-slots": teamSize }}>
                       {segments.map((on, i) => <span key={i} className={`engSegment ${on ? "fill" : ""}`} />)}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
+            </div>
+
+            <div className="engUsersList">
+              <div className="engUsersHeader">
+                <div className="small" style={{ fontWeight: 800 }}>Пользователи за {isSelectedToday ? "сегодня" : "выбранный день"}</div>
+                <div className="small">Всего: {selectedUsers.length}</div>
+              </div>
+              {selectedUsers.length === 0 ? (
+                <div className="small" style={{ opacity: .8 }}>В этот день входов не было.</div>
+              ) : selectedUsers.map((u) => (
+                <div key={`${safeSelectedDay}-${u.tg_id}`} className="engUserItem">
+                  <div>
+                    <div className="engUserName">{showName(u)}{showNum(u)}</div>
+                    <div className="engUserMeta">{u.username ? `@${u.username}` : `ID: ${u.tg_id}`}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         );
