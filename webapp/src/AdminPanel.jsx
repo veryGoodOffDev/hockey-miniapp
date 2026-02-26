@@ -504,7 +504,8 @@ const [engMonth, setEngMonth] = useState(mskToday.month);
 const [engYear, setEngYear] = useState(mskToday.year);
 const [engLoading, setEngLoading] = useState(false);
 const [engError, setEngError] = useState("");
-const [engData, setEngData] = useState({ team_size: 0, by_day: {} });
+const [engData, setEngData] = useState({ team_size: 0, by_day: {}, users_by_day: {} });
+const [engSelectedDay, setEngSelectedDay] = useState(mskToday.key);
 
 const [videoNotifySilent, setVideoNotifySilent] = useState(false);
 
@@ -1544,7 +1545,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     setEngError("");
     try {
       const r = await apiGet(`/api/admin/engagement?year=${year}&month=${month}`);
-      setEngData({ team_size: Number(r.team_size) || 0, by_day: r.by_day || {} });
+      setEngData({ team_size: Number(r.team_size) || 0, by_day: r.by_day || {}, users_by_day: r.users_by_day || {} });
     } catch (e) {
       setEngError(e?.message || "Не удалось загрузить вовлеченность");
     } finally {
@@ -1557,6 +1558,10 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     loadEngagement(engYear, engMonth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, engYear, engMonth]);
+
+  useEffect(() => {
+    setEngSelectedDay(mskToday.key);
+  }, [engMonth, engYear, mskToday.key]);
 
   /** ===================== UI ===================== */
   return (
@@ -1689,6 +1694,12 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           display:grid; place-items:center;
           font-weight:1000; font-size:22px;
         }
+        .engJumpToday{ margin-top:2px; }
+        .engUsersList{ margin-top:14px; display:grid; gap:8px; }
+        .engUsersHeader{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .engUserItem{ display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid var(--border); border-radius:12px; padding:8px 10px; background: color-mix(in srgb, var(--card-bg) 88%, black); }
+        .engUserName{ font-weight:800; }
+        .engUserMeta{ opacity:.8; font-size:12px; }
         .engLegend{
           margin-top: 10px;
           display:grid;
@@ -1716,6 +1727,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         .engGrid{ margin-top:12px; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
         .engDow{ text-align:center; font-size:12px; opacity:.8; font-weight:700; }
         .engCell{
+          appearance:none;
+          text-align:left;
+          width:100%;
           min-height:86px;
           border-radius:12px;
           border:1px solid color-mix(in srgb, var(--border) 70%, white 30%);
@@ -1727,6 +1741,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         }
         .engCell.isMuted{ opacity:.35; }
         .engCell.isFuture{ opacity:.45; background: color-mix(in srgb, var(--card-bg) 84%, #9ca3af); }
+        .engCell.isSelected{ outline:2px solid #93c5fd; outline-offset:1px; }
         .engCell.low{ background: linear-gradient(160deg, color-mix(in srgb, #64748b 64%, var(--card-bg)), color-mix(in srgb, #334155 52%, var(--card-bg))); }
         .engCell.warn{ background: linear-gradient(160deg, color-mix(in srgb, #facc15 70%, var(--card-bg)), color-mix(in srgb, #ca8a04 45%, var(--card-bg))); }
         .engCell.mid{ background: linear-gradient(160deg, color-mix(in srgb, #84cc16 72%, var(--card-bg)), color-mix(in srgb, #65a30d 45%, var(--card-bg))); }
@@ -2392,7 +2407,15 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         const grid = buildMonthGrid(engYear, engMonth);
         const teamSize = Math.max(1, engData.team_size || 1);
         const todayKey = mskToday.key;
-        const todayCount = Number(engData.by_day?.[todayKey] || 0);
+        const safeSelectedDay = engSelectedDay || todayKey;
+        const selectedCount = Number(engData.by_day?.[safeSelectedDay] || 0);
+        const selectedUsers = Array.isArray(engData.users_by_day?.[safeSelectedDay]) ? engData.users_by_day[safeSelectedDay] : [];
+        const isSelectedToday = safeSelectedDay === todayKey;
+        const selectedDateTitle = (() => {
+          const [y, m, d] = safeSelectedDay.split("-").map(Number);
+          if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return safeSelectedDay;
+          return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" });
+        })();
         const dow = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
         return (
@@ -2417,9 +2440,12 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             </div>
 
             <div className="engTodayBadge">
-              <div className="small">Сегодня (уникальных заходов)</div>
-              <div className={`engTodayCircle ${toneByCount(todayCount)}`}>{todayCount}</div>
-              <div className="small">Размер команды: {engData.team_size || 0}</div>
+              <div className="small">{isSelectedToday ? "Сегодня" : "Выбранный день"} (уникальных заходов)</div>
+              <div className={`engTodayCircle ${toneByCount(selectedCount)}`}>{selectedCount}</div>
+              <div className="small">{selectedDateTitle} · Размер команды: {engData.team_size || 0}</div>
+              {!isSelectedToday ? (
+                <button className="btn secondary engJumpToday" onClick={() => setEngSelectedDay(todayKey)}>Перейти к Сегодня</button>
+              ) : null}
             </div>
 
             {engError ? <div className="small" style={{ marginTop: 8, color: "#ef4444" }}>{engError}</div> : null}
@@ -2440,17 +2466,40 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 const isFuture = key > mskToday.key;
                 const fill = Math.max(0, Math.min(teamSize, count));
                 const segments = Array.from({ length: teamSize }, (_, i) => i >= teamSize - fill);
+                const isSelected = key === safeSelectedDay;
 
                 return (
-                  <div key={key} className={`engCell ${isFuture ? "isFuture" : toneByCount(count)}`}>
+                  <button
+                    key={key}
+                    type="button"
+                    className={`engCell ${isFuture ? "isFuture" : toneByCount(count)} ${isSelected ? "isSelected" : ""}`}
+                    onClick={() => setEngSelectedDay(key)}
+                  >
                     <div className="engDay">{d}</div>
                     <div className="engCount">{count}</div>
                     <div className="engBattery" style={{ "--team-slots": teamSize }}>
                       {segments.map((on, i) => <span key={i} className={`engSegment ${on ? "fill" : ""}`} />)}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
+            </div>
+
+            <div className="engUsersList">
+              <div className="engUsersHeader">
+                <div className="small" style={{ fontWeight: 800 }}>Пользователи за {isSelectedToday ? "сегодня" : "выбранный день"}</div>
+                <div className="small">Всего: {selectedUsers.length}</div>
+              </div>
+              {selectedUsers.length === 0 ? (
+                <div className="small" style={{ opacity: .8 }}>В этот день входов не было.</div>
+              ) : selectedUsers.map((u) => (
+                <div key={`${safeSelectedDay}-${u.tg_id}`} className="engUserItem">
+                  <div>
+                    <div className="engUserName">{showName(u)}{showNum(u)}</div>
+                    <div className="engUserMeta">{u.username ? `@${u.username}` : `ID: ${u.tg_id}`}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         );
