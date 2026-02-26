@@ -1716,6 +1716,8 @@ textarea:focus{
     border-color .22s ease,
     filter .22s ease;
   will-change: transform;
+  animation: gameCardEnter .42s cubic-bezier(.22,.61,.36,1) both;
+  animation-delay: var(--enter-delay, 0ms);
 }
 
 .gameCard.scrollEnter{
