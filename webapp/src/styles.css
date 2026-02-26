@@ -279,6 +279,20 @@ h1{
   line-height: 1.15;
 }
 
+/* Светлая подложка над фоновым фото в light-темах: текст остаётся читаемым,
+   но изображение по-прежнему видно. */
+:root[data-web="1"][data-web-theme="light"] h1,
+:root[data-tg="light"] h1{
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #ffffff 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 52%, #cbd5e1);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  box-shadow: 0 6px 20px rgba(15,23,42,.10);
+}
+
 h2{
   font-size: var(--fs-h2);
   margin: 6px 0 10px;
@@ -582,7 +596,7 @@ textarea:focus{
 .hkDots span:nth-child(3){ animation-delay: 300ms; }
 
 @keyframes hkBounce{
-  0%, 80%, 100% { transform: translateY(0); opacity: .65; }
+  0%, 80%, 100% { transform: translateX(0); opacity: .65; }
   40% { transform: translateY(-6px); opacity: 1; }
 }
 
@@ -1693,6 +1707,18 @@ textarea:focus{
 }
 
 /* ===== TelegramApp: modernized game cards (visual only) ===== */
+
+@keyframes gameCardEnter {
+  from {
+    opacity: 0;
+    transform: translateX(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .gameCard{
   border: 1px solid rgba(255,255,255,.14);
   box-shadow:
@@ -1704,6 +1730,15 @@ textarea:focus{
     border-color .22s ease,
     filter .22s ease;
   will-change: transform;
+}
+
+.gameCard.scrollEnter{
+  opacity: 0;
+  transform: translateX(26px);
+}
+
+.gameCard.scrollEnter.isVisible{
+  animation: gameCardEnter .45s cubic-bezier(.22,.61,.36,1) both;
 }
 
 .gameCard::selection{ background: rgba(255,255,255,.2); }
@@ -1760,6 +1795,16 @@ textarea:focus{
     0 0 0 1px rgba(0, 255, 140, .35),
     0 18px 36px rgba(0, 255, 140, .14),
     0 2px 0 rgba(255,255,255,.14) inset;
+}
+
+
+@media (prefers-reduced-motion: reduce){
+  .gameCard.scrollEnter,
+  .gameCard.scrollEnter.isVisible{
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (hover: none){
@@ -1863,7 +1908,7 @@ html[data-theme="light"] .btn.outline.active{
 }
 
 .toast.isShow{
-  transform: translateY(0);
+  transform: translateX(0);
   opacity: 1;
 }
 
@@ -2195,7 +2240,7 @@ html[data-theme="light"] .btn.outline.active{
 }
 
 @keyframes hkDotPulse{
-  0%, 100% { transform: translateY(0); opacity:.55; }
+  0%, 100% { transform: translateX(0); opacity:.55; }
   50% { transform: translateY(-3px); opacity:1; }
 }
 
@@ -2780,7 +2825,7 @@ html[data-theme="light"] .btn.outline.active{
 }
 
 @keyframes reactModalIn {
-  to { transform: translateY(0); }
+  to { transform: translateX(0); }
 }
 
 .reactWhoBlock{
