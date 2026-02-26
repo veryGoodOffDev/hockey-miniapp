@@ -2280,6 +2280,36 @@ const teamsPosStaleInfo = React.useMemo(() => {
   // ВНИМАНИЕ: прошедшие теперь показываем не из games, а из pastPage (загружаем постранично)
   const listToShow = showPast ? pastPage : upcomingGames;
 
+  useEffect(() => {
+    if (tab !== "game" || gameView !== "list") return;
+
+    const cards = Array.from(document.querySelectorAll('.gameCard[data-scroll-enter="1"]'));
+    if (!cards.length) return;
+
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      cards.forEach((card) => card.classList.add("isVisible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("isVisible");
+          observer.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.2, rootMargin: "0px 0px -8% 0px" }
+    );
+
+    cards.forEach((card) => {
+      if (card.classList.contains("isVisible")) return;
+      observer.observe(card);
+    });
+
+    return () => observer.disconnect();
+  }, [tab, gameView, showPast, games, pastPage]);
+
   function cardToneByMyStatus(s) {
     if (s === "yes") return "tone-yes";
     if (s === "maybe") return "tone-maybe";
@@ -2933,7 +2963,7 @@ function openYandexRoute(lat, lon) {
                       return (
                         <div
                           key={g.id}
-                          className={`card gameCard ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
+                          className={`card gameCard scrollEnter ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
                           style={{
                             "--enter-delay": `${Math.min(idx, 10) * 70}ms`,
                             cursor: "pointer",
@@ -2943,6 +2973,7 @@ function openYandexRoute(lat, lon) {
                             backgroundPosition: "center",
                             backgroundRepeat: "no-repeat",
                           }}
+                          data-scroll-enter="1"
                           onClick={() => openGameDetail(g.id)}
                             // onClick={() => {
                             //   const id = g.id;

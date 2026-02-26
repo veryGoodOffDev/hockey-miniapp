@@ -582,7 +582,7 @@ textarea:focus{
 .hkDots span:nth-child(3){ animation-delay: 300ms; }
 
 @keyframes hkBounce{
-  0%, 80%, 100% { transform: translateY(0); opacity: .65; }
+  0%, 80%, 100% { transform: translateX(0); opacity: .65; }
   40% { transform: translateY(-6px); opacity: 1; }
 }
 
@@ -1697,11 +1697,11 @@ textarea:focus{
 @keyframes gameCardEnter {
   from {
     opacity: 0;
-    transform: translateY(18px);
+    transform: translateX(26px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 }
 
@@ -1718,6 +1718,15 @@ textarea:focus{
   will-change: transform;
   animation: gameCardEnter .42s cubic-bezier(.22,.61,.36,1) both;
   animation-delay: var(--enter-delay, 0ms);
+}
+
+.gameCard.scrollEnter{
+  opacity: 0;
+  transform: translateX(26px);
+}
+
+.gameCard.scrollEnter.isVisible{
+  animation: gameCardEnter .45s cubic-bezier(.22,.61,.36,1) both;
 }
 
 .gameCard::selection{ background: rgba(255,255,255,.2); }
@@ -1778,8 +1787,11 @@ textarea:focus{
 
 
 @media (prefers-reduced-motion: reduce){
-  .gameCard{
+  .gameCard.scrollEnter,
+  .gameCard.scrollEnter.isVisible{
     animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -1884,7 +1896,7 @@ html[data-theme="light"] .btn.outline.active{
 }
 
 .toast.isShow{
-  transform: translateY(0);
+  transform: translateX(0);
   opacity: 1;
 }
 
@@ -2216,7 +2228,7 @@ html[data-theme="light"] .btn.outline.active{
 }
 
 @keyframes hkDotPulse{
-  0%, 100% { transform: translateY(0); opacity:.55; }
+  0%, 100% { transform: translateX(0); opacity:.55; }
   50% { transform: translateY(-3px); opacity:1; }
 }
 
@@ -2801,7 +2813,7 @@ html[data-theme="light"] .btn.outline.active{
 }
 
 @keyframes reactModalIn {
-  to { transform: translateY(0); }
+  to { transform: translateX(0); }
 }
 
 .reactWhoBlock{
