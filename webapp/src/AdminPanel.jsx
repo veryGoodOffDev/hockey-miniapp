@@ -479,6 +479,8 @@ const [jerseySelectedId, setJerseySelectedId] = useState(null);
   const [msgHistory, setMsgHistory] = useState([]);
   const [msgLoading, setMsgLoading] = useState(false);
   const [showDeletedMsgs, setShowDeletedMsgs] = useState(false);
+  const [msgHistoryOpened, setMsgHistoryOpened] = useState(false);
+  const [msgHistoryHasMore, setMsgHistoryHasMore] = useState(false);
   const [showPastAdmin, setShowPastAdmin] = useState(false);
   const [tokenMsg, setTokenMsg] = useState("");
   const [tokenBusy, setTokenBusy] = useState(false);
@@ -562,12 +564,21 @@ function fmtTs(ts) {
   } catch { return ""; }
 }
 
-async function loadMsgHistory() {
+async function loadMsgHistory({ append = false, forceOpen = true } = {}) {
   if (!isSuperAdmin) return;
+
+  const limit = 10;
+  const offset = append ? msgHistory.length : 0;
+
   setMsgLoading(true);
   try {
-    const r = await apiGet(`/api/admin/bot-messages?limit=50&include_deleted=${showDeletedMsgs ? 1 : 0}`);
-    setMsgHistory(r.messages || []);
+    const r = await apiGet(`/api/admin/bot-messages?limit=${limit}&offset=${offset}&include_deleted=${showDeletedMsgs ? 1 : 0}`);
+    const chunk = Array.isArray(r.messages) ? r.messages : [];
+
+    setMsgHistory((prev) => (append ? [...prev, ...chunk] : chunk));
+    setMsgHistoryHasMore(!!r.has_more);
+
+    if (forceOpen) setMsgHistoryOpened(true);
   } finally {
     setMsgLoading(false);
   }
@@ -580,7 +591,7 @@ async function sendCustomToChat() {
     await apiPost("/api/admin/bot-messages/send", { text: customMsg.trim() });
     setCustomMsg("");
     setReminderMsg("✅ Сообщение отправлено в чат");
-    await loadMsgHistory();
+    if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   } catch (e) {
     setReminderMsg("❌ Не удалось отправить сообщение");
   }
@@ -593,7 +604,7 @@ async function deleteHistoryMsg(id) {
   setReminderMsg("");
   try {
     await apiPost(`/api/admin/bot-messages/${id}/delete`, {});
-    await loadMsgHistory();
+    if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   } catch (e) {
     setReminderMsg("❌ Не удалось удалить");
   }
@@ -604,7 +615,7 @@ async function syncHistory() {
   try {
     const r = await apiPost("/api/admin/bot-messages/sync", { limit: 50 });
     setReminderMsg(`🔄 Проверено: ${r.checked || 0}, удалено из истории: ${r.missing || 0}`);
-    await loadMsgHistory();
+    if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   } catch (e) {
     setReminderMsg("❌ Ошибка синхронизации");
   }
@@ -1224,7 +1235,7 @@ async function sendVideoToChat() {
     });
 
     // если хочешь — обновляй историю сообщений
-    // await loadMsgHistory();
+    // if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
   }, { successText: "✅ Отправлено в чат", errorText: "❌ Не удалось отправить" });
 }
 
@@ -1494,9 +1505,10 @@ const pastAdminGames = useMemo(() => {
 const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
   useEffect(() => {
-  if (section === "reminders" && isSuperAdmin) loadMsgHistory();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [section, isSuperAdmin, showDeletedMsgs]);
+    if (section !== "reminders" || !isSuperAdmin || !msgHistoryOpened) return;
+    loadMsgHistory({ append: false, forceOpen: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, isSuperAdmin, showDeletedMsgs, msgHistoryOpened]);
 
 
   function GuestPill({ g }) {
@@ -1653,8 +1665,8 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         🔄 Синхронизировать (убрать удалённые)
       </button>
 
-      <button className="btn secondary" onClick={loadMsgHistory} disabled={msgLoading}>
-        {msgLoading ? "…" : "Обновить историю"}
+      <button className="btn secondary" onClick={() => loadMsgHistory({ append: false, forceOpen: true })} disabled={msgLoading}>
+        {msgLoading ? "…" : "Загрузить историю"}
       </button>
 
       <button className="btn secondary" onClick={() => setShowDeletedMsgs(v => !v)}>
@@ -1663,7 +1675,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     </div>
 
     <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-      {msgHistory.length === 0 ? (
+      {!msgHistoryOpened ? (
+        <div className="small" style={{ opacity: 0.8 }}>История скрыта. Нажми «Загрузить историю».</div>
+      ) : msgHistory.length === 0 ? (
         <div className="small" style={{ opacity: 0.8 }}>История пустая.</div>
       ) : (
         msgHistory.map((m) => (
@@ -1699,6 +1713,18 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
           </div>
         ))
       )}
+
+      {msgHistoryOpened ? (
+        <>
+          {msgHistoryHasMore ? (
+            <button className="btn secondary" onClick={() => loadMsgHistory({ append: true, forceOpen: false })} disabled={msgLoading}>
+              {msgLoading ? "Загружаю…" : "Показать ранее (+10)"}
+            </button>
+          ) : msgHistory.length > 0 ? (
+            <div className="small" style={{ opacity: 0.75 }}>Сообщений больше нет.</div>
+          ) : null}
+        </>
+      ) : null}
     </div>
   </>
 )}
