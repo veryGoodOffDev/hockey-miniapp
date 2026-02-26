@@ -2618,7 +2618,7 @@ function openYandexRoute(lat, lon) {
   if (!inTelegramWebApp && !hasWebAuth) {
     return (
       <div className="container">
-        <h1>🏒 Хоккей: отметки и составы</h1>
+        <h1 className="mainTitle">🏒 Хоккей: отметки и составы</h1>
         <div className="toastWrap" aria-live="polite" aria-atomic="true">
           <div className={`toast tone-${op.tone} ${op.text ? "isShow" : ""}`}>
             <div className="toastRow">
@@ -2965,6 +2965,7 @@ function openYandexRoute(lat, lon) {
                           key={g.id}
                           className={`card gameCard scrollEnter ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
                           style={{
+                            "--enter-delay": `${Math.min(idx, 10) * 70}ms`,
                             cursor: "pointer",
                             opacity: past ? 0.85 : 1,
                             backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.65)), url(${bgUrl})`,
