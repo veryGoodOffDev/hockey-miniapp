@@ -1775,6 +1775,62 @@ function fmtGameLine(g) {
 
 const ALLOWED_REACTIONS = new Set(["❤️","🔥","👍","😂","👏","😡","🤔"]);
 
+function commentExcerpt(body, maxLen = 90) {
+  const text = String(body || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text;
+}
+
+async function sendBotPmSafe({ toTgId, text, meta = null, sentByTgId = null }) {
+  try {
+    const playerR = await q(`SELECT tg_id, pm_started FROM players WHERE tg_id=$1`, [toTgId]);
+    const player = playerR.rows?.[0];
+    if (!player?.tg_id) return { ok: false, reason: "no_tg_id" };
+
+    if (!bot) return { ok: false, reason: "bot_not_ready" };
+    const sent = await bot.api.sendMessage(Number(player.tg_id), String(text || ""), { disable_web_page_preview: true });
+
+    await q(
+      `INSERT INTO bot_messages(chat_id, message_id, kind, text, sent_by_tg_id, meta)
+       VALUES($1,$2,'pm',$3,$4,$5)`,
+      [Number(toTgId), sent.message_id, String(text || ""), sentByTgId ? Number(sentByTgId) : null, JSON.stringify(meta || { type: "pm" })]
+    ).catch(() => {});
+
+    return { ok: true };
+  } catch (e) {
+    console.error("sendBotPmSafe failed:", e);
+    return { ok: false, reason: "tg_send_failed" };
+  }
+}
+
+async function notifyCommentCreated({ gameId, commentId, text, authorTgId, mentionIds, replyToComment }) {
+  const link = buildDiscussDeepLink(gameId);
+  const preview = commentExcerpt(text, 120);
+
+  for (const toId of (mentionIds || [])) {
+    if (String(toId) === String(authorTgId)) continue;
+    const msg = `Вас упомянули в комментариях к игре.
+
+💬 ${preview}
+
+Открыть: ${link}`;
+    await sendBotPmSafe({ toTgId: toId, text: msg, meta: { type: "comment_mention", game_id: gameId, comment_id: commentId } });
+  }
+
+  if (replyToComment?.author_tg_id && String(replyToComment.author_tg_id) !== String(authorTgId)) {
+    const msg = `Вам ответили на комментарий к игре.
+
+💬 ${preview}
+
+Открыть: ${link}`;
+    await sendBotPmSafe({
+      toTgId: replyToComment.author_tg_id,
+      text: msg,
+      meta: { type: "comment_reply", game_id: gameId, comment_id: commentId, reply_to_comment_id: replyToComment.id },
+    });
+  }
+}
+
 async function loadGameComments(gameId, viewerTgId, baseUrl) {
   const r = await q(
     `
@@ -1782,6 +1838,7 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       c.id,
       c.game_id,
       c.author_tg_id,
+      c.reply_to_comment_id,
       c.body,
       c.created_at,
       c.updated_at,
@@ -1794,6 +1851,13 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       p.avatar_file_id  AS p_avatar_file_id,
       p.updated_at      AS p_updated_at,
 
+      rp.id             AS reply_id,
+      rp.body           AS reply_body,
+      rp.author_tg_id   AS reply_author_tg_id,
+      rpp.display_name  AS reply_author_display_name,
+      rpp.first_name    AS reply_author_first_name,
+      rpp.username      AS reply_author_username,
+
       (g.pinned_comment_id = c.id) AS is_pinned,
 
       COALESCE(rx.reactions, '[]'::jsonb) AS reactions
@@ -1801,6 +1865,8 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
     FROM game_comments c
     JOIN games g ON g.id = c.game_id
     LEFT JOIN players p ON p.tg_id = c.author_tg_id
+    LEFT JOIN game_comments rp ON rp.id = c.reply_to_comment_id
+    LEFT JOIN players rpp ON rpp.tg_id = rp.author_tg_id
 
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(
@@ -1839,16 +1905,28 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
       updated_at: row.p_updated_at || null,
     };
 
-    const author = presentPlayer(rawPlayer, baseUrl); // ✅
+    const replyAuthorName =
+      row.reply_author_display_name ||
+      row.reply_author_first_name ||
+      (row.reply_author_username ? `@${row.reply_author_username}` : String(row.reply_author_tg_id || ""));
+
+    const author = presentPlayer(rawPlayer, baseUrl);
 
     return {
       id: row.id,
       game_id: row.game_id,
       author_tg_id: row.author_tg_id,
+      reply_to_comment_id: row.reply_to_comment_id,
       body: row.body,
       created_at: row.created_at,
       updated_at: row.updated_at,
-      is_pinned: !!row.is_pinned,        // ✅ берём прямо из SQL
+      is_pinned: !!row.is_pinned,
+      reply_to_preview: row.reply_id
+        ? {
+            author_name: replyAuthorName,
+            excerpt: commentExcerpt(row.reply_body, 90),
+          }
+        : null,
       author,
       reactions: row.reactions || [],
     };
@@ -6821,18 +6899,57 @@ app.post("/api/game-comments", async (req, res) => {
 
   const gameId = Number(req.body?.game_id);
   const text = String(req.body?.body ?? "").replace(/\r\n/g, "\n").trim();
+  const replyToCommentId = req.body?.reply_to_comment_id == null ? null : Number(req.body?.reply_to_comment_id);
+  const mentionIdsRaw = Array.isArray(req.body?.mention_ids) ? req.body.mention_ids : [];
+  const mentionIds = Array.from(new Set(mentionIdsRaw.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))).slice(0, 10);
 
   if (!Number.isFinite(gameId)) return res.status(400).json({ ok: false, reason: "bad_game_id" });
   if (!text) return res.status(400).json({ ok: false, reason: "empty_body" });
   if (text.length > 800) return res.status(400).json({ ok: false, reason: "too_long" });
+  if (mentionIdsRaw.length > 10) return res.status(400).json({ ok: false, reason: "too_many_mentions" });
+  if (replyToCommentId != null && !Number.isFinite(replyToCommentId)) {
+    return res.status(400).json({ ok: false, reason: "bad_reply_to_comment_id" });
+  }
 
-  await q(`INSERT INTO game_comments(game_id, author_tg_id, body) VALUES($1,$2,$3)`, [gameId, user.id, text]);
+  let replyRow = null;
+  if (replyToCommentId != null) {
+    const rr = await q(`SELECT id, game_id, author_tg_id, body FROM game_comments WHERE id=$1`, [replyToCommentId]);
+    replyRow = rr.rows?.[0] || null;
+    if (!replyRow || Number(replyRow.game_id) !== gameId) {
+      return res.status(400).json({ ok: false, reason: "reply_must_be_same_game" });
+    }
+  }
+
+  const ins = await q(
+    `INSERT INTO game_comments(game_id, author_tg_id, reply_to_comment_id, body)
+     VALUES($1,$2,$3,$4)
+     RETURNING id`,
+    [gameId, user.id, replyToCommentId, text]
+  );
+  const createdCommentId = ins.rows?.[0]?.id;
+
+  if (mentionIds.length && createdCommentId) {
+    await q(
+      `INSERT INTO comment_mentions(comment_id, mentioned_player_id)
+       SELECT $1, x::bigint FROM unnest($2::bigint[]) x
+       ON CONFLICT (comment_id, mentioned_player_id) DO NOTHING`,
+      [createdCommentId, mentionIds]
+    );
+  }
+
+  notifyCommentCreated({
+    gameId,
+    commentId: createdCommentId,
+    text,
+    authorTgId: user.id,
+    mentionIds,
+    replyToComment: replyRow,
+  }).catch((e) => console.error("notifyCommentCreated failed:", e));
 
   const baseUrl = getPublicBaseUrl(req);
   const comments = await loadGameComments(gameId, user.id, baseUrl);
   schedulePostgameCounterSync(gameId);
   scheduleDiscussSync(gameId);
-
 
   res.json({ ok: true, comments });
 });
@@ -6897,12 +7014,13 @@ app.delete("/api/game-comments/:id", async (req, res) => {
       return res.status(403).json({ ok: false, reason: "not_owner" });
     }
 
+    const gameId = Number(row.game_id);              // ✅ ВАЖНО
+
     await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
 
     schedulePostgameCounterSync(gameId);
     scheduleDiscussSync(gameId);
 
-    const gameId = Number(row.game_id);              // ✅ ВАЖНО
     const baseUrl = getPublicBaseUrl(req);
     const comments = await loadGameComments(gameId, user.id, baseUrl);
     return res.json({ ok: true, comments });
