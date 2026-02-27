@@ -670,14 +670,18 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
       id BIGSERIAL PRIMARY KEY,
       game_id INT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
       author_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      reply_to_comment_id BIGINT REFERENCES game_comments(id) ON DELETE SET NULL,
       body TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ
     );
   `);
 
+  await q(`ALTER TABLE game_comments ADD COLUMN IF NOT EXISTS reply_to_comment_id BIGINT REFERENCES game_comments(id) ON DELETE SET NULL;`);
+
   await q(`CREATE INDEX IF NOT EXISTS idx_game_comments_game_id_created ON game_comments(game_id, created_at);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_game_comments_author ON game_comments(author_tg_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_game_comments_reply_to ON game_comments(reply_to_comment_id);`);
 
     // FK games.pinned_comment_id -> game_comments.id
   // важно: добавлять только ПОСЛЕ того, как создана таблица game_comments
@@ -713,6 +717,19 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
 
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_comment ON game_comment_reactions(comment_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_gcr_user ON game_comment_reactions(user_tg_id);`);
+
+  /** ===================== GAME COMMENT MENTIONS ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS comment_mentions (
+      comment_id BIGINT NOT NULL REFERENCES game_comments(id) ON DELETE CASCADE,
+      mentioned_player_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(comment_id, mentioned_player_id)
+    );
+  `);
+
+  await q(`CREATE INDEX IF NOT EXISTS idx_comment_mentions_comment ON comment_mentions(comment_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_comment_mentions_player ON comment_mentions(mentioned_player_id);`);
 
     /** ===================== JERSEY ORDERS (BATCHES) ===================== */
 
