@@ -1806,26 +1806,33 @@ async function notifyCommentCreated({ gameId, commentId, text, authorTgId, menti
   const link = buildDiscussDeepLink(gameId);
   const preview = commentExcerpt(text, 120);
 
+  const recipients = new Map();
   for (const toId of (mentionIds || [])) {
     if (String(toId) === String(authorTgId)) continue;
-    const msg = `Вы были упомянуты в комментарии к игре.
-
-💬 ${preview}
-
-Открыть комментарии: ${link}`;
-    await sendBotPmSafe({ toTgId: toId, text: msg, meta: { type: "comment_mention", game_id: gameId, comment_id: commentId } });
+    recipients.set(String(toId), {
+      toTgId: toId,
+      meta: { type: "comment_mention", game_id: gameId, comment_id: commentId },
+    });
   }
 
   if (replyToComment?.author_tg_id && String(replyToComment.author_tg_id) !== String(authorTgId)) {
-    const msg = `Вам ответили на комментарий к игре.
+    recipients.set(String(replyToComment.author_tg_id), {
+      toTgId: replyToComment.author_tg_id,
+      meta: { type: "comment_reply", game_id: gameId, comment_id: commentId, reply_to_comment_id: replyToComment.id },
+    });
+  }
+
+  const msg = `Вас упомянули в комментарии к игре.
 
 💬 ${preview}
 
-Открыть комментарии: ${link}`;
+Открыть игру и комментарии: ${link}`;
+
+  for (const row of recipients.values()) {
     await sendBotPmSafe({
-      toTgId: replyToComment.author_tg_id,
+      toTgId: row.toTgId,
       text: msg,
-      meta: { type: "comment_reply", game_id: gameId, comment_id: commentId, reply_to_comment_id: replyToComment.id },
+      meta: row.meta,
     });
   }
 }
