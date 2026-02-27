@@ -1781,13 +1781,13 @@ function commentExcerpt(body, maxLen = 90) {
   return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text;
 }
 
-async function sendBotPmSafe({ toTgId, text, meta = null, sentByTgId = null }) {
+async function sendBotPmSafe({ toTgId, text, meta = null, sentByTgId = null, reply_markup = null }) {
   try {
     const to = Number(toTgId);
     if (!Number.isFinite(to) || to <= 0) return { ok: false, reason: "bad_tg_id" };
 
     if (!bot) return { ok: false, reason: "bot_not_ready" };
-    const sent = await bot.api.sendMessage(to, String(text || ""), { disable_web_page_preview: true });
+    const sent = await bot.api.sendMessage(to, String(text || ""), { disable_web_page_preview: true, reply_markup, });
 
     await q(
       `INSERT INTO bot_messages(chat_id, message_id, kind, text, sent_by_tg_id, meta)
@@ -1802,37 +1802,60 @@ async function sendBotPmSafe({ toTgId, text, meta = null, sentByTgId = null }) {
   }
 }
 
-async function notifyCommentCreated({ gameId, commentId, text, authorTgId, mentionIds, replyToComment }) {
-  const link = buildDiscussDeepLink(gameId);
+async function notifyCommentCreated({
+  gameId,
+  commentId,
+  text,
+  authorTgId,
+  mentionIds,
+  replyToComment,
+}) {
+  const link = buildDiscussDeepLink(gameId, commentId);
   const preview = commentExcerpt(text, 120);
 
   const recipients = new Map();
+
+  // mentions
   for (const toId of (mentionIds || [])) {
-    if (String(toId) === String(authorTgId)) continue;
+    if (String(toId) === String(authorTgId)) continue; // self-skip
     recipients.set(String(toId), {
       toTgId: toId,
       meta: { type: "comment_mention", game_id: gameId, comment_id: commentId },
     });
   }
 
-  if (replyToComment?.author_tg_id && String(replyToComment.author_tg_id) !== String(authorTgId)) {
+  // reply
+  if (
+    replyToComment?.author_tg_id &&
+    String(replyToComment.author_tg_id) !== String(authorTgId)
+  ) {
     recipients.set(String(replyToComment.author_tg_id), {
       toTgId: replyToComment.author_tg_id,
-      meta: { type: "comment_reply", game_id: gameId, comment_id: commentId, reply_to_comment_id: replyToComment.id },
+      meta: {
+        type: "comment_reply",
+        game_id: gameId,
+        comment_id: commentId,
+        reply_to_comment_id: replyToComment.id,
+      },
     });
   }
 
-  const msg = `Вас упомянули в комментарии к игре.
-
-💬 ${preview}
-
-Открыть игру и комментарии: ${link}`;
+  const kb = new InlineKeyboard().url("💬 Открыть комментарий", link);
 
   for (const row of recipients.values()) {
+    const isReply = row?.meta?.type === "comment_reply";
+
+    const msg =
+      (isReply
+        ? "Вам ответили на комментарий к игре."
+        : "Вас упомянули в комментарии к игре.") +
+      `\n\n💬 ${preview}\n\nНажмите кнопку ниже 👇`;
+
     await sendBotPmSafe({
       toTgId: row.toTgId,
       text: msg,
       meta: row.meta,
+      reply_markup: kb,
     });
   }
 }
