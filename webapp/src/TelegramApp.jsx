@@ -349,6 +349,17 @@ const onChanged = async ({ label, gameId, action } = {}) => {
 };
 
 
+const handleBottomNavSelect = (nextTab) => {
+  if (nextTab === "game") {
+    setTab("game");
+    setGameView("list");
+    return;
+  }
+
+  setTab(nextTab);
+};
+
+
 
 
 // function openGameSheet(g) {
@@ -5157,7 +5168,7 @@ function openYandexRoute(lat, lon) {
                 onChanged={onChanged}
               />
 
-      <BottomNav tab={tab} setTab={setTab} isAdmin={isAdmin} profileOnly={!!me?.disabled && !isAdmin} />
+      <BottomNav tab={tab} onSelectTab={handleBottomNavSelect} isAdmin={isAdmin} profileOnly={!!me?.disabled && !isAdmin} />
     </div>
   );
 }
@@ -5730,7 +5741,7 @@ function posHuman(posRaw) {
   return pos === "G" ? "🥅 Вратарь" : pos === "D" ? "🛡️ Защитник" : "🏒 Нападающий";
 }
 
-function BottomNav({ tab, setTab, isAdmin, profileOnly = false }) {
+function BottomNav({ tab, onSelectTab, isAdmin, profileOnly = false }) {
   const items = profileOnly
     ? [{ key: "profile", label: "Профиль", icon: "👤" }]
     : [
@@ -5748,7 +5759,7 @@ function BottomNav({ tab, setTab, isAdmin, profileOnly = false }) {
           <button
             key={it.key}
             className={"bottomNavItem " + (tab === it.key ? "isActive" : "")}
-            onClick={() => setTab(it.key)}
+            onClick={() => onSelectTab(it.key)}
             type="button"
           >
             <span className="bottomNavIcon" aria-hidden="true">
