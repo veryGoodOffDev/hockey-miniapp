@@ -246,6 +246,10 @@ const [comments, setComments] = useState([]);
 const [commentsLoading, setCommentsLoading] = useState(false);
 const [commentDraft, setCommentDraft] = useState("");
 const [commentEditId, setCommentEditId] = useState(null);
+const [commentReplyTo, setCommentReplyTo] = useState(null);
+const [commentMentionIds, setCommentMentionIds] = useState([]);
+const [mentionQuery, setMentionQuery] = useState("");
+const [showMentionDropdown, setShowMentionDropdown] = useState(false);
 const [commentBusy, setCommentBusy] = useState(false);
 const [commentBusyId, setCommentBusyId] = useState(null);   // какой коммент сейчас “в работе”
 const [flashId, setFlashId] = useState(null);               // подсветить после сохранения
@@ -491,6 +495,10 @@ async function submitComment() {
   if (!body) return;
 
   const gameId = game.id;
+  const replyToCommentId = commentReplyTo?.id ?? null;
+  const mentionIds = Array.from(
+    new Set((commentMentionIds || []).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))
+  ).slice(0, 10);
   const nowIso = new Date().toISOString();
 
   // helper: вставить новый коммент сразу сверху, но после закрепа (если есть)
@@ -510,6 +518,8 @@ async function submitComment() {
     // ✅ мгновенно выходим из режима редактирования
     setCommentEditId(null);
     setCommentDraft("");
+    setCommentReplyTo(null);
+    setCommentMentionIds([]);
 
     // ✅ оптимистично обновляем текст сразу
     setComments(prev =>
@@ -556,6 +566,11 @@ async function submitComment() {
     updated_at: null,
     is_pinned: false,
     reactions: [],
+    reply_to_comment_id: replyToCommentId,
+    reply_to_preview: commentReplyTo?.reply_to_preview || (commentReplyTo ? {
+      author_name: commentReplyTo?.author?.display_name || commentReplyTo?.author?.first_name || "",
+      excerpt: String(commentReplyTo?.body || "").slice(0, 90),
+    } : null),
     author: {
       tg_id: me?.id ?? me?.tg_id,
       display_name: me?.display_name || "",
@@ -572,10 +587,19 @@ async function submitComment() {
   setCommentBusyId(tmpId);
 
   try {
-    const r = await apiPost(`/api/game-comments`, { game_id: gameId, body });
+    const r = await apiPost(`/api/game-comments`, {
+      game_id: gameId,
+      body,
+      reply_to_comment_id: replyToCommentId,
+      mention_ids: mentionIds,
+    });
     if (r?.ok) {
       setComments(r.comments || []);
       patchCommentsCount?.(gameId, (r.comments || []).length);
+      setCommentReplyTo(null);
+      setCommentMentionIds([]);
+      setShowMentionDropdown(false);
+      setMentionQuery("");
     } else {
       setComments(prev => (prev || []).filter(c => c.id !== tmpId));
     }
@@ -2184,6 +2208,47 @@ function mergeUniqueById(primary = [], extra = []) {
     return String(r?.tg_id ?? "—");
   }
 
+  const mentionCandidates = useMemo(() => {
+    const seen = new Set();
+    const q = String(mentionQuery || "").trim().toLowerCase();
+    const list = [];
+    for (const p of rsvps || []) {
+      const tgId = Number(p?.tg_id);
+      if (!Number.isFinite(tgId) || seen.has(String(tgId))) continue;
+      seen.add(String(tgId));
+      const name = displayName(p);
+      const hay = `${name} ${(p?.username || "")}`.toLowerCase();
+      if (q && !hay.includes(q)) continue;
+      list.push({ tg_id: tgId, name });
+    }
+    return list.slice(0, 8);
+  }, [rsvps, mentionQuery]);
+
+  function onCommentDraftChange(nextValue) {
+    setCommentDraft(nextValue);
+    const head = nextValue.slice(0, nextValue.length);
+    const match = head.match(/(?:^|\s)@([^\s@]{0,32})$/);
+    if (match) {
+      setMentionQuery(match[1] || "");
+      setShowMentionDropdown(true);
+    } else {
+      setShowMentionDropdown(false);
+      setMentionQuery("");
+    }
+  }
+
+  function applyMention(candidate) {
+    const src = String(commentDraft || "");
+    const replaced = src.replace(/(?:^|\s)@([^\s@]{0,32})$/, (m) => {
+      const lead = m.startsWith(" ") ? " " : "";
+      return `${lead}@${candidate.name} `;
+    });
+    setCommentDraft(replaced);
+    setCommentMentionIds((prev) => Array.from(new Set([...(prev || []), Number(candidate.tg_id)])).slice(0, 10));
+    setShowMentionDropdown(false);
+    setMentionQuery("");
+  }
+
   const grouped = useMemo(() => {
     const g = { yes: [], maybe: [], no: [] };
     for (const r of rsvps || []) {
@@ -3425,14 +3490,37 @@ function openYandexRoute(lat, lon) {
                                       <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю комментарии…</div>
                                     ) : null}
 
+                                    {commentReplyTo ? (
+                                      <div className="commentReplyBar">
+                                        <div>
+                                          ↪️ Ответ: <b>{commentReplyTo?.author?.display_name || commentReplyTo?.author?.first_name || "Игрок"}</b>
+                                          <div className="small">{String(commentReplyTo?.body || "").slice(0, 120)}</div>
+                                        </div>
+                                        <button className="iconBtn" type="button" onClick={() => setCommentReplyTo(null)}>✕</button>
+                                      </div>
+                                    ) : null}
+
+                                    {commentMentionIds.length ? (
+                                      <div className="commentMentionChips">
+                                        {commentMentionIds.map((id) => {
+                                          const p = (rsvps || []).find((x) => String(x.tg_id) === String(id));
+                                          const nm = p ? displayName(p) : String(id);
+                                          return (
+                                            <span key={id} className="reactChip on" style={{ cursor: "pointer" }} onClick={() => setCommentMentionIds((prev) => prev.filter((x) => String(x) !== String(id)))}>
+                                              @{nm} ✕
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : null}
+
                                     <div className="commentComposer" style={{ marginTop: 10 }}>
                                       <textarea
                                         className="commentComposer__input"
                                         rows={1}
                                         value={commentDraft}
-                                        onChange={(e) => setCommentDraft(e.target.value)}
+                                        onChange={(e) => onCommentDraftChange(e.target.value)}
                                         onInput={(e) => {
-                                          // авто-рост как в чатах
                                           e.currentTarget.style.height = "0px";
                                           e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 140)}px`;
                                         }}
@@ -3452,13 +3540,25 @@ function openYandexRoute(lat, lon) {
 
                                     </div>
 
+                                    {showMentionDropdown && !commentEditId ? (
+                                      <div className="commentMentionDropdown">
+                                        {mentionCandidates.length === 0 ? (
+                                          <div className="small" style={{ padding: 8 }}>Никого не нашёл</div>
+                                        ) : mentionCandidates.map((cand) => (
+                                          <button key={cand.tg_id} className="commentMentionItem" type="button" onClick={() => applyMention(cand)}>
+                                            @{cand.name}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : null}
+
                                     {commentEditId ? (
                                       <div className="commentEditBar">
                                         <span>Редактирование комментария</span>
                                         <button
                                           className="btn secondary"
                                           disabled={commentBusy}
-                                          onClick={() => { setCommentEditId(null); setCommentDraft(""); }}
+                                          onClick={() => { setCommentEditId(null); setCommentDraft(""); setCommentReplyTo(null); setCommentMentionIds([]); }}
                                           type="button"
                                         >
                                           Отмена
@@ -3562,6 +3662,11 @@ function openYandexRoute(lat, lon) {
                                                   )}
 
 
+                                                {c.reply_to_preview ? (
+                                                  <div className="cmtReplyPreview">
+                                                    <b>{c.reply_to_preview.author_name}</b>: {c.reply_to_preview.excerpt}
+                                                  </div>
+                                                ) : null}
                                                 <div className="cmtText">{c.body}</div>
 
                                                 <div className="cmtActions">
@@ -3599,6 +3704,19 @@ function openYandexRoute(lat, lon) {
                                                     ➕
                                                   </button>
 
+                                                  <button
+                                                    className="iconBtn"
+                                                    type="button"
+                                                    title="Ответить"
+                                                    onClick={() => {
+                                                      setCommentReplyTo(c);
+                                                      setCommentEditId(null);
+                                                      setCommentDraft("");
+                                                    }}
+                                                  >
+                                                    ↪️
+                                                  </button>
+
                                                   <div style={{ flex: 1 }} />
 
                                                   {canEdit ? (
@@ -3609,6 +3727,8 @@ function openYandexRoute(lat, lon) {
                                                       onClick={() => {
                                                         setCommentEditId(c.id);
                                                         setCommentDraft(c.body || "");
+                                                        setCommentReplyTo(null);
+                                                        setCommentMentionIds([]);
                                                       }}
                                                     >
                                                       ✏️

@@ -679,7 +679,7 @@ textarea:focus{
   border: 1px solid var(--border);
   background: var(--muted-bg);
   color: var(--tg-text);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -2746,7 +2746,7 @@ html[data-theme="light"] .btn.outline.active{
   outline:0;
   background: transparent;
   color: var(--tg-text);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.35;
   resize: none;
   padding: 8px 10px;
@@ -2771,6 +2771,49 @@ html[data-theme="light"] .btn.outline.active{
   cursor:not-allowed;
 }
 
+
+.commentReplyBar{
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.commentMentionChips{
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.commentMentionDropdown{
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.commentMentionItem{
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--tg-text);
+  padding: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+}
+.commentMentionItem:last-child{ border-bottom: 0; }
+
+.cmtReplyPreview{
+  font-size: 13px;
+  opacity: .85;
+  border-left: 2px solid var(--tg-btn);
+  padding-left: 8px;
+  margin-bottom: 6px;
+}
 .commentEditBar{
   display:flex;
   justify-content:space-between;
