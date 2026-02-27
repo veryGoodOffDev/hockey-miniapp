@@ -1785,10 +1785,10 @@ async function sendBotPmSafe({ toTgId, text, meta = null, sentByTgId = null }) {
   try {
     const playerR = await q(`SELECT tg_id, pm_started FROM players WHERE tg_id=$1`, [toTgId]);
     const player = playerR.rows?.[0];
-    if (!player?.tg_id || !player?.pm_started) return { ok: false, reason: "pm_not_available" };
+    if (!player?.tg_id) return { ok: false, reason: "no_tg_id" };
 
     if (!bot) return { ok: false, reason: "bot_not_ready" };
-    const sent = await bot.api.sendMessage(Number(toTgId), String(text || ""), { disable_web_page_preview: true });
+    const sent = await bot.api.sendMessage(Number(player.tg_id), String(text || ""), { disable_web_page_preview: true });
 
     await q(
       `INSERT INTO bot_messages(chat_id, message_id, kind, text, sent_by_tg_id, meta)
@@ -7014,12 +7014,13 @@ app.delete("/api/game-comments/:id", async (req, res) => {
       return res.status(403).json({ ok: false, reason: "not_owner" });
     }
 
+    const gameId = Number(row.game_id);              // ✅ ВАЖНО
+
     await q(`DELETE FROM game_comments WHERE id=$1`, [id]);
 
     schedulePostgameCounterSync(gameId);
     scheduleDiscussSync(gameId);
 
-    const gameId = Number(row.game_id);              // ✅ ВАЖНО
     const baseUrl = getPublicBaseUrl(req);
     const comments = await loadGameComments(gameId, user.id, baseUrl);
     return res.json({ ok: true, comments });
