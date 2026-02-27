@@ -1783,22 +1783,21 @@ function commentExcerpt(body, maxLen = 90) {
 
 async function sendBotPmSafe({ toTgId, text, meta = null, sentByTgId = null }) {
   try {
-    const playerR = await q(`SELECT tg_id, pm_started FROM players WHERE tg_id=$1`, [toTgId]);
-    const player = playerR.rows?.[0];
-    if (!player?.tg_id) return { ok: false, reason: "no_tg_id" };
+    const to = Number(toTgId);
+    if (!Number.isFinite(to) || to <= 0) return { ok: false, reason: "bad_tg_id" };
 
     if (!bot) return { ok: false, reason: "bot_not_ready" };
-    const sent = await bot.api.sendMessage(Number(player.tg_id), String(text || ""), { disable_web_page_preview: true });
+    const sent = await bot.api.sendMessage(to, String(text || ""), { disable_web_page_preview: true });
 
     await q(
       `INSERT INTO bot_messages(chat_id, message_id, kind, text, sent_by_tg_id, meta)
        VALUES($1,$2,'pm',$3,$4,$5)`,
-      [Number(toTgId), sent.message_id, String(text || ""), sentByTgId ? Number(sentByTgId) : null, JSON.stringify(meta || { type: "pm" })]
+      [to, sent.message_id, String(text || ""), sentByTgId ? Number(sentByTgId) : null, JSON.stringify(meta || { type: "pm" })]
     ).catch(() => {});
 
     return { ok: true };
   } catch (e) {
-    console.error("sendBotPmSafe failed:", e);
+    console.error("sendBotPmSafe failed:", { toTgId, err: tgErrText(e) });
     return { ok: false, reason: "tg_send_failed" };
   }
 }
@@ -1809,11 +1808,11 @@ async function notifyCommentCreated({ gameId, commentId, text, authorTgId, menti
 
   for (const toId of (mentionIds || [])) {
     if (String(toId) === String(authorTgId)) continue;
-    const msg = `Вас упомянули в комментариях к игре.
+    const msg = `Вы были упомянуты в комментарии к игре.
 
 💬 ${preview}
 
-Открыть: ${link}`;
+Открыть комментарии: ${link}`;
     await sendBotPmSafe({ toTgId: toId, text: msg, meta: { type: "comment_mention", game_id: gameId, comment_id: commentId } });
   }
 
@@ -1822,7 +1821,7 @@ async function notifyCommentCreated({ gameId, commentId, text, authorTgId, menti
 
 💬 ${preview}
 
-Открыть: ${link}`;
+Открыть комментарии: ${link}`;
     await sendBotPmSafe({
       toTgId: replyToComment.author_tg_id,
       text: msg,
@@ -6937,7 +6936,7 @@ app.post("/api/game-comments", async (req, res) => {
     );
   }
 
-  notifyCommentCreated({
+  await notifyCommentCreated({
     gameId,
     commentId: createdCommentId,
     text,
