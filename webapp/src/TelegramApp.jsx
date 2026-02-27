@@ -495,6 +495,10 @@ async function submitComment() {
   if (!body) return;
 
   const gameId = game.id;
+  const replyToCommentId = commentReplyTo?.id ?? null;
+  const mentionIds = Array.from(
+    new Set((commentMentionIds || []).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))
+  ).slice(0, 10);
   const nowIso = new Date().toISOString();
 
   // helper: вставить новый коммент сразу сверху, но после закрепа (если есть)
