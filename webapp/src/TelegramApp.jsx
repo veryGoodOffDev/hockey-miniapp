@@ -2353,6 +2353,32 @@ const teamsPosStaleInfo = React.useMemo(() => {
   return { stale: changed.length > 0, changed };
 }, [teams?.ok, teams?.teamA, teams?.teamB, rsvps]);
 
+const yesPosById = React.useMemo(() => {
+  const m = new Map();
+  for (const x of rsvps || []) {
+    if ((x?.status || "maybe") !== "yes") continue;
+    m.set(String(x.tg_id), String(x.position || x.profile_position || "F").toUpperCase());
+  }
+  return m;
+}, [rsvps]);
+
+const teamsWithActualPos = React.useMemo(() => {
+  if (!teams?.ok) return teams;
+
+  const patchPos = (p) => {
+    const id = String(p?.tg_id ?? "");
+    const livePos = yesPosById.get(id);
+    if (!livePos) return p;
+    return { ...p, position: livePos };
+  };
+
+  return {
+    ...teams,
+    teamA: (teams.teamA || []).map(patchPos),
+    teamB: (teams.teamB || []).map(patchPos),
+  };
+}, [teams, yesPosById]);
+
   // ВНИМАНИЕ: прошедшие теперь показываем не из games, а из pastPage (загружаем постранично)
   const listToShow = showPast ? pastPage : upcomingGames;
 
@@ -4635,8 +4661,8 @@ function openYandexRoute(lat, lon) {
 
     <div className="small" style={{ opacity: 0.9, marginTop: 6 }}>
       После последнего формирования составов у <b>{teamsPosStaleInfo.changed.length}</b>{" "}
-      игроков изменилась позиция на эту игру. Чтобы в “Составах” были актуальные позиции —
-      сформируй составы заново.
+      игроков изменилась позиция на эту игру. В списке составов ниже показаны уже актуальные
+      позиции.
     </div>
 
     <div className="small" style={{ opacity: 0.9, marginTop: 6, whiteSpace: "pre-line" }}>
@@ -4649,31 +4675,20 @@ function openYandexRoute(lat, lon) {
         : ""}
     </div>
 
-    {isAdmin ? (
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="btn" onClick={generateTeams} disabled={!selectedGameId || teamsBusy}>
-          🔄 Сформировать заново
-        </button>
-      </div>
-    ) : (
-      <div className="small" style={{ opacity: 0.8, marginTop: 8 }}>
-        Попроси админа нажать “Сформировать сейчас”.
-      </div>
-    )}
   </div>
 )}
 
-    {teams?.ok ? (
+    {teamsWithActualPos?.ok ? (
       <>
         <hr />
 
         {/* если эти метрики тебе больше не нужны — просто удали этот блок */}
         <div className="row">
-          <span className="badge">ΣA {Number(teams.meta?.sumA ?? 0).toFixed(1)}</span>
-          <span className="badge">ΣB {Number(teams.meta?.sumB ?? 0).toFixed(1)}</span>
+          <span className="badge">ΣA {Number(teamsWithActualPos.meta?.sumA ?? 0).toFixed(1)}</span>
+          <span className="badge">ΣB {Number(teamsWithActualPos.meta?.sumB ?? 0).toFixed(1)}</span>
           <span className="badge">
-            diff {Number(teams.meta?.diff ?? 0).toFixed(1)}
-            {Number(teams.meta?.diff ?? 0) >= 3 ? " ⚠️" : ""}
+            diff {Number(teamsWithActualPos.meta?.diff ?? 0).toFixed(1)}
+            {Number(teamsWithActualPos.meta?.diff ?? 0) >= 3 ? " ⚠️" : ""}
           </span>
         </div>
 
@@ -4710,10 +4725,10 @@ function openYandexRoute(lat, lon) {
         )}
 
         <hr />
-        {renderTeam("A", "⬜ Белые", teams.teamA || [])}
+        {renderTeam("A", "⬜ Белые", teamsWithActualPos.teamA || [])}
 
         <hr />
-        {renderTeam("B", "🟦 Синие", teams.teamB || [])}
+        {renderTeam("B", "🟦 Синие", teamsWithActualPos.teamB || [])}
       </>
     ) : (
       <div className="small" style={{ marginTop: 10 }}>
