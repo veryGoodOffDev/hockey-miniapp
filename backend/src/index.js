@@ -1471,6 +1471,228 @@ function parseTeamIds(teamJson) {
   return Array.from(new Set(ids));
 }
 
+function calcTeamPlayerRating(p) {
+  const skill = Number(p?.skill ?? 5);
+  const skating = Number(p?.skating ?? 5);
+  const iq = Number(p?.iq ?? 5);
+  const stamina = Number(p?.stamina ?? 5);
+  const passing = Number(p?.passing ?? 5);
+  const shooting = Number(p?.shooting ?? 5);
+  return 0.35 * skill + 0.15 * skating + 0.15 * iq + 0.1 * stamina + 0.125 * passing + 0.125 * shooting;
+}
+
+function buildTeamsMeta(teamA, teamB) {
+  const posA = { G: 0, D: 0, F: 0, U: 0 };
+  const posB = { G: 0, D: 0, F: 0, U: 0 };
+
+  const sumA = (teamA || []).reduce((acc, p) => {
+    const pos = String(p?.position || "F").toUpperCase();
+    if (posA[pos] === undefined) posA.U += 1;
+    else posA[pos] += 1;
+    return acc + Number(p?.rating ?? calcTeamPlayerRating(p));
+  }, 0);
+
+  const sumB = (teamB || []).reduce((acc, p) => {
+    const pos = String(p?.position || "F").toUpperCase();
+    if (posB[pos] === undefined) posB.U += 1;
+    else posB[pos] += 1;
+    return acc + Number(p?.rating ?? calcTeamPlayerRating(p));
+  }, 0);
+
+  return {
+    sumA,
+    sumB,
+    diff: Math.abs(sumA - sumB),
+    count: (teamA?.length || 0) + (teamB?.length || 0),
+    countA: teamA?.length || 0,
+    countB: teamB?.length || 0,
+    posA,
+    posB,
+  };
+}
+
+async function syncTeamsAfterRsvpChange(gid, tgId) {
+  if (!Number.isFinite(Number(gid)) || !Number.isFinite(Number(tgId))) return;
+
+  const tr = await q(`SELECT team_a, team_b FROM teams WHERE game_id=$1`, [gid]);
+  const row = tr.rows?.[0];
+  if (!row) return;
+
+  let teamA = Array.isArray(row.team_a) ? [...row.team_a] : [];
+  let teamB = Array.isArray(row.team_b) ? [...row.team_b] : [];
+
+  const id = String(tgId);
+  const inA = teamA.some((p) => String(p?.tg_id ?? p) === id);
+  const inB = teamB.some((p) => String(p?.tg_id ?? p) === id);
+
+  teamA = teamA.filter((p) => String(p?.tg_id ?? p) !== id);
+  teamB = teamB.filter((p) => String(p?.tg_id ?? p) !== id);
+
+  const pr = await q(
+    `SELECT
+      p.*,
+      COALESCE(r.pos_override, p.position) AS position
+     FROM rsvps r
+     JOIN players p ON p.tg_id = r.tg_id
+     WHERE r.game_id=$1 AND r.tg_id=$2 AND r.status='yes' AND p.disabled=FALSE`,
+    [gid, tgId]
+  );
+
+  const player = pr.rows?.[0] || null;
+  let changed = inA || inB;
+
+  if (player) {
+    const hydrated = {
+      ...player,
+      rating: calcTeamPlayerRating(player),
+      position: normalizePos(player.position),
+    };
+
+    if (inA) {
+      teamA.push(hydrated);
+    } else if (inB) {
+      teamB.push(hydrated);
+    } else {
+      const sumA = teamA.reduce((acc, p) => acc + Number(p?.rating ?? calcTeamPlayerRating(p)), 0);
+      const sumB = teamB.reduce((acc, p) => acc + Number(p?.rating ?? calcTeamPlayerRating(p)), 0);
+
+      if (teamA.length < teamB.length) teamA.push(hydrated);
+      else if (teamB.length < teamA.length) teamB.push(hydrated);
+      else if (sumA <= sumB) teamA.push(hydrated);
+      else teamB.push(hydrated);
+
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  const meta = buildTeamsMeta(teamA, teamB);
+  await q(
+    `UPDATE teams
+     SET team_a=$2, team_b=$3, meta=$4, generated_at=NOW()
+     WHERE game_id=$1`,
+    [gid, JSON.stringify(teamA), JSON.stringify(teamB), JSON.stringify(meta)]
+  );
+
+  // best-effort: если составы уже были отправлены в чат — обновляем опубликованное сообщение
+  try {
+    await syncPostedTeamsMessageIfAny(gid);
+  } catch (e) {
+    console.error("syncPostedTeamsMessageIfAny failed:", e?.description || e?.message || e);
+  }
+}
+
+async function syncPostedTeamsMessageIfAny(game_id) {
+  const gid = Number(game_id);
+  if (!Number.isFinite(gid) || gid <= 0) return;
+
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  const chatId = chatIdRaw ? Number(String(chatIdRaw).trim()) : null;
+  if (!Number.isFinite(chatId)) return;
+
+  const prevTeamsMsgR = await q(
+    `SELECT id, chat_id, message_id
+     FROM bot_messages
+     WHERE kind='teams'
+       AND deleted_at IS NULL
+       AND chat_id=$1
+       AND COALESCE(meta->>'game_id', '') = $2
+     ORDER BY id DESC
+     LIMIT 1`,
+    [chatId, String(gid)]
+  );
+  const prevTeamsMsg = prevTeamsMsgR.rows?.[0] || null;
+  if (!prevTeamsMsg) return; // если составы не публиковались — ничего не делаем
+
+  const gr = await q(
+    `SELECT
+      g.id, g.starts_at, g.location, g.status,
+      t.team_a, t.team_b
+     FROM games g
+     LEFT JOIN teams t ON t.game_id = g.id
+     WHERE g.id=$1`,
+    [gid]
+  );
+  const row = gr.rows?.[0];
+  if (!row || row.status === "cancelled") return;
+
+  const teamAIds = parseTeamIds(row.team_a);
+  const teamBIds = parseTeamIds(row.team_b);
+  if (!teamAIds.length && !teamBIds.length) return;
+
+  const allIds = Array.from(new Set([...teamAIds, ...teamBIds]));
+  const pr = await q(
+    `SELECT
+       p.tg_id, p.display_name, p.first_name, p.username, p.jersey_number,
+       COALESCE(r.pos_override, p.position) AS position
+     FROM players p
+     LEFT JOIN rsvps r
+       ON r.game_id=$2 AND r.tg_id=p.tg_id AND r.status='yes'
+     WHERE p.tg_id = ANY($1::bigint[])`,
+    [allIds, gid]
+  );
+  const map = new Map(pr.rows.map((p) => [String(p.tg_id), p]));
+
+  const teamAPlayers = teamAIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
+  const teamBPlayers = teamBIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
+
+  const when = formatGameWhen(row.starts_at);
+  const header =
+    `<b>🏒 Составы на игру</b>\n` +
+    `⏱ <code>${escapeHtml(when)}</code>\n` +
+    `📍 <b>${escapeHtml(row.location || "—")}</b>` +
+    `\n\n<b>⚠️ После первого формирования составы были изменены, будь внимателен.</b>`;
+
+  const table = renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers);
+  const body = `${header}\n\n${table}`;
+
+  const botUsername = String(process.env.BOT_USERNAME || "").trim();
+  const deepLinkTeams = botUsername
+    ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(`teams_${gid}`)}`
+    : null;
+
+  const kb = new InlineKeyboard();
+  if (deepLinkTeams) kb.url("📋 Открыть составы", deepLinkTeams);
+
+  try {
+    await bot.api.editMessageText(Number(prevTeamsMsg.chat_id), Number(prevTeamsMsg.message_id), body, {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      reply_markup: kb,
+    });
+
+    await q(
+      `UPDATE bot_messages
+       SET text=$2,
+           parse_mode='HTML',
+           disable_web_page_preview=TRUE,
+           reply_markup=$3::jsonb,
+           meta=$4::jsonb,
+           checked_at=NOW()
+       WHERE id=$1`,
+      [
+        prevTeamsMsg.id,
+        body,
+        JSON.stringify(replyMarkupToJson(kb)),
+        JSON.stringify({ game_id: gid, auto_updated: true }),
+      ]
+    );
+  } catch (e) {
+    if (tgMessageMissing(e)) {
+      await q(
+        `UPDATE bot_messages
+         SET deleted_at=NOW(), delete_reason='missing_in_chat', checked_at=NOW()
+         WHERE id=$1`,
+        [prevTeamsMsg.id]
+      );
+      return;
+    }
+    if (tgMessageExistsButNotEditable(e)) return;
+    throw e;
+  }
+}
+
 function groupPlayersForMessage(list) {
   const g = { G: [], D: [], F: [] };
   for (const p of list) g[normalizePos(p.position)].push(p);
@@ -4056,6 +4278,7 @@ app.post("/api/rsvp", async (req, res) => {
   // maybe = снять отметку (как у тебя задумано)
   if (status === "maybe") {
     await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, user.id]);
+    await syncTeamsAfterRsvpChange(gid, user.id);
     return res.json({ ok: true });
   }
 
@@ -4084,6 +4307,8 @@ app.post("/api/rsvp", async (req, res) => {
       [gid, user.id, status]
     );
   }
+
+  await syncTeamsAfterRsvpChange(gid, user.id);
 
   res.json({ ok: true });
 });
@@ -4478,6 +4703,7 @@ app.post("/api/admin/rsvp", async (req, res) => {
   // ✅ делаем поведение как у обычного /api/rsvp: maybe = удалить запись
   if (status === "maybe") {
     await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, tgId]);
+    await syncTeamsAfterRsvpChange(gid, tgId);
     return res.json({ ok: true });
   }
 
@@ -4503,6 +4729,8 @@ app.post("/api/admin/rsvp", async (req, res) => {
       [gid, tgId, status]
     );
   }
+
+  await syncTeamsAfterRsvpChange(gid, tgId);
 
   res.json({ ok: true });
 });
@@ -5948,25 +6176,36 @@ app.post("/api/rsvp/bulk", async (req, res) => {
   await ensurePlayer(user);
 
   if (status === "maybe") {
-    await q(
+    const rr = await q(
       `DELETE FROM rsvps
        WHERE tg_id=$1 AND game_id IN (
          SELECT id FROM games WHERE status='scheduled' AND starts_at >= NOW()
-       )`,
+       )
+       RETURNING game_id`,
       [user.id]
     );
+
+    for (const row of rr.rows || []) {
+      await syncTeamsAfterRsvpChange(row.game_id, user.id);
+    }
+
     return res.json({ ok: true });
   }
 
-  await q(
+  const rr = await q(
     `INSERT INTO rsvps(game_id, tg_id, status)
      SELECT g.id, $1, $2
      FROM games g
      WHERE g.status='scheduled' AND g.starts_at >= NOW()
      ON CONFLICT(game_id, tg_id)
-     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()
+     RETURNING game_id`,
     [user.id, status]
   );
+
+  for (const row of rr.rows || []) {
+    await syncTeamsAfterRsvpChange(row.game_id, user.id);
+  }
 
   res.json({ ok: true });
 });
@@ -6361,10 +6600,24 @@ app.post("/api/admin/teams/send", async (req, res) => {
     const dt = row.starts_at ? new Date(row.starts_at) : null;
    const when = formatGameWhen(row.starts_at); // ✅ твой хелпер с timeZone
 
+    const prevTeamsMsgR = await q(
+      `SELECT id, chat_id, message_id, text
+       FROM bot_messages
+       WHERE kind='teams'
+         AND deleted_at IS NULL
+         AND chat_id=$1
+         AND COALESCE(meta->>'game_id', '') = $2
+       ORDER BY id DESC
+       LIMIT 1`,
+      [chatId, String(game_id)]
+    );
+    const prevTeamsMsg = prevTeamsMsgR.rows?.[0] || null;
+
     const header =
       `<b>🏒 Составы на игру</b>\n` +
       `⏱ <code>${escapeHtml(when)}</code>\n` +
       `📍 <b>${escapeHtml(row.location || "—")}</b>` +
+      (prevTeamsMsg ? `\n\n<b>⚠️ После первого формирования составы были изменены, будь внимателен.</b>` : "") +
       (stale ? `\n\n<b>⚠️</b> Отметки менялись после формирования.` : "");
     
     const table = renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers);
@@ -6380,20 +6633,65 @@ app.post("/api/admin/teams/send", async (req, res) => {
     const kb = new InlineKeyboard();
     if (deepLinkTeams) kb.url("📋 Открыть составы", deepLinkTeams);
     
-    // 6) отправляем
+    // 6) если уже отправляли составы на эту игру — редактируем прежнее сообщение
+    if (prevTeamsMsg) {
+      try {
+        await bot.api.editMessageText(Number(prevTeamsMsg.chat_id), Number(prevTeamsMsg.message_id), body, {
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+          reply_markup: kb,
+        });
+
+        await q(
+          `UPDATE bot_messages
+           SET text=$2,
+               parse_mode='HTML',
+               disable_web_page_preview=TRUE,
+               reply_markup=$3::jsonb,
+               meta=$4::jsonb,
+               sent_by_tg_id=$5,
+               checked_at=NOW()
+           WHERE id=$1`,
+          [
+            prevTeamsMsg.id,
+            body,
+            JSON.stringify(replyMarkupToJson(kb)),
+            JSON.stringify({ game_id, stale, removed, added, updated: true }),
+            user.id,
+          ]
+        );
+
+        return res.json({ ok: true, message_id: Number(prevTeamsMsg.message_id), stale, removed, added, edited: true });
+      } catch (eEdit) {
+        // сообщение могли удалить руками в Telegram — тогда просто шлём новое ниже
+        if (tgMessageMissing(eEdit)) {
+          await q(
+            `UPDATE bot_messages
+             SET deleted_at=NOW(), delete_reason='missing_in_chat', checked_at=NOW()
+             WHERE id=$1`,
+            [prevTeamsMsg.id]
+          );
+        } else if (!tgMessageExistsButNotEditable(eEdit)) {
+          throw eEdit;
+        }
+      }
+    }
+
+    // 7) отправляем новое сообщение (первый пост или старое удалено вручную)
     const sent = await bot.api.sendMessage(chatId, body, {
       parse_mode: "HTML",
       disable_web_page_preview: true,
       reply_markup: kb,
     });
-    // 7) пишем в историю (у тебя уже есть bot_messages)
+
+    // 8) пишем в историю
     await q(
-      `INSERT INTO bot_messages(chat_id, message_id, kind, text, parse_mode, disable_web_page_preview, meta, sent_by_tg_id)
-       VALUES($1,$2,'teams',$3,'HTML',TRUE,$4,$5)`,
-      [chatId, sent.message_id, body, JSON.stringify({ game_id, stale, removed, added }), user.id]
+      `INSERT INTO bot_messages(chat_id, message_id, kind, text, parse_mode, disable_web_page_preview, reply_markup, meta, sent_by_tg_id)
+       VALUES($1,$2,'teams',$3,'HTML',TRUE,$4::jsonb,$5::jsonb,$6)`,
+      [chatId, sent.message_id, body, JSON.stringify(replyMarkupToJson(kb)), JSON.stringify({ game_id, stale, removed, added }), user.id]
     );
 
-    return res.json({ ok: true, message_id: sent.message_id, stale, removed, added });
+    return res.json({ ok: true, message_id: sent.message_id, stale, removed, added, edited: false });
   } catch (e) {
     console.error("teams/send failed:", e);
     return res.status(500).json({ ok: false, reason: "server_error" });
