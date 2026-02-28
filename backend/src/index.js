@@ -1574,6 +1574,123 @@ async function syncTeamsAfterRsvpChange(gid, tgId) {
      WHERE game_id=$1`,
     [gid, JSON.stringify(teamA), JSON.stringify(teamB), JSON.stringify(meta)]
   );
+
+  // best-effort: если составы уже были отправлены в чат — обновляем опубликованное сообщение
+  try {
+    await syncPostedTeamsMessageIfAny(gid);
+  } catch (e) {
+    console.error("syncPostedTeamsMessageIfAny failed:", e?.description || e?.message || e);
+  }
+}
+
+async function syncPostedTeamsMessageIfAny(game_id) {
+  const gid = Number(game_id);
+  if (!Number.isFinite(gid) || gid <= 0) return;
+
+  const chatIdRaw = await getSetting("notify_chat_id", null);
+  const chatId = chatIdRaw ? Number(String(chatIdRaw).trim()) : null;
+  if (!Number.isFinite(chatId)) return;
+
+  const prevTeamsMsgR = await q(
+    `SELECT id, chat_id, message_id
+     FROM bot_messages
+     WHERE kind='teams'
+       AND deleted_at IS NULL
+       AND chat_id=$1
+       AND COALESCE(meta->>'game_id', '') = $2
+     ORDER BY id DESC
+     LIMIT 1`,
+    [chatId, String(gid)]
+  );
+  const prevTeamsMsg = prevTeamsMsgR.rows?.[0] || null;
+  if (!prevTeamsMsg) return; // если составы не публиковались — ничего не делаем
+
+  const gr = await q(
+    `SELECT
+      g.id, g.starts_at, g.location, g.status,
+      t.team_a, t.team_b
+     FROM games g
+     LEFT JOIN teams t ON t.game_id = g.id
+     WHERE g.id=$1`,
+    [gid]
+  );
+  const row = gr.rows?.[0];
+  if (!row || row.status === "cancelled") return;
+
+  const teamAIds = parseTeamIds(row.team_a);
+  const teamBIds = parseTeamIds(row.team_b);
+  if (!teamAIds.length && !teamBIds.length) return;
+
+  const allIds = Array.from(new Set([...teamAIds, ...teamBIds]));
+  const pr = await q(
+    `SELECT
+       p.tg_id, p.display_name, p.first_name, p.username, p.jersey_number,
+       COALESCE(r.pos_override, p.position) AS position
+     FROM players p
+     LEFT JOIN rsvps r
+       ON r.game_id=$2 AND r.tg_id=p.tg_id AND r.status='yes'
+     WHERE p.tg_id = ANY($1::bigint[])`,
+    [allIds, gid]
+  );
+  const map = new Map(pr.rows.map((p) => [String(p.tg_id), p]));
+
+  const teamAPlayers = teamAIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
+  const teamBPlayers = teamBIds.map((id) => map.get(String(id)) || { tg_id: id, display_name: String(id), position: "F" });
+
+  const when = formatGameWhen(row.starts_at);
+  const header =
+    `<b>🏒 Составы на игру</b>\n` +
+    `⏱ <code>${escapeHtml(when)}</code>\n` +
+    `📍 <b>${escapeHtml(row.location || "—")}</b>` +
+    `\n\n<b>⚠️ После первого формирования составы были изменены, будь внимателен.</b>`;
+
+  const table = renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers);
+  const body = `${header}\n\n${table}`;
+
+  const botUsername = String(process.env.BOT_USERNAME || "").trim();
+  const deepLinkTeams = botUsername
+    ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(`teams_${gid}`)}`
+    : null;
+
+  const kb = new InlineKeyboard();
+  if (deepLinkTeams) kb.url("📋 Открыть составы", deepLinkTeams);
+
+  try {
+    await bot.api.editMessageText(Number(prevTeamsMsg.chat_id), Number(prevTeamsMsg.message_id), body, {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      reply_markup: kb,
+    });
+
+    await q(
+      `UPDATE bot_messages
+       SET text=$2,
+           parse_mode='HTML',
+           disable_web_page_preview=TRUE,
+           reply_markup=$3::jsonb,
+           meta=$4::jsonb,
+           checked_at=NOW()
+       WHERE id=$1`,
+      [
+        prevTeamsMsg.id,
+        body,
+        JSON.stringify(replyMarkupToJson(kb)),
+        JSON.stringify({ game_id: gid, auto_updated: true }),
+      ]
+    );
+  } catch (e) {
+    if (tgMessageMissing(e)) {
+      await q(
+        `UPDATE bot_messages
+         SET deleted_at=NOW(), delete_reason='missing_in_chat', checked_at=NOW()
+         WHERE id=$1`,
+        [prevTeamsMsg.id]
+      );
+      return;
+    }
+    if (tgMessageExistsButNotEditable(e)) return;
+    throw e;
+  }
 }
 
 function groupPlayersForMessage(list) {
