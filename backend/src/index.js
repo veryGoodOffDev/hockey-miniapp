@@ -1471,6 +1471,111 @@ function parseTeamIds(teamJson) {
   return Array.from(new Set(ids));
 }
 
+function calcTeamPlayerRating(p) {
+  const skill = Number(p?.skill ?? 5);
+  const skating = Number(p?.skating ?? 5);
+  const iq = Number(p?.iq ?? 5);
+  const stamina = Number(p?.stamina ?? 5);
+  const passing = Number(p?.passing ?? 5);
+  const shooting = Number(p?.shooting ?? 5);
+  return 0.35 * skill + 0.15 * skating + 0.15 * iq + 0.1 * stamina + 0.125 * passing + 0.125 * shooting;
+}
+
+function buildTeamsMeta(teamA, teamB) {
+  const posA = { G: 0, D: 0, F: 0, U: 0 };
+  const posB = { G: 0, D: 0, F: 0, U: 0 };
+
+  const sumA = (teamA || []).reduce((acc, p) => {
+    const pos = String(p?.position || "F").toUpperCase();
+    if (posA[pos] === undefined) posA.U += 1;
+    else posA[pos] += 1;
+    return acc + Number(p?.rating ?? calcTeamPlayerRating(p));
+  }, 0);
+
+  const sumB = (teamB || []).reduce((acc, p) => {
+    const pos = String(p?.position || "F").toUpperCase();
+    if (posB[pos] === undefined) posB.U += 1;
+    else posB[pos] += 1;
+    return acc + Number(p?.rating ?? calcTeamPlayerRating(p));
+  }, 0);
+
+  return {
+    sumA,
+    sumB,
+    diff: Math.abs(sumA - sumB),
+    count: (teamA?.length || 0) + (teamB?.length || 0),
+    countA: teamA?.length || 0,
+    countB: teamB?.length || 0,
+    posA,
+    posB,
+  };
+}
+
+async function syncTeamsAfterRsvpChange(gid, tgId) {
+  if (!Number.isFinite(Number(gid)) || !Number.isFinite(Number(tgId))) return;
+
+  const tr = await q(`SELECT team_a, team_b FROM teams WHERE game_id=$1`, [gid]);
+  const row = tr.rows?.[0];
+  if (!row) return;
+
+  let teamA = Array.isArray(row.team_a) ? [...row.team_a] : [];
+  let teamB = Array.isArray(row.team_b) ? [...row.team_b] : [];
+
+  const id = String(tgId);
+  const inA = teamA.some((p) => String(p?.tg_id ?? p) === id);
+  const inB = teamB.some((p) => String(p?.tg_id ?? p) === id);
+
+  teamA = teamA.filter((p) => String(p?.tg_id ?? p) !== id);
+  teamB = teamB.filter((p) => String(p?.tg_id ?? p) !== id);
+
+  const pr = await q(
+    `SELECT
+      p.*,
+      COALESCE(r.pos_override, p.position) AS position
+     FROM rsvps r
+     JOIN players p ON p.tg_id = r.tg_id
+     WHERE r.game_id=$1 AND r.tg_id=$2 AND r.status='yes' AND p.disabled=FALSE`,
+    [gid, tgId]
+  );
+
+  const player = pr.rows?.[0] || null;
+  let changed = inA || inB;
+
+  if (player) {
+    const hydrated = {
+      ...player,
+      rating: calcTeamPlayerRating(player),
+      position: normalizePos(player.position),
+    };
+
+    if (inA) {
+      teamA.push(hydrated);
+    } else if (inB) {
+      teamB.push(hydrated);
+    } else {
+      const sumA = teamA.reduce((acc, p) => acc + Number(p?.rating ?? calcTeamPlayerRating(p)), 0);
+      const sumB = teamB.reduce((acc, p) => acc + Number(p?.rating ?? calcTeamPlayerRating(p)), 0);
+
+      if (teamA.length < teamB.length) teamA.push(hydrated);
+      else if (teamB.length < teamA.length) teamB.push(hydrated);
+      else if (sumA <= sumB) teamA.push(hydrated);
+      else teamB.push(hydrated);
+
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  const meta = buildTeamsMeta(teamA, teamB);
+  await q(
+    `UPDATE teams
+     SET team_a=$2, team_b=$3, meta=$4, generated_at=NOW()
+     WHERE game_id=$1`,
+    [gid, JSON.stringify(teamA), JSON.stringify(teamB), JSON.stringify(meta)]
+  );
+}
+
 function groupPlayersForMessage(list) {
   const g = { G: [], D: [], F: [] };
   for (const p of list) g[normalizePos(p.position)].push(p);
@@ -4056,6 +4161,7 @@ app.post("/api/rsvp", async (req, res) => {
   // maybe = снять отметку (как у тебя задумано)
   if (status === "maybe") {
     await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, user.id]);
+    await syncTeamsAfterRsvpChange(gid, user.id);
     return res.json({ ok: true });
   }
 
@@ -4084,6 +4190,8 @@ app.post("/api/rsvp", async (req, res) => {
       [gid, user.id, status]
     );
   }
+
+  await syncTeamsAfterRsvpChange(gid, user.id);
 
   res.json({ ok: true });
 });
@@ -4478,6 +4586,7 @@ app.post("/api/admin/rsvp", async (req, res) => {
   // ✅ делаем поведение как у обычного /api/rsvp: maybe = удалить запись
   if (status === "maybe") {
     await q(`DELETE FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gid, tgId]);
+    await syncTeamsAfterRsvpChange(gid, tgId);
     return res.json({ ok: true });
   }
 
@@ -4503,6 +4612,8 @@ app.post("/api/admin/rsvp", async (req, res) => {
       [gid, tgId, status]
     );
   }
+
+  await syncTeamsAfterRsvpChange(gid, tgId);
 
   res.json({ ok: true });
 });
@@ -5948,25 +6059,36 @@ app.post("/api/rsvp/bulk", async (req, res) => {
   await ensurePlayer(user);
 
   if (status === "maybe") {
-    await q(
+    const rr = await q(
       `DELETE FROM rsvps
        WHERE tg_id=$1 AND game_id IN (
          SELECT id FROM games WHERE status='scheduled' AND starts_at >= NOW()
-       )`,
+       )
+       RETURNING game_id`,
       [user.id]
     );
+
+    for (const row of rr.rows || []) {
+      await syncTeamsAfterRsvpChange(row.game_id, user.id);
+    }
+
     return res.json({ ok: true });
   }
 
-  await q(
+  const rr = await q(
     `INSERT INTO rsvps(game_id, tg_id, status)
      SELECT g.id, $1, $2
      FROM games g
      WHERE g.status='scheduled' AND g.starts_at >= NOW()
      ON CONFLICT(game_id, tg_id)
-     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()
+     RETURNING game_id`,
     [user.id, status]
   );
+
+  for (const row of rr.rows || []) {
+    await syncTeamsAfterRsvpChange(row.game_id, user.id);
+  }
 
   res.json({ ok: true });
 });
