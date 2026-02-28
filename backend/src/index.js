@@ -6483,10 +6483,24 @@ app.post("/api/admin/teams/send", async (req, res) => {
     const dt = row.starts_at ? new Date(row.starts_at) : null;
    const when = formatGameWhen(row.starts_at); // ✅ твой хелпер с timeZone
 
+    const prevTeamsMsgR = await q(
+      `SELECT id, chat_id, message_id, text
+       FROM bot_messages
+       WHERE kind='teams'
+         AND deleted_at IS NULL
+         AND chat_id=$1
+         AND COALESCE(meta->>'game_id', '') = $2
+       ORDER BY id DESC
+       LIMIT 1`,
+      [chatId, String(game_id)]
+    );
+    const prevTeamsMsg = prevTeamsMsgR.rows?.[0] || null;
+
     const header =
       `<b>🏒 Составы на игру</b>\n` +
       `⏱ <code>${escapeHtml(when)}</code>\n` +
       `📍 <b>${escapeHtml(row.location || "—")}</b>` +
+      (prevTeamsMsg ? `\n\n<b>⚠️ После первого формирования составы были изменены, будь внимателен.</b>` : "") +
       (stale ? `\n\n<b>⚠️</b> Отметки менялись после формирования.` : "");
     
     const table = renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers);
@@ -6502,20 +6516,65 @@ app.post("/api/admin/teams/send", async (req, res) => {
     const kb = new InlineKeyboard();
     if (deepLinkTeams) kb.url("📋 Открыть составы", deepLinkTeams);
     
-    // 6) отправляем
+    // 6) если уже отправляли составы на эту игру — редактируем прежнее сообщение
+    if (prevTeamsMsg) {
+      try {
+        await bot.api.editMessageText(Number(prevTeamsMsg.chat_id), Number(prevTeamsMsg.message_id), body, {
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+          reply_markup: kb,
+        });
+
+        await q(
+          `UPDATE bot_messages
+           SET text=$2,
+               parse_mode='HTML',
+               disable_web_page_preview=TRUE,
+               reply_markup=$3::jsonb,
+               meta=$4::jsonb,
+               sent_by_tg_id=$5,
+               checked_at=NOW()
+           WHERE id=$1`,
+          [
+            prevTeamsMsg.id,
+            body,
+            JSON.stringify(replyMarkupToJson(kb)),
+            JSON.stringify({ game_id, stale, removed, added, updated: true }),
+            user.id,
+          ]
+        );
+
+        return res.json({ ok: true, message_id: Number(prevTeamsMsg.message_id), stale, removed, added, edited: true });
+      } catch (eEdit) {
+        // сообщение могли удалить руками в Telegram — тогда просто шлём новое ниже
+        if (tgMessageMissing(eEdit)) {
+          await q(
+            `UPDATE bot_messages
+             SET deleted_at=NOW(), delete_reason='missing_in_chat', checked_at=NOW()
+             WHERE id=$1`,
+            [prevTeamsMsg.id]
+          );
+        } else if (!tgMessageExistsButNotEditable(eEdit)) {
+          throw eEdit;
+        }
+      }
+    }
+
+    // 7) отправляем новое сообщение (первый пост или старое удалено вручную)
     const sent = await bot.api.sendMessage(chatId, body, {
       parse_mode: "HTML",
       disable_web_page_preview: true,
       reply_markup: kb,
     });
-    // 7) пишем в историю (у тебя уже есть bot_messages)
+
+    // 8) пишем в историю
     await q(
-      `INSERT INTO bot_messages(chat_id, message_id, kind, text, parse_mode, disable_web_page_preview, meta, sent_by_tg_id)
-       VALUES($1,$2,'teams',$3,'HTML',TRUE,$4,$5)`,
-      [chatId, sent.message_id, body, JSON.stringify({ game_id, stale, removed, added }), user.id]
+      `INSERT INTO bot_messages(chat_id, message_id, kind, text, parse_mode, disable_web_page_preview, reply_markup, meta, sent_by_tg_id)
+       VALUES($1,$2,'teams',$3,'HTML',TRUE,$4::jsonb,$5::jsonb,$6)`,
+      [chatId, sent.message_id, body, JSON.stringify(replyMarkupToJson(kb)), JSON.stringify({ game_id, stale, removed, added }), user.id]
     );
 
-    return res.json({ ok: true, message_id: sent.message_id, stale, removed, added });
+    return res.json({ ok: true, message_id: sent.message_id, stale, removed, added, edited: false });
   } catch (e) {
     console.error("teams/send failed:", e);
     return res.status(500).json({ ok: false, reason: "server_error" });

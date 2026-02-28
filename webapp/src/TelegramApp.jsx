@@ -1739,7 +1739,7 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
           setTeamsSendMsg(`❌ Не удалось отправить: ${r2?.reason || r2?.error || "unknown"}`);
           return;
         }
-        setTeamsSendMsg("✅ Составы отправлены в чат");
+        setTeamsSendMsg(r2?.edited ? "✅ Составы в чате обновлены" : "✅ Составы отправлены в чат");
         return;
       }
 
@@ -1747,7 +1747,7 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
       return;
     }
 
-    setTeamsSendMsg("✅ Составы отправлены в чат");
+    setTeamsSendMsg(r?.edited ? "✅ Составы в чате обновлены" : "✅ Составы отправлены в чат");
   } finally {
     setTeamsSendBusy(false);
   }
@@ -4616,9 +4616,9 @@ function openYandexRoute(lat, lon) {
               teamsSendBusy ||
               game?.status === "cancelled"
             }
-            title={!teams?.ok ? "Сначала сформируй составы" : "Отправить составы в чат"}
+            title={!teams?.ok ? "Сначала сформируй составы" : "Изменить отправленный состав или отправить новый в чат"}
           >
-            {teamsSendBusy ? "…" : "📣 Отправить составы в чат"}
+            {teamsSendBusy ? "…" : "📣 Изменить/отправить составы в чат"}
           </button>
         </>
       )}
