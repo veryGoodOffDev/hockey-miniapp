@@ -4226,6 +4226,8 @@ html[data-theme="light"] .btn.outline.active{
   border-radius:14px;
   color:#eaf1ff;
   text-align: left;
+  margin: 10px 0;
+  width: 100%;
 }
 .chatDmItemMain{ display:flex; align-items:center; gap:10px; min-width: 0; flex: 1; }
 .chatDmMeta{ min-width: 0; flex: 1; display:grid; gap:2px; }
