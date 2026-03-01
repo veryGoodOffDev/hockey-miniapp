@@ -4173,14 +4173,14 @@ html[data-theme="light"] .btn.outline.active{
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(680px, 100vw);
-  background: #0b111c;
+  width: min(700px, 100vw);
+  background: linear-gradient(180deg, #0b111c 0%, #0c1524 100%);
   color: #eaf1ff;
   transform: translateX(100%);
   transition: transform .24s ease;
   border-left: 1px solid rgba(255,255,255,.12);
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0,1fr) auto;
+  grid-template-rows: auto auto auto minmax(0,1fr) auto;
   gap: 10px;
   padding: 14px;
 }
@@ -4190,23 +4190,74 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .commentComposer__input{ background: #121a2a; border-color: rgba(255,255,255,.14); color: #eaf1ff; }
 .chatDrawerHead{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 2px; }
 .chatTabs{ display:flex; gap:8px; }
-.chatDmList,.chatConvList{ display:grid; gap:8px; margin: 0; max-height: 170px; overflow:auto; padding-right:4px; }
-.chatDmItem,.chatConvItem{
+.chatDmList{ display:grid; gap:8px; margin: 0; overflow:auto; padding-right:4px; max-height: 260px; }
+.chatDmItem{
   display:flex;
   justify-content:space-between;
   align-items:center;
+  gap: 10px;
   padding:10px 12px;
   border:1px solid rgba(255,255,255,.14);
   background:#121a2a;
-  border-radius:12px;
+  border-radius:14px;
   color:#eaf1ff;
+  text-align: left;
 }
-.chatConvItem.isActive{ outline: 2px solid rgba(84,160,255,.7); }
-.chatMessages{ display:grid; gap:6px; overflow:auto; padding:2px 4px 2px 0; }
+.chatDmItemMain{ display:flex; align-items:center; gap:10px; min-width: 0; flex: 1; }
+.chatDmMeta{ min-width: 0; flex: 1; display:grid; gap:2px; }
+.chatDmTop{ display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.chatDmName{ font-weight: 800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatDmTime{ font-size: 12px; opacity: .68; flex: 0 0 auto; }
+.chatDmSubline{ display:flex; gap:8px; align-items:center; min-width: 0; }
+.chatDmPreview{ font-size: 12px; opacity: .68; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatUnreadChip{ min-width: 28px; justify-content:center; font-weight: 800; }
+.chatDmHeaderWrap{
+  position: relative;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  background: rgba(17,26,42,.7);
+}
+.chatDmHeaderMain{ display:flex; align-items:center; gap:10px; min-width:0; flex:1; }
+.chatDmHeaderTitleWrap{ min-width:0; flex:1; text-align:center; }
+.chatDmHeaderName{ font-weight:900; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatDmHeaderSeen{ font-size:12px; opacity:.72; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatDmHeaderActions{ position: relative; }
+.chatDmMenu{
+  position:absolute;
+  right:0;
+  top: calc(100% + 8px);
+  z-index: 4;
+  padding: 8px;
+  border-radius: 12px;
+  border:1px solid rgba(255,255,255,.14);
+  background: #111a2a;
+  box-shadow: 0 10px 30px rgba(0,0,0,.28);
+}
+.chatMenuBtn{
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border:1px solid rgba(255,255,255,.16);
+  background:#162238;
+  color:#eaf1ff;
+  font-size: 22px;
+  line-height: 1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.chatMessages{ display:grid; gap:8px; overflow:auto; padding:2px 4px 2px 0; }
+.chatMsgAvatar{ width: 32px; display:flex; justify-content:center; align-items:flex-end; }
+.chatMsgHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 4px; }
 .chatDrawer .cmtBubble{ background: #141f31; border-color: rgba(255,255,255,.15); }
 .chatDrawer .cmtRow.mine .cmtBubble{ background: #1a2c4e; }
 .chatDrawer .chip{ background: #1a2438; border-color: rgba(255,255,255,.16); color:#eaf1ff; }
 .chatDrawer .commentComposer{ margin-top: 0; }
-
+.chatComposer{ display:flex; align-items:flex-end; gap:8px; }
 
 .chatSectionTitle{font-weight:800;opacity:.92;margin-top:2px;margin-bottom:2px;}
