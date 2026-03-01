@@ -7711,7 +7711,7 @@ app.get('/api/chat/conversations', async (req, res) => {
     for (const row of rr.rows || []) {
       if (row.kind === 'dm') {
         const peer = String(row.user_a) === String(user.id) ? Number(row.user_b) : Number(row.user_a);
-        if (Number.isFinite(peer) && peer > 0) peerIds.push(peer);
+        if (Number.isFinite(peer) && peer !== 0) peerIds.push(peer);
       }
     }
 
@@ -7763,7 +7763,7 @@ app.post('/api/chat/dm/open', async (req, res) => {
     }
 
     const peer = Number(req.body?.peer_tg_id);
-    if (!Number.isFinite(peer) || peer <= 0 || String(peer) === String(user.id)) {
+    if (!Number.isFinite(peer) || peer === 0 || String(peer) === String(user.id)) {
       return res.status(400).json({ ok: false, reason: 'bad_peer_tg_id' });
     }
 

@@ -4871,7 +4871,7 @@ function openYandexRoute(lat, lon) {
                       <>
                         <div className="chatSectionTitle">Контакты</div>
                         <input
-                          className="input"
+                          className="chatPeerInput"
                           placeholder="Поиск игрока по имени или @username"
                           value={chatPeerQuery}
                           onChange={(e) => setChatPeerQuery(e.target.value)}
@@ -4952,42 +4952,66 @@ function openYandexRoute(lat, lon) {
                     ) : null}
 
                     <div className="chatMessages">
-                      {chatMessages.map((m) => {
+                      {chatMessages.map((m, idx, arr) => {
                         const mine = String(m.sender_tg_id) === String(me?.tg_id);
                         const senderName = mine ? 'Вы' : showName(m.sender || {});
                         const senderPhoto = (m?.sender?.photo_url || '').trim();
+                        const isDmActive = chatTab === 'dm' && !!chatActiveCid;
+
+                        const GROUP_MS = 5 * 60 * 1000;
+                        const prev = arr[idx - 1];
+                        const next = arr[idx + 1];
+                        const canGroupWith = (a, b) => {
+                          if (!a || !b) return false;
+                          if (String(a.sender_tg_id ?? '') !== String(b.sender_tg_id ?? '')) return false;
+                          const am = a.created_at ? new Date(a.created_at).getTime() : 0;
+                          const bm = b.created_at ? new Date(b.created_at).getTime() : 0;
+                          if (!am || !bm) return false;
+                          return Math.abs(am - bm) <= GROUP_MS;
+                        };
+                        const prevSame = canGroupWith(prev, m);
+                        const nextSame = canGroupWith(m, next);
+                        const showAvatar = !mine && !isDmActive && !prevSame;
+                        const showHead = !prevSame && !isDmActive;
+                        const reactions = Array.isArray(m.reactions) ? m.reactions : [];
+
                         return (
-                          <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''}`}>
-                            {!mine ? (
+                          <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!prevSame ? 'tail' : ''}`}>
+                            {showAvatar ? (
                               <div className="chatMsgAvatar">
                                 <AvatarCircle tgId={m.sender_tg_id} url={senderPhoto} name={senderName} size={30} />
                               </div>
-                            ) : null}
+                            ) : !mine && !isDmActive ? <div className="cmtAvatar ghost" /> : null}
                             <div className="cmtBubble">
-                              <div className="chatMsgHead">
-                                <div className="small" style={{ opacity: 0.85 }}>{senderName}</div>
-                                <div className="small" style={{ opacity: 0.65 }}>{formatChatMsgTime(m.created_at)}</div>
-                              </div>
+                              {showHead ? (
+                                <div className="chatMsgHead">
+                                  <div className="small" style={{ opacity: 0.85 }}>{senderName}</div>
+                                  <div className="small" style={{ opacity: 0.65 }}>{formatChatMsgTime(m.created_at)}</div>
+                                </div>
+                              ) : (
+                                <div className="cmtMetaOnly" style={{ marginBottom: 4 }}>{formatChatMsgTime(m.created_at)}</div>
+                              )}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
-                              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                                {(m.reactions || []).map((r) => {
+                              <div className="cmtActions">
+                                {reactions.map((r) => {
                                   const hasMine = (m.my_reactions || []).includes(r.emoji);
                                   return (
                                     <button
                                       key={r.emoji}
-                                      className={`chip ${hasMine ? 'active' : ''}`}
+                                      className={hasMine ? 'reactChip on' : 'reactChip'}
                                       type="button"
                                       onClick={() => toggleChatReaction(m.id, r.emoji, !hasMine)}
                                     >
-                                      {r.emoji} {r.count}
+                                      {r.emoji} <b>{r.count}</b>
                                     </button>
                                   );
                                 })}
-                                <button type="button" className="chip" onClick={() => setChatReactPickFor(m.id)}>➕</button>
-                                <button type="button" className="chip" onClick={() => openChatReactors(m.id)}>👥</button>
+                                <button type="button" className="reactChip add" onClick={() => setChatReactPickFor(m.id)}>➕</button>
+                                <button type="button" className="iconBtn" onClick={() => openChatReactors(m.id)} title="Кто поставил реакции">👥</button>
+                                <div style={{ flex: 1 }} />
                                 {mine || isAdmin ? (
-                                  <button type="button" className="chip" onClick={() => deleteChatMessage(m.id)}>🗑</button>
+                                  <button type="button" className="iconBtn" onClick={() => deleteChatMessage(m.id)} title="Удалить">🗑</button>
                                 ) : null}
                               </div>
                             </div>
@@ -5021,6 +5045,21 @@ function openYandexRoute(lat, lon) {
                 <div className="modalOverlay" onClick={() => setChatReactPickFor(null)}>
                   <div className="modalCard" onClick={(e) => e.stopPropagation()}>
                     <div style={{ fontWeight: 900 }}>Реакция</div>
+                    {chatReactWhoLoading ? <div className="small" style={{ marginTop: 10 }}>Загрузка...</div> : null}
+                    {!chatReactWhoLoading && !chatReactWhoCanView ? <div className="small" style={{ marginTop: 10 }}>🔒 Только premium/админ.</div> : null}
+                    {!chatReactWhoLoading && chatReactWhoCanView ? (
+                      <div className="reactWhoBlock" style={{ marginTop: 10 }}>
+                        <div className="reactWhoTitle">Кто поставил реакции</div>
+                        <div className="reactWhoList">
+                          {chatReactWhoList.map((it, i) => (
+                            <div key={i} className="reactWhoRow">
+                              <div className="reactWhoName">{showName(it.user || {})}</div>
+                              <div>{(it.emojis || []).join(' ')}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
                       {REACTIONS.map((emo) => (
                         <button key={emo} className="btn secondary" onClick={() => {
@@ -5031,18 +5070,6 @@ function openYandexRoute(lat, lon) {
                         }}>{emo}</button>
                       ))}
                     </div>
-                    {chatReactWhoLoading ? <div className="small" style={{ marginTop: 10 }}>Загрузка...</div> : null}
-                    {!chatReactWhoLoading && !chatReactWhoCanView ? <div className="small" style={{ marginTop: 10 }}>🔒 Только premium/админ.</div> : null}
-                    {!chatReactWhoLoading && chatReactWhoCanView ? (
-                      <div className="reactWhoList" style={{ marginTop: 10 }}>
-                        {chatReactWhoList.map((it, i) => (
-                          <div key={i} className="reactWhoItem">
-                            <span>{showName(it.user || {})}</span>
-                            <span>{(it.emojis || []).join(' ')}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
                 </div>
               ) : null}
