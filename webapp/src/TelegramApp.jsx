@@ -227,10 +227,11 @@ const [chatDraft, setChatDraft] = useState("");
 const [chatPeerQuery, setChatPeerQuery] = useState("");
 const [chatDmPeer, setChatDmPeer] = useState(null);
 const [chatBusy, setChatBusy] = useState(false);
-const [chatReactPickFor, setChatReactPickFor] = useState(null);
+const [chatActionFor, setChatActionFor] = useState(null);
 const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
 const [chatReactWhoList, setChatReactWhoList] = useState([]);
 const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
+const [chatMessageActionBusy, setChatMessageActionBusy] = useState(false);
 const [chatDmMenuOpen, setChatDmMenuOpen] = useState(false);
 const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
@@ -770,6 +771,7 @@ async function deleteChatMessage(messageId) {
   if (!ok) return;
 
   await apiDelete(`/api/chat/messages/${id}`);
+  setChatActionFor(null);
   setChatMessages((prev) => (prev || []).filter((m) => Number(m.id) !== id));
   await Promise.all([loadChatConversations(), loadChatUnreadTotal()]);
 }
@@ -778,8 +780,10 @@ async function toggleChatReaction(messageId, emoji, on) {
   await apiPost(`/api/chat/messages/${messageId}/react`, { emoji, on });
   await loadChatMessages({ cid: chatActiveCid, reset: true });
 }
-async function openChatReactors(messageId) {
-  setChatReactPickFor(messageId);
+async function openChatMessageMenu(message) {
+  const messageId = Number(message?.id || 0);
+  if (!messageId) return;
+  setChatActionFor(messageId);
   setChatReactWhoLoading(true);
   setChatReactWhoList([]);
   setChatReactWhoCanView(true);
@@ -791,6 +795,29 @@ async function openChatReactors(messageId) {
     }
   } finally {
     setChatReactWhoLoading(false);
+  }
+}
+
+async function editChatMessage(messageId) {
+  const id = Number(messageId);
+  if (!id) return;
+  const current = chatMessages.find((x) => Number(x.id) === id);
+  const currentBody = String(current?.body || '');
+  const nextBody = prompt('Изменить сообщение', currentBody);
+  if (nextBody == null) return;
+  const body = String(nextBody).replace(/\r\n/g, '\n').trim();
+  if (!body || body.length > 800) return;
+
+  setChatMessageActionBusy(true);
+  try {
+    const r = await apiPatch(`/api/chat/messages/${id}`, { body });
+    if (r?.ok && r.message) {
+      setChatMessages((prev) => (prev || []).map((m) => (Number(m.id) === id ? { ...m, ...r.message } : m)));
+      await loadChatConversations();
+      setChatActionFor(null);
+    }
+  } finally {
+    setChatMessageActionBusy(false);
   }
 }
 async function clearActiveDm() {
@@ -4871,7 +4898,7 @@ function openYandexRoute(lat, lon) {
                       <>
                         <div className="chatSectionTitle">Контакты</div>
                         <input
-                          className="input"
+                          className="chatPeerInput"
                           placeholder="Поиск игрока по имени или @username"
                           value={chatPeerQuery}
                           onChange={(e) => setChatPeerQuery(e.target.value)}
@@ -4951,51 +4978,73 @@ function openYandexRoute(lat, lon) {
                       </div>
                     ) : null}
 
+                    {(chatTab === 'dm' && !chatActiveCid) ? null : (
                     <div className="chatMessages">
-                      {chatMessages.map((m) => {
+                      {chatMessages.map((m, idx, arr) => {
                         const mine = String(m.sender_tg_id) === String(me?.tg_id);
                         const senderName = mine ? 'Вы' : showName(m.sender || {});
                         const senderPhoto = (m?.sender?.photo_url || '').trim();
+                        const isDmActive = chatTab === 'dm' && !!chatActiveCid;
+
+                        const GROUP_MS = 5 * 60 * 1000;
+                        const prev = arr[idx - 1];
+                        const next = arr[idx + 1];
+                        const canGroupWith = (a, b) => {
+                          if (!a || !b) return false;
+                          if (String(a.sender_tg_id ?? '') !== String(b.sender_tg_id ?? '')) return false;
+                          const am = a.created_at ? new Date(a.created_at).getTime() : 0;
+                          const bm = b.created_at ? new Date(b.created_at).getTime() : 0;
+                          if (!am || !bm) return false;
+                          return Math.abs(am - bm) <= GROUP_MS;
+                        };
+                        const prevSame = canGroupWith(prev, m);
+                        const nextSame = canGroupWith(m, next);
+                        const showAvatar = !mine && !isDmActive && !prevSame;
+                        const showHead = !prevSame && !isDmActive;
+                        const reactions = Array.isArray(m.reactions) ? m.reactions : [];
+
                         return (
-                          <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''}`}>
-                            {!mine ? (
+                          <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!prevSame ? 'tail' : ''}`}>
+                            {showAvatar ? (
                               <div className="chatMsgAvatar">
                                 <AvatarCircle tgId={m.sender_tg_id} url={senderPhoto} name={senderName} size={30} />
                               </div>
-                            ) : null}
-                            <div className="cmtBubble">
-                              <div className="chatMsgHead">
-                                <div className="small" style={{ opacity: 0.85 }}>{senderName}</div>
-                                <div className="small" style={{ opacity: 0.65 }}>{formatChatMsgTime(m.created_at)}</div>
-                              </div>
+                            ) : !mine && !isDmActive ? <div className="cmtAvatar ghost" /> : null}
+                            <div className="cmtBubble" onClick={() => openChatMessageMenu(m)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openChatMessageMenu(m); }}>
+
+                              {showHead ? (
+                                <div className="chatMsgHead">
+                                  <div className="small" style={{ opacity: 0.85 }}>{senderName}</div>
+                                  <div className="small" style={{ opacity: 0.65 }}>{formatChatMsgTime(m.created_at)}</div>
+                                </div>
+                              ) : (
+                                <div className="cmtMetaOnly" style={{ marginBottom: 4 }}>{formatChatMsgTime(m.created_at)}</div>
+                              )}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
-                              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                                {(m.reactions || []).map((r) => {
+                              <div className="cmtActions">
+                                {reactions.map((r) => {
                                   const hasMine = (m.my_reactions || []).includes(r.emoji);
                                   return (
                                     <button
                                       key={r.emoji}
-                                      className={`chip ${hasMine ? 'active' : ''}`}
+                                      className={hasMine ? 'reactChip on' : 'reactChip'}
                                       type="button"
-                                      onClick={() => toggleChatReaction(m.id, r.emoji, !hasMine)}
+                                      onClick={(e) => { e.stopPropagation(); toggleChatReaction(m.id, r.emoji, !hasMine); }}
                                     >
-                                      {r.emoji} {r.count}
+                                      {r.emoji} <b>{r.count}</b>
                                     </button>
                                   );
                                 })}
-                                <button type="button" className="chip" onClick={() => setChatReactPickFor(m.id)}>➕</button>
-                                <button type="button" className="chip" onClick={() => openChatReactors(m.id)}>👥</button>
-                                {mine || isAdmin ? (
-                                  <button type="button" className="chip" onClick={() => deleteChatMessage(m.id)}>🗑</button>
-                                ) : null}
                               </div>
                             </div>
                           </div>
                         );
                       })}
                     </div>
+                    )}
 
+                    {(chatTab === 'dm' && !chatActiveCid) ? null : (
                     <div className="commentComposer chatComposer" style={{ marginTop: 10 }}>
                       <textarea
                         className="commentComposer__input"
@@ -5013,39 +5062,78 @@ function openYandexRoute(lat, lon) {
                         ➤
                       </button>
                     </div>
+                    )}
                   </div>
                 </div>
               ) : null}
 
-{chatReactPickFor ? (
-                <div className="modalOverlay" onClick={() => setChatReactPickFor(null)}>
+{chatActionFor ? (() => {
+                const selected = chatMessages.find((x) => Number(x.id) === Number(chatActionFor)) || null;
+                const isMineSelected = selected && String(selected.sender_tg_id) === String(me?.tg_id);
+                const canDeleteSelected = !!(selected && (isMineSelected || isAdmin));
+                const canEditSelected = !!(selected && (isMineSelected || (isAdmin && chatTab === 'team')));
+
+                return (
+                <div className="modalOverlay" onClick={() => setChatActionFor(null)}>
                   <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-                    <div style={{ fontWeight: 900 }}>Реакция</div>
-                    <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
-                      {REACTIONS.map((emo) => (
-                        <button key={emo} className="btn secondary" onClick={() => {
-                          const msg = chatMessages.find((x) => x.id === chatReactPickFor);
-                          const has = (msg?.my_reactions || []).includes(emo);
-                          toggleChatReaction(chatReactPickFor, emo, !has).catch(() => {});
-                          setChatReactPickFor(null);
-                        }}>{emo}</button>
-                      ))}
-                    </div>
+                    <div style={{ fontWeight: 900 }}>Сообщение</div>
                     {chatReactWhoLoading ? <div className="small" style={{ marginTop: 10 }}>Загрузка...</div> : null}
                     {!chatReactWhoLoading && !chatReactWhoCanView ? <div className="small" style={{ marginTop: 10 }}>🔒 Только premium/админ.</div> : null}
                     {!chatReactWhoLoading && chatReactWhoCanView ? (
-                      <div className="reactWhoList" style={{ marginTop: 10 }}>
-                        {chatReactWhoList.map((it, i) => (
-                          <div key={i} className="reactWhoItem">
-                            <span>{showName(it.user || {})}</span>
-                            <span>{(it.emojis || []).join(' ')}</span>
-                          </div>
-                        ))}
+                      <div className="reactWhoBlock" style={{ marginTop: 10 }}>
+                        <div className="reactWhoTitle">Кто поставил реакции</div>
+                        <div className="reactWhoList">
+                          {chatReactWhoList.map((it, i) => (
+                            <div key={i} className="reactWhoRow">
+                              <div className="reactWhoName">{showName(it.user || {})}</div>
+                              <div>{(it.emojis || []).join(' ')}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
+                      {REACTIONS.map((emo) => {
+                        const has = (selected?.my_reactions || []).includes(emo);
+                        return (
+                          <button
+                            key={emo}
+                            className="btn secondary"
+                            onClick={() => toggleChatReaction(chatActionFor, emo, !has).catch(() => {})}
+                          >
+                            {emo}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(canEditSelected || canDeleteSelected) ? (
+                      <div className="row" style={{ marginTop: 12, gap: 8 }}>
+                        {canEditSelected ? (
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            disabled={chatMessageActionBusy}
+                            onClick={() => editChatMessage(chatActionFor)}
+                          >
+                            Изменить сообщение
+                          </button>
+                        ) : null}
+                        {canDeleteSelected ? (
+                          <button
+                            type="button"
+                            className="btn danger"
+                            disabled={chatMessageActionBusy}
+                            onClick={() => deleteChatMessage(chatActionFor)}
+                          >
+                            Удалить сообщение
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
                 </div>
-              ) : null}
+                );
+              })() : null}
       <BottomNav tab={tab} onSelectTab={handleBottomNavSelect} isAdmin={isAdmin} profileOnly={!!me?.disabled && !isAdmin} />
     </div>
   );
