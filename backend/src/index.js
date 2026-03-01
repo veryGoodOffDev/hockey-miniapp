@@ -2184,6 +2184,59 @@ async function loadGameComments(gameId, viewerTgId, baseUrl) {
   });
 }
 
+async function ensureTeamConversation() {
+  await q(
+    `INSERT INTO chat_conversations(kind)
+     VALUES ('team')
+     ON CONFLICT DO NOTHING`
+  );
+  const r = await q(`SELECT id, kind, user_a, user_b FROM chat_conversations WHERE kind='team' LIMIT 1`);
+  return r.rows?.[0] || null;
+}
+
+async function canAccessChatConversation(conv, user, isAdmin, req, res) {
+  if (!conv) return { ok: false, status: 404, reason: 'conversation_not_found' };
+
+  if (conv.kind === 'dm') {
+    const a = Number(conv.user_a);
+    const b = Number(conv.user_b);
+    const me = Number(user.id);
+    if (me !== a && me !== b) {
+      return { ok: false, status: 403, reason: 'dm_forbidden' };
+    }
+    return { ok: true };
+  }
+
+  if (conv.kind === 'team') {
+    if (isAdmin) return { ok: true };
+    const ok = await requireGroupMember(req, res, user);
+    if (!ok) return { ok: false, handled: true };
+    return { ok: true };
+  }
+
+  return { ok: false, status: 400, reason: 'bad_conversation_kind' };
+}
+
+async function touchChatRead(conversationId, userId, lastReadId = null) {
+  let target = Number(lastReadId);
+  if (!Number.isFinite(target)) {
+    const mr = await q(`SELECT COALESCE(MAX(id),0)::bigint AS id FROM chat_messages WHERE conversation_id=$1`, [conversationId]);
+    target = Number(mr.rows?.[0]?.id || 0);
+  }
+
+  await q(
+    `INSERT INTO chat_reads(conversation_id, tg_id, last_read_id, updated_at)
+     VALUES($1,$2,$3,NOW())
+     ON CONFLICT (conversation_id, tg_id)
+     DO UPDATE SET
+       last_read_id = GREATEST(chat_reads.last_read_id, EXCLUDED.last_read_id),
+       updated_at = NOW()`,
+    [conversationId, userId, target]
+  );
+
+  return target;
+}
+
 
 function buildOtpEmailHtml({
   brand = "Mighty Sheep",
@@ -7562,6 +7615,601 @@ app.get("/api/game-comments/:id/reactors", async (req, res) => {
   }
 });
 
+
+
+/* ------- chat ------------------ */
+app.get('/api/chat/unread-total', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+    await ensurePlayer(user);
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) {
+      if (!(await requireGroupMember(req, res, user))) return;
+    }
+
+    const teamConv = await ensureTeamConversation();
+    const teamId = Number(teamConv?.id || 0);
+
+    const r = await q(
+      `WITH convs AS (
+        SELECT id FROM chat_conversations WHERE kind='dm' AND (user_a=$1 OR user_b=$1)
+        UNION ALL
+        SELECT $2::bigint WHERE $2 > 0
+      )
+      SELECT COALESCE(SUM(cnt),0)::int AS total
+      FROM (
+        SELECT COUNT(m.id)::int AS cnt
+        FROM convs c
+        JOIN chat_messages m ON m.conversation_id = c.id
+        LEFT JOIN chat_reads cr ON cr.conversation_id = c.id AND cr.tg_id = $1
+        WHERE m.sender_tg_id <> $1
+          AND m.id > COALESCE(cr.last_read_id, 0)
+        GROUP BY c.id
+      ) z`,
+      [user.id, teamId]
+    );
+
+    res.json({ ok: true, total: Number(r.rows?.[0]?.total || 0) });
+  } catch (e) {
+    console.error('GET /api/chat/unread-total failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.get('/api/chat/conversations', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+    await ensurePlayer(user);
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) {
+      if (!(await requireGroupMember(req, res, user))) return;
+    }
+
+    const teamConv = await ensureTeamConversation();
+    const teamId = Number(teamConv?.id || 0);
+
+    const rr = await q(
+      `WITH convs AS (
+        SELECT id, kind, user_a, user_b FROM chat_conversations WHERE kind='dm' AND (user_a=$1 OR user_b=$1)
+        UNION ALL
+        SELECT id, kind, user_a, user_b FROM chat_conversations WHERE id=$2 AND kind='team'
+      )
+      SELECT
+        c.id,
+        c.kind,
+        c.user_a,
+        c.user_b,
+        lm.id AS last_message_id,
+        lm.body AS last_message_body,
+        lm.created_at AS last_message_created_at,
+        COALESCE(uc.unread_count,0)::int AS unread_count
+      FROM convs c
+      LEFT JOIN LATERAL (
+        SELECT m.id, m.body, m.created_at
+        FROM chat_messages m
+        WHERE m.conversation_id = c.id
+        ORDER BY m.id DESC
+        LIMIT 1
+      ) lm ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS unread_count
+        FROM chat_messages m
+        LEFT JOIN chat_reads cr ON cr.conversation_id = c.id AND cr.tg_id = $1
+        WHERE m.conversation_id = c.id
+          AND m.sender_tg_id <> $1
+          AND m.id > COALESCE(cr.last_read_id, 0)
+      ) uc ON TRUE
+      ORDER BY COALESCE(lm.id, 0) DESC, c.id DESC`,
+      [user.id, teamId]
+    );
+
+    const peerIds = [];
+    for (const row of rr.rows || []) {
+      if (row.kind === 'dm') {
+        const peer = String(row.user_a) === String(user.id) ? Number(row.user_b) : Number(row.user_a);
+        if (Number.isFinite(peer) && peer > 0) peerIds.push(peer);
+      }
+    }
+
+    let peersMap = new Map();
+    if (peerIds.length) {
+      const pr = await q(
+        `SELECT tg_id, display_name, first_name, username, photo_url, avatar_file_id, updated_at
+         FROM players
+         WHERE tg_id = ANY($1::bigint[])`,
+        [Array.from(new Set(peerIds))]
+      );
+      const baseUrl = getPublicBaseUrl(req);
+      peersMap = new Map((pr.rows || []).map((x) => [String(x.tg_id), presentPlayer(x, baseUrl)]));
+    }
+
+    const conversations = (rr.rows || []).map((row) => {
+      const isDm = row.kind === 'dm';
+      const peerTgId = isDm
+        ? (String(row.user_a) === String(user.id) ? Number(row.user_b) : Number(row.user_a))
+        : null;
+
+      return {
+        id: row.id,
+        kind: row.kind,
+        unread_count: Number(row.unread_count || 0),
+        last_message: row.last_message_id
+          ? { id: row.last_message_id, body: row.last_message_body || '', created_at: row.last_message_created_at }
+          : null,
+        peer: isDm ? (peersMap.get(String(peerTgId)) || { tg_id: peerTgId }) : null,
+      };
+    });
+
+    res.json({ ok: true, conversations });
+  } catch (e) {
+    console.error('GET /api/chat/conversations failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/chat/dm/open', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+    await ensurePlayer(user);
+
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) {
+      if (!(await requireGroupMember(req, res, user))) return;
+    }
+
+    const peer = Number(req.body?.peer_tg_id);
+    if (!Number.isFinite(peer) || peer <= 0 || String(peer) === String(user.id)) {
+      return res.status(400).json({ ok: false, reason: 'bad_peer_tg_id' });
+    }
+
+    const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1 AND disabled=FALSE`, [peer]);
+    if (!pr.rows?.[0]) return res.status(404).json({ ok: false, reason: 'peer_not_found' });
+
+    const a = Math.min(Number(user.id), peer);
+    const b = Math.max(Number(user.id), peer);
+
+    await q(
+      `INSERT INTO chat_conversations(kind, user_a, user_b)
+       VALUES('dm', $1, $2)
+       ON CONFLICT (user_a, user_b) WHERE kind='dm'
+       DO NOTHING`,
+      [a, b]
+    );
+
+    const cr = await q(`SELECT id FROM chat_conversations WHERE kind='dm' AND user_a=$1 AND user_b=$2 LIMIT 1`, [a, b]);
+    res.json({ ok: true, conversation_id: cr.rows?.[0]?.id || null });
+  } catch (e) {
+    console.error('POST /api/chat/dm/open failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.get('/api/chat/messages', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const cid = Number(req.query?.cid);
+    const afterId = Number(req.query?.after_id || 0);
+    const limitRaw = Number(req.query?.limit || 50);
+    const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
+
+    if (!Number.isFinite(cid) || cid <= 0) return res.status(400).json({ ok: false, reason: 'bad_cid' });
+
+    const is_admin = await isAdminId(user.id);
+    const cr = await q(`SELECT id, kind, user_a, user_b FROM chat_conversations WHERE id=$1 LIMIT 1`, [cid]);
+    const conv = cr.rows?.[0] || null;
+
+    const access = await canAccessChatConversation(conv, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    const baseUrl = getPublicBaseUrl(req);
+    const mr = await q(
+      `SELECT
+        m.id,
+        m.conversation_id,
+        m.sender_tg_id,
+        m.body,
+        m.created_at,
+        m.edited_at,
+
+        p.tg_id AS p_tg_id,
+        p.display_name AS p_display_name,
+        p.first_name AS p_first_name,
+        p.username AS p_username,
+        p.photo_url AS p_photo_url,
+        p.avatar_file_id AS p_avatar_file_id,
+        p.updated_at AS p_updated_at,
+
+        COALESCE(rx.reactions, '[]'::jsonb) AS reactions,
+        COALESCE(my.my_reactions, '[]'::jsonb) AS my_reactions
+      FROM chat_messages m
+      LEFT JOIN players p ON p.tg_id = m.sender_tg_id
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(jsonb_build_object('emoji', t.reaction, 'count', t.cnt) ORDER BY t.reaction) AS reactions
+        FROM (
+          SELECT reaction, COUNT(*)::int AS cnt
+          FROM chat_message_reactions
+          WHERE message_id = m.id
+          GROUP BY reaction
+        ) t
+      ) rx ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(t.reaction ORDER BY t.reaction) AS my_reactions
+        FROM (
+          SELECT DISTINCT reaction
+          FROM chat_message_reactions
+          WHERE message_id = m.id AND user_tg_id = $2
+        ) t
+      ) my ON TRUE
+      WHERE m.conversation_id=$1
+        AND m.id > $3
+      ORDER BY m.id ASC
+      LIMIT $4`,
+      [cid, user.id, Math.max(0, Number.isFinite(afterId) ? afterId : 0), limit]
+    );
+
+    const messages = (mr.rows || []).map((row) => ({
+      id: row.id,
+      conversation_id: row.conversation_id,
+      sender_tg_id: row.sender_tg_id,
+      sender: presentPlayer({
+        tg_id: row.p_tg_id ?? row.sender_tg_id,
+        display_name: row.p_display_name || '',
+        first_name: row.p_first_name || '',
+        username: row.p_username || '',
+        photo_url: row.p_photo_url || '',
+        avatar_file_id: row.p_avatar_file_id || null,
+        updated_at: row.p_updated_at || null,
+      }, baseUrl),
+      body: row.body,
+      created_at: row.created_at,
+      edited_at: row.edited_at,
+      reactions: row.reactions || [],
+      my_reactions: row.my_reactions || [],
+    }));
+
+    if (messages.length) {
+      const maxId = messages[messages.length - 1].id;
+      await touchChatRead(cid, user.id, maxId);
+    }
+
+    res.json({ ok: true, messages });
+  } catch (e) {
+    console.error('GET /api/chat/messages failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/chat/read', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const cid = Number(req.body?.cid);
+    const lastReadId = req.body?.last_read_id == null ? null : Number(req.body?.last_read_id);
+    if (!Number.isFinite(cid) || cid <= 0) return res.status(400).json({ ok: false, reason: 'bad_cid' });
+
+    const is_admin = await isAdminId(user.id);
+    const cr = await q(`SELECT id, kind, user_a, user_b FROM chat_conversations WHERE id=$1 LIMIT 1`, [cid]);
+    const conv = cr.rows?.[0] || null;
+
+    const access = await canAccessChatConversation(conv, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    const value = await touchChatRead(cid, user.id, lastReadId);
+    res.json({ ok: true, last_read_id: value });
+  } catch (e) {
+    console.error('POST /api/chat/read failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/chat/messages', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+    await ensurePlayer(user);
+
+    const cid = Number(req.body?.cid);
+    const body = String(req.body?.body || '').replace(/\r\n/g, '\n').trim();
+
+    if (!Number.isFinite(cid) || cid <= 0) return res.status(400).json({ ok: false, reason: 'bad_cid' });
+    if (!body) return res.status(400).json({ ok: false, reason: 'empty_body' });
+    if (body.length > 800) return res.status(400).json({ ok: false, reason: 'too_long' });
+
+    const is_admin = await isAdminId(user.id);
+    const cr = await q(`SELECT id, kind, user_a, user_b FROM chat_conversations WHERE id=$1 LIMIT 1`, [cid]);
+    const conv = cr.rows?.[0] || null;
+
+    const access = await canAccessChatConversation(conv, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    const ir = await q(
+      `INSERT INTO chat_messages(conversation_id, sender_tg_id, body)
+       VALUES($1,$2,$3)
+       RETURNING id, conversation_id, sender_tg_id, body, created_at, edited_at`,
+      [cid, user.id, body]
+    );
+
+    await touchChatRead(cid, user.id, ir.rows?.[0]?.id || null);
+
+    res.json({ ok: true, message: ir.rows?.[0] || null });
+  } catch (e) {
+    console.error('POST /api/chat/messages failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.patch('/api/chat/messages/:id', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const id = Number(req.params.id);
+    const body = String(req.body?.body || '').replace(/\r\n/g, '\n').trim();
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
+    if (!body) return res.status(400).json({ ok: false, reason: 'empty_body' });
+    if (body.length > 800) return res.status(400).json({ ok: false, reason: 'too_long' });
+
+    const is_admin = await isAdminId(user.id);
+
+    const mr = await q(
+      `SELECT m.id, m.sender_tg_id, m.conversation_id, c.kind, c.user_a, c.user_b
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id=m.conversation_id
+       WHERE m.id=$1`,
+      [id]
+    );
+    const row = mr.rows?.[0];
+    if (!row) return res.status(404).json({ ok: false, reason: 'not_found' });
+
+    const access = await canAccessChatConversation(row, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    if (row.kind === 'team') {
+      if (!is_admin && String(row.sender_tg_id) !== String(user.id)) {
+        return res.status(403).json({ ok: false, reason: 'not_owner' });
+      }
+    } else {
+      if (String(row.sender_tg_id) !== String(user.id)) {
+        return res.status(403).json({ ok: false, reason: 'not_owner' });
+      }
+    }
+
+    const ur = await q(
+      `UPDATE chat_messages
+       SET body=$1, edited_at=NOW()
+       WHERE id=$2
+       RETURNING id, conversation_id, sender_tg_id, body, created_at, edited_at`,
+      [body, id]
+    );
+
+    res.json({ ok: true, message: ur.rows?.[0] || null });
+  } catch (e) {
+    console.error('PATCH /api/chat/messages/:id failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.delete('/api/chat/messages/:id', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
+
+    const is_admin = await isAdminId(user.id);
+
+    const mr = await q(
+      `SELECT m.id, m.sender_tg_id, m.conversation_id, c.kind, c.user_a, c.user_b
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id=m.conversation_id
+       WHERE m.id=$1`,
+      [id]
+    );
+    const row = mr.rows?.[0];
+    if (!row) return res.json({ ok: true });
+
+    const access = await canAccessChatConversation(row, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    if (row.kind === 'team') {
+      if (!is_admin && String(row.sender_tg_id) !== String(user.id)) {
+        return res.status(403).json({ ok: false, reason: 'not_owner' });
+      }
+    } else {
+      if (String(row.sender_tg_id) !== String(user.id)) {
+        return res.status(403).json({ ok: false, reason: 'not_owner' });
+      }
+    }
+
+    await q(`DELETE FROM chat_messages WHERE id=$1`, [id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('DELETE /api/chat/messages/:id failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/chat/messages/:id/react', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const id = Number(req.params.id);
+    const emoji = String(req.body?.emoji || '').trim();
+    const on = !!req.body?.on;
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
+    if (!ALLOWED_REACTIONS.has(emoji)) return res.status(400).json({ ok: false, reason: 'bad_reaction' });
+
+    const is_admin = await isAdminId(user.id);
+    const mr = await q(
+      `SELECT m.id, m.conversation_id, c.kind, c.user_a, c.user_b
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id=m.conversation_id
+       WHERE m.id=$1`,
+      [id]
+    );
+    const row = mr.rows?.[0] || null;
+    if (!row) return res.status(404).json({ ok: false, reason: 'not_found' });
+
+    const access = await canAccessChatConversation(row, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    if (on) {
+      await q(
+        `INSERT INTO chat_message_reactions(message_id, user_tg_id, reaction)
+         VALUES($1,$2,$3)
+         ON CONFLICT DO NOTHING`,
+        [id, user.id, emoji]
+      );
+    } else {
+      await q(
+        `DELETE FROM chat_message_reactions
+         WHERE message_id=$1 AND user_tg_id=$2 AND reaction=$3`,
+        [id, user.id, emoji]
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/chat/messages/:id/react failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.get('/api/chat/messages/:id/reactors', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
+
+    const is_admin = await isAdminId(user.id);
+    const mr = await q(
+      `SELECT m.id, m.conversation_id, c.kind, c.user_a, c.user_b
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id=m.conversation_id
+       WHERE m.id=$1`,
+      [id]
+    );
+    const row = mr.rows?.[0] || null;
+    if (!row) return res.status(404).json({ ok: false, reason: 'not_found' });
+
+    const access = await canAccessChatConversation(row, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    const pr = await q(
+      `SELECT
+        (joke_premium = TRUE OR (joke_premium_until IS NOT NULL AND joke_premium_until > NOW())) AS premium
+       FROM players
+       WHERE tg_id=$1`,
+      [user.id]
+    );
+    const premium = pr.rows?.[0]?.premium === true;
+    const can_view = is_admin || premium;
+
+    if (!can_view) return res.json({ ok: true, can_view: false, reactors: [] });
+
+    const baseUrl = getPublicBaseUrl(req);
+    const rr = await q(
+      `SELECT
+        u.user_tg_id AS tg_id,
+        array_agg(u.reaction ORDER BY u.reaction) AS emojis,
+        p.tg_id           AS p_tg_id,
+        p.display_name    AS p_display_name,
+        p.first_name      AS p_first_name,
+        p.username        AS p_username,
+        p.photo_url       AS p_photo_url,
+        p.avatar_file_id  AS p_avatar_file_id,
+        p.updated_at      AS p_updated_at
+      FROM (
+        SELECT DISTINCT user_tg_id, reaction
+        FROM chat_message_reactions
+        WHERE message_id = $1
+      ) u
+      LEFT JOIN players p ON p.tg_id = u.user_tg_id
+      GROUP BY
+        u.user_tg_id,
+        p.tg_id, p.display_name, p.first_name, p.username, p.photo_url, p.avatar_file_id, p.updated_at
+      ORDER BY COALESCE(p.display_name, p.first_name, p.username, u.user_tg_id::text) ASC`,
+      [id]
+    );
+
+    const reactors = (rr.rows || []).map((x) => ({
+      user: presentPlayer({
+        tg_id: x.p_tg_id ?? x.tg_id,
+        display_name: x.p_display_name || '',
+        first_name: x.p_first_name || '',
+        username: x.p_username || '',
+        photo_url: x.p_photo_url || '',
+        avatar_file_id: x.p_avatar_file_id || null,
+        updated_at: x.p_updated_at || null,
+      }, baseUrl),
+      emojis: x.emojis || [],
+    }));
+
+    res.json({ ok: true, can_view: true, reactors });
+  } catch (e) {
+    console.error('GET /api/chat/messages/:id/reactors failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/chat/dm/:cid/clear', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const cid = Number(req.params.cid);
+    if (!Number.isFinite(cid) || cid <= 0) return res.status(400).json({ ok: false, reason: 'bad_cid' });
+
+    const cr = await q(`SELECT id, kind, user_a, user_b FROM chat_conversations WHERE id=$1 LIMIT 1`, [cid]);
+    const conv = cr.rows?.[0] || null;
+    if (!conv) return res.status(404).json({ ok: false, reason: 'conversation_not_found' });
+    if (conv.kind !== 'dm') return res.status(400).json({ ok: false, reason: 'not_dm' });
+
+    const me = Number(user.id);
+    if (me !== Number(conv.user_a) && me !== Number(conv.user_b)) {
+      return res.status(403).json({ ok: false, reason: 'dm_forbidden' });
+    }
+
+    await q(`DELETE FROM chat_conversations WHERE id=$1 AND kind='dm'`, [cid]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/chat/dm/:cid/clear failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
 
 // ===================== JERSEY: batches + export (BACK AS BEFORE) =====================
 

@@ -731,6 +731,58 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
   await q(`CREATE INDEX IF NOT EXISTS idx_comment_mentions_comment ON comment_mentions(comment_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_comment_mentions_player ON comment_mentions(mentioned_player_id);`);
 
+  /** ===================== APP CHAT ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS chat_conversations (
+      id BIGSERIAL PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('team','dm')),
+      user_a BIGINT REFERENCES players(tg_id) ON DELETE CASCADE,
+      user_b BIGINT REFERENCES players(tg_id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT chat_dm_users_chk CHECK (
+        (kind = 'team' AND user_a IS NULL AND user_b IS NULL)
+        OR
+        (kind = 'dm' AND user_a IS NOT NULL AND user_b IS NOT NULL AND user_a < user_b)
+      )
+    );
+  `);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS chat_conversations_dm_pair_uq ON chat_conversations(user_a, user_b) WHERE kind='dm';`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS chat_conversations_team_single_uq ON chat_conversations(kind) WHERE kind='team';`);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id BIGSERIAL PRIMARY KEY,
+      conversation_id BIGINT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      sender_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      body TEXT NOT NULL,
+      edited_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id_id ON chat_messages(conversation_id, id);`);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS chat_reads (
+      conversation_id BIGINT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      last_read_id BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (conversation_id, tg_id)
+    );
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS chat_message_reactions (
+      message_id BIGINT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+      user_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      reaction TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (message_id, user_tg_id, reaction)
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_cmr_message ON chat_message_reactions(message_id);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_cmr_user ON chat_message_reactions(user_tg_id);`);
+
     /** ===================== JERSEY ORDERS (BATCHES) ===================== */
 
   await q(`

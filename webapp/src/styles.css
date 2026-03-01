@@ -4117,3 +4117,51 @@ html[data-theme="light"] .btn.outline.active{
 .engCell.warn .engSegment.fill{ background: #facc15; }
 .engCell.mid .engSegment.fill{ background: #84cc16; }
 .engCell.high .engSegment.fill{ background: #22c55e; }
+
+.chatFab{
+  position: fixed;
+  right: 16px;
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  z-index: 1003;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 22px;
+}
+.chatFabBadge{
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #e74c3c;
+  color: #fff;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-weight: 800;
+}
+.chatDrawer{
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100%);
+  background: var(--bg);
+  z-index: 1004;
+  border-left: 1px solid var(--border);
+  padding: 14px;
+  overflow: auto;
+}
+.chatDrawerHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.chatTabs{display:flex;gap:8px;margin-bottom:10px;}
+.chatDmList,.chatConvList{display:grid;gap:8px;margin:10px 0;}
+.chatDmItem,.chatConvItem{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--border);background:var(--card);border-radius:10px;}
+.chatConvItem.isActive{outline:2px solid rgba(84,160,255,.35);}
+.chatMessages{display:grid;gap:6px;max-height:45vh;overflow:auto;padding-right:4px;}

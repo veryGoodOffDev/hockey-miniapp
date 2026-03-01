@@ -267,6 +267,21 @@ const [reactWhoLoading, setReactWhoLoading] = useState(false);
 const [reactWhoList, setReactWhoList] = useState([]);
 const [reactWhoCanView, setReactWhoCanView] = useState(true);
 
+const [chatOpen, setChatOpen] = useState(false);
+const [chatTab, setChatTab] = useState("team");
+const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
+const [chatConversations, setChatConversations] = useState([]);
+const [chatActiveCid, setChatActiveCid] = useState(null);
+const [chatMessages, setChatMessages] = useState([]);
+const [chatDraft, setChatDraft] = useState("");
+const [chatPeerQuery, setChatPeerQuery] = useState("");
+const [chatBusy, setChatBusy] = useState(false);
+const [chatReactPickFor, setChatReactPickFor] = useState(null);
+const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
+const [chatReactWhoList, setChatReactWhoList] = useState([]);
+const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
+const chatPollRef = useRef(null);
+
 
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
@@ -752,6 +767,115 @@ async function toggleReaction(commentId, emoji, on) {
 }
 
 
+
+
+async function loadChatUnreadTotal() {
+  try {
+    const r = await apiGet('/api/chat/unread-total');
+    if (r?.ok) setChatUnreadTotal(Number(r.total || 0));
+  } catch {}
+}
+
+async function loadChatConversations() {
+  const r = await apiGet('/api/chat/conversations');
+  if (!r?.ok) return [];
+  const list = r.conversations || [];
+  setChatConversations(list);
+
+  const team = list.find((c) => c.kind === 'team');
+  if (!chatActiveCid && chatTab === 'team' && team?.id) setChatActiveCid(team.id);
+
+  if (chatTab === 'dm' && chatActiveCid) {
+    const exists = list.some((c) => c.id === chatActiveCid && c.kind === 'dm');
+    if (!exists) {
+      setChatActiveCid(null);
+      setChatMessages([]);
+    }
+  }
+
+  return list;
+}
+
+async function loadChatMessages({ cid = chatActiveCid, reset = false } = {}) {
+  if (!cid) return;
+
+  const afterId = reset ? 0 : Number(chatMessages[chatMessages.length - 1]?.id || 0);
+  const r = await apiGet(`/api/chat/messages?cid=${cid}&after_id=${afterId}&limit=60`);
+  if (!r?.ok) return;
+  const incoming = r.messages || [];
+
+  if (reset || afterId <= 0) {
+    setChatMessages(incoming);
+  } else if (incoming.length) {
+    setChatMessages((prev) => [...prev, ...incoming]);
+  }
+
+  if (incoming.length) {
+    const lastId = incoming[incoming.length - 1]?.id;
+    if (lastId) {
+      apiPost('/api/chat/read', { cid, last_read_id: lastId }).catch(() => {});
+    }
+  }
+}
+
+async function sendChatMessage() {
+  const cid = Number(chatActiveCid);
+  const body = String(chatDraft || '').replace(/\r\n/g, '\n').trim();
+  if (!cid || !body || body.length > 800) return;
+
+  setChatBusy(true);
+  try {
+    const r = await apiPost('/api/chat/messages', { cid, body });
+    if (r?.ok && r.message) {
+      setChatDraft('');
+      setChatMessages((prev) => [...prev, r.message]);
+      await Promise.all([loadChatConversations(), loadChatUnreadTotal()]);
+    }
+  } finally {
+    setChatBusy(false);
+  }
+}
+
+async function openDmWithPeer(peerTgId) {
+  const r = await apiPost('/api/chat/dm/open', { peer_tg_id: peerTgId });
+  if (!r?.ok || !r.conversation_id) return;
+
+  setChatTab('dm');
+  setChatActiveCid(Number(r.conversation_id));
+  setChatMessages([]);
+  await loadChatConversations();
+  await loadChatMessages({ cid: Number(r.conversation_id), reset: true });
+}
+
+async function toggleChatReaction(messageId, emoji, on) {
+  await apiPost(`/api/chat/messages/${messageId}/react`, { emoji, on });
+  await loadChatMessages({ cid: chatActiveCid, reset: true });
+}
+
+async function openChatReactors(messageId) {
+  setChatReactPickFor(messageId);
+  setChatReactWhoLoading(true);
+  try {
+    const r = await apiGet(`/api/chat/messages/${messageId}/reactors`);
+    if (r?.ok) {
+      setChatReactWhoCanView(r.can_view !== false);
+      setChatReactWhoList(r.reactors || []);
+    }
+  } finally {
+    setChatReactWhoLoading(false);
+  }
+}
+
+async function clearActiveDm() {
+  const cid = Number(chatActiveCid);
+  if (!cid) return;
+  const ok = confirm('Очистить историю личного чата у обоих?');
+  if (!ok) return;
+  await apiPost(`/api/chat/dm/${cid}/clear`, {});
+  setChatActiveCid(null);
+  setChatMessages([]);
+  await Promise.all([loadChatConversations(), loadChatUnreadTotal()]);
+}
 
 async function loadFunStatus() {
   try {
@@ -1302,6 +1426,54 @@ useEffect(() => {
     commentsPollRef.current = null;
   };
 }, [gameView, selectedGameId]);
+
+useEffect(() => {
+  loadChatUnreadTotal().catch(() => {});
+  const t = setInterval(() => {
+    if (document.hidden) return;
+    loadChatUnreadTotal().catch(() => {});
+  }, 10000);
+  return () => clearInterval(t);
+}, []);
+
+useEffect(() => {
+  if (!chatOpen) {
+    if (chatPollRef.current) clearInterval(chatPollRef.current);
+    chatPollRef.current = null;
+    return;
+  }
+
+  loadChatConversations().catch(() => {});
+  if (chatActiveCid) loadChatMessages({ cid: chatActiveCid, reset: true }).catch(() => {});
+
+  if (chatPollRef.current) clearInterval(chatPollRef.current);
+  chatPollRef.current = setInterval(() => {
+    if (document.hidden) return;
+    loadChatConversations().catch(() => {});
+    if (chatActiveCid) loadChatMessages({ cid: chatActiveCid }).catch(() => {});
+    loadChatUnreadTotal().catch(() => {});
+  }, 3000);
+
+  return () => {
+    if (chatPollRef.current) clearInterval(chatPollRef.current);
+    chatPollRef.current = null;
+  };
+}, [chatOpen, chatActiveCid]);
+
+useEffect(() => {
+  if (!chatOpen) return;
+  if (chatTab === 'team') {
+    const team = chatConversations.find((c) => c.kind === 'team');
+    setChatActiveCid(team?.id || null);
+    setChatMessages([]);
+  } else if (chatTab === 'dm') {
+    if (chatActiveCid) return;
+    const firstDm = chatConversations.find((c) => c.kind === 'dm');
+    setChatActiveCid(firstDm?.id || null);
+    setChatMessages([]);
+  }
+}, [chatTab, chatOpen, chatConversations]);
+
 
 
 function clipText(s, max = 70) {
@@ -5258,6 +5430,134 @@ function openYandexRoute(lat, lon) {
                 }}
                 onChanged={onChanged}
               />
+
+              <button className="chatFab" type="button" onClick={() => setChatOpen(true)}>
+                💬
+                {chatUnreadTotal > 0 ? <span className="chatFabBadge">{chatUnreadTotal > 99 ? '99+' : chatUnreadTotal}</span> : null}
+              </button>
+
+              {chatOpen ? (
+                <div className="chatDrawer" role="dialog" aria-modal="true">
+                  <div className="chatDrawerHead">
+                    <div style={{ fontWeight: 900 }}>Чат</div>
+                    <button className="btn secondary" onClick={() => setChatOpen(false)}>✕</button>
+                  </div>
+                  <div className="chatTabs">
+                    <button className={`btn ${chatTab === 'team' ? '' : 'secondary'}`} onClick={() => setChatTab('team')}>Команда</button>
+                    <button className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>Личные</button>
+                  </div>
+
+                  {chatTab === 'dm' ? (
+                    <>
+                      <input
+                        className="input"
+                        placeholder="Поиск игрока"
+                        value={chatPeerQuery}
+                        onChange={(e) => setChatPeerQuery(e.target.value)}
+                      />
+                      <div className="chatDmList">
+                        {(playersDir || [])
+                          .filter((p) => String(p.tg_id) !== String(me?.tg_id))
+                          .filter((p) => showName(p).toLowerCase().includes(chatPeerQuery.toLowerCase()))
+                          .slice(0, 30)
+                          .map((p) => (
+                            <button key={p.tg_id} className="chatDmItem" onClick={() => openDmWithPeer(p.tg_id)}>
+                              <span>{showName(p)}</span>
+                            </button>
+                          ))}
+                      </div>
+                    </>
+                  ) : null}
+
+                  {chatTab === 'dm' ? (
+                    <div className="chatConvList">
+                      {(chatConversations || []).filter((c) => c.kind === 'dm').map((c) => (
+                        <button
+                          key={c.id}
+                          className={`chatConvItem ${Number(chatActiveCid) === Number(c.id) ? 'isActive' : ''}`}
+                          onClick={() => {
+                            setChatActiveCid(c.id);
+                            setChatMessages([]);
+                            loadChatMessages({ cid: c.id, reset: true }).catch(() => {});
+                          }}
+                        >
+                          <span>{showName(c.peer || {})}</span>
+                          {c.unread_count > 0 ? <span className="badgeMini">{c.unread_count}</span> : null}
+                        </button>
+                      ))}
+                      {chatActiveCid ? <button className="btn secondary" onClick={clearActiveDm}>Очистить историю</button> : null}
+                    </div>
+                  ) : null}
+
+                  <div className="chatMessages">
+                    {chatMessages.map((m) => (
+                      <div key={m.id} className={`cmtRow ${String(m.sender_tg_id) === String(me?.tg_id) ? 'mine' : ''}`}>
+                        <div className="cmtBubble">
+                          <div className="small" style={{ opacity: 0.8 }}>{showName(m.sender || {})}</div>
+                          <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+                          {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
+                          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                            {(m.reactions || []).map((r) => {
+                              const mine = (m.my_reactions || []).includes(r.emoji);
+                              return (
+                                <button
+                                  key={r.emoji}
+                                  className={`chip ${mine ? 'active' : ''}`}
+                                  onClick={() => toggleChatReaction(m.id, r.emoji, !mine)}
+                                >
+                                  {r.emoji} {r.count}
+                                </button>
+                              );
+                            })}
+                            <button className="chip" onClick={() => setChatReactPickFor(m.id)}>➕</button>
+                            <button className="chip" onClick={() => openChatReactors(m.id)}>👥</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="commentComposer" style={{ marginTop: 10 }}>
+                    <textarea
+                      className="commentComposer__input"
+                      value={chatDraft}
+                      onChange={(e) => setChatDraft(e.target.value)}
+                      placeholder="Сообщение..."
+                    />
+                    <button className="commentComposer__send" disabled={chatBusy || !String(chatDraft || '').trim()} onClick={sendChatMessage}>➤</button>
+                  </div>
+                </div>
+              ) : null}
+
+              {chatReactPickFor ? (
+                <div className="modalOverlay" onClick={() => setChatReactPickFor(null)}>
+                  <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+                    <div style={{ fontWeight: 900 }}>Реакция</div>
+                    <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
+                      {REACTIONS.map((emo) => (
+                        <button key={emo} className="btn secondary" onClick={() => {
+                          const msg = chatMessages.find((x) => x.id === chatReactPickFor);
+                          const has = (msg?.my_reactions || []).includes(emo);
+                          toggleChatReaction(chatReactPickFor, emo, !has).catch(() => {});
+                          setChatReactPickFor(null);
+                        }}>{emo}</button>
+                      ))}
+                    </div>
+                    {chatReactWhoLoading ? <div className="small" style={{ marginTop: 10 }}>Загрузка...</div> : null}
+                    {!chatReactWhoLoading && !chatReactWhoCanView ? <div className="small" style={{ marginTop: 10 }}>🔒 Только premium/админ.</div> : null}
+                    {!chatReactWhoLoading && chatReactWhoCanView ? (
+                      <div className="reactWhoList" style={{ marginTop: 10 }}>
+                        {chatReactWhoList.map((it, i) => (
+                          <div key={i} className="reactWhoItem">
+                            <span>{showName(it.user || {})}</span>
+                            <span>{(it.emojis || []).join(' ')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
 
       <BottomNav tab={tab} onSelectTab={handleBottomNavSelect} isAdmin={isAdmin} profileOnly={!!me?.disabled && !isAdmin} />
     </div>
