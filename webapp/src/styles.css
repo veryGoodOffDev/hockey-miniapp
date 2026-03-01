@@ -4208,3 +4208,5 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .chip{ background: #1a2438; border-color: rgba(255,255,255,.16); color:#eaf1ff; }
 .chatDrawer .commentComposer{ margin-top: 0; }
 
+
+.chatSectionTitle{font-weight:800;opacity:.92;margin-top:2px;margin-bottom:2px;}

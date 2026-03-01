@@ -217,7 +217,7 @@ const [reactWhoLoading, setReactWhoLoading] = useState(false);
 const [reactWhoList, setReactWhoList] = useState([]);
 const [reactWhoCanView, setReactWhoCanView] = useState(true);
 const [chatOpen, setChatOpen] = useState(false);
-const [chatMounted, setChatMounted] = useState(false);
+const [chatVisible, setChatVisible] = useState(false);
 const [chatTab, setChatTab] = useState("team");
 const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
 const [chatConversations, setChatConversations] = useState([]);
@@ -225,13 +225,13 @@ const [chatActiveCid, setChatActiveCid] = useState(null);
 const [chatMessages, setChatMessages] = useState([]);
 const [chatDraft, setChatDraft] = useState("");
 const [chatPeerQuery, setChatPeerQuery] = useState("");
+const [chatDmPeer, setChatDmPeer] = useState(null);
 const [chatBusy, setChatBusy] = useState(false);
 const [chatReactPickFor, setChatReactPickFor] = useState(null);
 const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
 const [chatReactWhoList, setChatReactWhoList] = useState([]);
 const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
 const chatPollRef = useRef(null);
-const chatCloseTimerRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
@@ -626,21 +626,21 @@ async function toggleReaction(commentId, emoji, on) {
   }
 }
 function openChatDrawer() {
-  if (chatCloseTimerRef.current) {
-    clearTimeout(chatCloseTimerRef.current);
-    chatCloseTimerRef.current = null;
-  }
-  setChatMounted(true);
+  setChatVisible(true);
   requestAnimationFrame(() => setChatOpen(true));
 }
+
 function closeChatDrawer() {
   setChatOpen(false);
-  if (chatCloseTimerRef.current) clearTimeout(chatCloseTimerRef.current);
-  chatCloseTimerRef.current = setTimeout(() => {
-    setChatMounted(false);
-  }, 260);
 }
+
+function onChatDrawerTransitionEnd(e) {
+  if (e?.target !== e?.currentTarget) return;
+  if (!chatOpen) setChatVisible(false);
+}
+
 function chatPeerSearchValue(p) {
+
   return [p?.display_name, p?.first_name, p?.last_name, p?.username ? `@${p.username}` : ""]
     .filter(Boolean)
     .join(" ")
@@ -660,6 +660,7 @@ async function loadChatConversations() {
   if (chatTab === 'team') {
     const team = list.find((c) => c.kind === 'team');
     if (team?.id && String(chatActiveCid) !== String(team.id)) {
+      setChatDmPeer(null);
       setChatActiveCid(team.id);
       setChatMessages([]);
       chatLastMessageIdRef.current = 0;
@@ -724,6 +725,8 @@ async function sendChatMessage() {
 async function openDmWithPeer(peerTgId) {
   const r = await apiPost('/api/chat/dm/open', { peer_tg_id: Number(peerTgId) });
   if (!r?.ok || !r.conversation_id) return;
+  const picked = (playersDir || []).find((x) => String(x.tg_id) === String(peerTgId)) || null;
+  setChatDmPeer(picked);
   setChatTab('dm');
   setChatActiveCid(Number(r.conversation_id));
   setChatMessages([]);
@@ -732,11 +735,24 @@ async function openDmWithPeer(peerTgId) {
   await loadChatMessages({ cid: Number(r.conversation_id), reset: true });
 }
 async function selectChatConversation(cid) {
+  const conv = (chatConversations || []).find((x) => String(x.id) === String(cid));
+  setChatDmPeer(conv?.peer || null);
   setChatActiveCid(Number(cid));
   setChatMessages([]);
   chatLastMessageIdRef.current = 0;
   await loadChatMessages({ cid: Number(cid), reset: true });
 }
+async function deleteChatMessage(messageId) {
+  const id = Number(messageId);
+  if (!id) return;
+  const ok = confirm('Удалить сообщение?');
+  if (!ok) return;
+
+  await apiDelete(`/api/chat/messages/${id}`);
+  setChatMessages((prev) => (prev || []).filter((m) => Number(m.id) !== id));
+  await Promise.all([loadChatConversations(), loadChatUnreadTotal()]);
+}
+
 async function toggleChatReaction(messageId, emoji, on) {
   await apiPost(`/api/chat/messages/${messageId}/react`, { emoji, on });
   await loadChatMessages({ cid: chatActiveCid, reset: true });
@@ -763,6 +779,7 @@ async function clearActiveDm() {
   if (!ok) return;
   await apiPost(`/api/chat/dm/${cid}/clear`, {});
   setChatActiveCid(null);
+  setChatDmPeer(null);
   setChatMessages([]);
   chatLastMessageIdRef.current = 0;
   await Promise.all([loadChatConversations(), loadChatUnreadTotal()]);
@@ -1222,7 +1239,7 @@ useEffect(() => {
   return () => clearInterval(t);
 }, []);
 useEffect(() => {
-  if (!chatMounted) {
+  if (!chatVisible) {
     if (chatPollRef.current) clearInterval(chatPollRef.current);
     chatPollRef.current = null;
     return;
@@ -1243,12 +1260,13 @@ useEffect(() => {
     if (chatPollRef.current) clearInterval(chatPollRef.current);
     chatPollRef.current = null;
   };
-}, [chatMounted, chatActiveCid]);
+}, [chatVisible, chatActiveCid]);
 useEffect(() => {
-  if (!chatMounted) return;
+  if (!chatVisible) return;
   if (chatTab === 'team') {
     const team = chatConversations.find((c) => c.kind === 'team');
     if (team?.id && String(chatActiveCid) !== String(team.id)) {
+      setChatDmPeer(null);
       setChatActiveCid(team.id);
       setChatMessages([]);
       chatLastMessageIdRef.current = 0;
@@ -1258,23 +1276,21 @@ useEffect(() => {
     const activeIsDm = (chatConversations || []).some((c) => c.kind === 'dm' && String(c.id) === String(chatActiveCid));
     if (activeIsDm) return;
     const firstDm = chatConversations.find((c) => c.kind === 'dm');
+    setChatDmPeer(firstDm?.peer || null);
     setChatActiveCid(firstDm?.id || null);
     setChatMessages([]);
     chatLastMessageIdRef.current = 0;
     if (firstDm?.id) loadChatMessages({ cid: firstDm.id, reset: true }).catch(() => {});
   }
-}, [chatTab, chatMounted, chatConversations]);
-useEffect(() => () => {
-  if (chatCloseTimerRef.current) clearTimeout(chatCloseTimerRef.current);
-}, []);
+}, [chatTab, chatVisible, chatConversations]);
 useEffect(() => {
-  if (!chatMounted) return;
+  if (!chatVisible) return;
   const onKey = (e) => {
     if (e.key === 'Escape') closeChatDrawer();
   };
   window.addEventListener('keydown', onKey);
   return () => window.removeEventListener('keydown', onKey);
-}, [chatMounted]);
+}, [chatVisible]);
 function clipText(s, max = 70) {
   const t = String(s || "").trim().replace(/\s+/g, " ");
   if (!t) return "";
@@ -4794,96 +4810,127 @@ function openYandexRoute(lat, lon) {
                 <span className="chatFabIcon" aria-hidden="true">💬</span>
                 {chatUnreadTotal > 0 ? <span className="chatFabBadge">{chatUnreadTotal > 99 ? '99+' : chatUnreadTotal}</span> : null}
               </button>
-              {chatMounted ? (
-                <div className={`chatDrawerOverlay ${chatOpen ? "isOpen" : ""}`} onClick={closeChatDrawer}><div className={`chatDrawer ${chatOpen ? "isOpen" : ""}`} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-                  <div className="chatDrawerHead">
-                    <div style={{ fontWeight: 900 }}>Чат</div>
-                    <button type="button" className="btn secondary" onClick={closeChatDrawer}>✕</button>
-                  </div>
-                  <div className="chatTabs">
-                    <button type="button" className={`btn ${chatTab === 'team' ? '' : 'secondary'}`} onClick={() => setChatTab('team')}>Команда</button>
-                    <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>Личные</button>
-                  </div>
-                  {chatTab === 'dm' ? (
-                    <>
-                      <input
-                        className="input"
-                        placeholder="Поиск игрока"
-                        value={chatPeerQuery}
-                        onChange={(e) => setChatPeerQuery(e.target.value)}
-                      />
-                      <div className="chatDmList">
-                        {(playersDir || [])
-                          .filter((p) => String(p.tg_id) !== String(me?.tg_id))
-                          .filter((p) => chatPeerSearchValue(p).includes(String(chatPeerQuery || '').trim().toLowerCase()))
-                          .slice(0, 30)
-                          .map((p) => (
-                            <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
-                              <span>{showName(p)}</span>
-                            </button>
-                          ))}
-                      </div>
-                    </>
-                  ) : null}
-                  {chatTab === 'dm' ? (
-                    <div className="chatConvList">
-                      {(chatConversations || []).filter((c) => c.kind === 'dm').map((c) => (
-                        <button
-                          key={c.id}
-                          className={`chatConvItem ${Number(chatActiveCid) === Number(c.id) ? 'isActive' : ''}`}
-                          type="button"
-                          onClick={() => {
-                            selectChatConversation(c.id).catch(() => {});
-                          }}
-                        >
-                          <span>{showName(c.peer || {})}</span>
-                          {c.unread_count > 0 ? <span className="badgeMini">{c.unread_count}</span> : null}
-                        </button>
-                      ))}
-                      {chatActiveCid ? <button type="button" className="btn secondary" onClick={clearActiveDm}>Очистить историю</button> : null}
+              {chatVisible ? (
+                <div
+                  className={`chatDrawerOverlay ${chatOpen ? "isOpen" : ""}`}
+                  onClick={closeChatDrawer}
+                  onTransitionEnd={onChatDrawerTransitionEnd}
+                >
+                  <div
+                    className={`chatDrawer ${chatOpen ? "isOpen" : ""}`}
+                    role="dialog"
+                    aria-modal="true"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="chatDrawerHead">
+                      <div style={{ fontWeight: 900 }}>Чат</div>
+                      <button type="button" className="btn secondary" onClick={closeChatDrawer}>✕</button>
                     </div>
-                  ) : null}
-                  <div className="chatMessages">
-                    {chatMessages.map((m) => (
-                      <div key={m.id} className={`cmtRow ${String(m.sender_tg_id) === String(me?.tg_id) ? 'mine' : ''}`}>
-                        <div className="cmtBubble">
-                          <div className="small" style={{ opacity: 0.8 }}>{showName(m.sender || {})}</div>
-                          <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
-                          {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
-                          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                            {(m.reactions || []).map((r) => {
-                              const mine = (m.my_reactions || []).includes(r.emoji);
-                              return (
-                                <button
-                                  key={r.emoji}
-                                  className={`chip ${mine ? 'active' : ''}`}
-                                  type="button"
-                                  onClick={() => toggleChatReaction(m.id, r.emoji, !mine)}
-                                >
-                                  {r.emoji} {r.count}
-                                </button>
-                              );
-                            })}
-                            <button type="button" className="chip" onClick={() => setChatReactPickFor(m.id)}>➕</button>
-                            <button type="button" className="chip" onClick={() => openChatReactors(m.id)}>👥</button>
+
+                    <div className="chatTabs">
+                      <button type="button" className={`btn ${chatTab === 'team' ? '' : 'secondary'}`} onClick={() => setChatTab('team')}>Общий</button>
+                      <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>Личный</button>
+                    </div>
+
+                    {chatTab === 'team' ? (
+                      <div className="chatSectionTitle">Общий чат команды</div>
+                    ) : (
+                      <div className="chatSectionTitle">
+                        {chatActiveCid && chatDmPeer ? `Личный чат: ${showName(chatDmPeer)}` : 'Выберите игрока для личного чата'}
+                      </div>
+                    )}
+
+                    {chatTab === 'dm' && !chatActiveCid ? (
+                      <>
+                        <input
+                          className="input"
+                          placeholder="Поиск игрока по имени или @username"
+                          value={chatPeerQuery}
+                          onChange={(e) => setChatPeerQuery(e.target.value)}
+                        />
+                        <div className="chatDmList">
+                          {(playersDir || [])
+                            .filter((p) => String(p.tg_id) !== String(me?.tg_id))
+                            .filter((p) => chatPeerSearchValue(p).includes(String(chatPeerQuery || '').trim().toLowerCase()))
+                            .slice(0, 100)
+                            .map((p) => (
+                              <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
+                                <span>{showName(p)}</span>
+                                <span className="small" style={{ opacity: 0.7 }}>{p.username ? `@${p.username}` : ''}</span>
+                              </button>
+                            ))}
+                        </div>
+                      </>
+                    ) : null}
+
+                    {chatTab === 'dm' && chatActiveCid ? (
+                      <div className="chatConvList">
+                        <button type="button" className="btn secondary" onClick={() => {
+                          setChatActiveCid(null);
+                          setChatDmPeer(null);
+                          setChatMessages([]);
+                          chatLastMessageIdRef.current = 0;
+                        }}>
+                          ← Выбрать другой контакт
+                        </button>
+                        <button type="button" className="btn secondary" onClick={clearActiveDm}>Очистить историю</button>
+                      </div>
+                    ) : null}
+
+                    <div className="chatMessages">
+                      {chatMessages.map((m) => (
+                        <div key={m.id} className={`cmtRow ${String(m.sender_tg_id) === String(me?.tg_id) ? 'mine' : ''}`}>
+                          <div className="cmtBubble">
+                            <div className="small" style={{ opacity: 0.8 }}>{showName(m.sender || {})}</div>
+                            <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+                            {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
+                            <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                              {(m.reactions || []).map((r) => {
+                                const mine = (m.my_reactions || []).includes(r.emoji);
+                                return (
+                                  <button
+                                    key={r.emoji}
+                                    className={`chip ${mine ? 'active' : ''}`}
+                                    type="button"
+                                    onClick={() => toggleChatReaction(m.id, r.emoji, !mine)}
+                                  >
+                                    {r.emoji} {r.count}
+                                  </button>
+                                );
+                              })}
+                              <button type="button" className="chip" onClick={() => setChatReactPickFor(m.id)}>➕</button>
+                              <button type="button" className="chip" onClick={() => openChatReactors(m.id)}>👥</button>
+                              {String(m.sender_tg_id) === String(me?.tg_id) || isAdmin ? (
+                                <button type="button" className="chip" onClick={() => deleteChatMessage(m.id)}>🗑</button>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="commentComposer" style={{ marginTop: 10 }}>
-                    <textarea
-                      className="commentComposer__input"
-                      value={chatDraft}
-                      onChange={(e) => setChatDraft(e.target.value)}
-                      placeholder="Сообщение..."
-                    />
-                    <button type="button" className="commentComposer__send" disabled={chatBusy || !String(chatDraft || '').trim()} onClick={sendChatMessage}>➤</button>
+                      ))}
+                    </div>
+
+                    <div className="commentComposer" style={{ marginTop: 10 }}>
+                      <textarea
+                        className="commentComposer__input"
+                        value={chatDraft}
+                        onChange={(e) => setChatDraft(e.target.value)}
+                        placeholder={chatTab === 'dm' && !chatActiveCid ? 'Сначала выберите контакт…' : 'Сообщение...'}
+                        disabled={chatTab === 'dm' && !chatActiveCid}
+                      />
+                      <button
+                        type="button"
+                        className="commentComposer__send"
+                        disabled={chatBusy || !String(chatDraft || '').trim() || (chatTab === 'dm' && !chatActiveCid)}
+                        onClick={sendChatMessage}
+                      >
+                        ➤
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
               ) : null}
-              {chatReactPickFor ? (
+
+{chatReactPickFor ? (
                 <div className="modalOverlay" onClick={() => setChatReactPickFor(null)}>
                   <div className="modalCard" onClick={(e) => e.stopPropagation()}>
                     <div style={{ fontWeight: 900 }}>Реакция</div>
