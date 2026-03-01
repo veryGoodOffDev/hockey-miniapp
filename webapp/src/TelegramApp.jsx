@@ -636,12 +636,25 @@ function openChatDrawer() {
 }
 
 function closeChatDrawer() {
+  if (chatCloseTimerRef.current) {
+    clearTimeout(chatCloseTimerRef.current);
+    chatCloseTimerRef.current = null;
+  }
   setChatOpen(false);
-  setChatVisible(false);
+  chatCloseTimerRef.current = setTimeout(() => {
+    setChatVisible(false);
+    chatCloseTimerRef.current = null;
+  }, 280);
 }
 
 function onChatDrawerTransitionEnd(e) {
   if (e?.target !== e?.currentTarget) return;
+  if (chatOpen) return;
+  if (chatCloseTimerRef.current) {
+    clearTimeout(chatCloseTimerRef.current);
+    chatCloseTimerRef.current = null;
+  }
+  setChatVisible(false);
 }
 
 function chatPeerSearchValue(p) {
@@ -1294,8 +1307,13 @@ useEffect(() => {
   window.addEventListener('keydown', onKey);
   return () => window.removeEventListener('keydown', onKey);
 }, [chatVisible]);
-useEffect(() => () => {
-  if (chatCloseTimerRef.current) clearTimeout(chatCloseTimerRef.current);
+useEffect(() => {
+  return () => {
+    if (chatCloseTimerRef.current) {
+      clearTimeout(chatCloseTimerRef.current);
+      chatCloseTimerRef.current = null;
+    }
+  };
 }, []);
 function clipText(s, max = 70) {
   const t = String(s || "").trim().replace(/\s+/g, " ");
@@ -4820,13 +4838,13 @@ function openYandexRoute(lat, lon) {
                 <div
                   className={`chatDrawerOverlay ${chatOpen ? "isOpen" : ""}`}
                   onClick={closeChatDrawer}
-                  onTransitionEnd={onChatDrawerTransitionEnd}
                 >
                   <div
                     className={`chatDrawer ${chatOpen ? "isOpen" : ""}`}
                     role="dialog"
                     aria-modal="true"
                     onClick={(e) => e.stopPropagation()}
+                    onTransitionEnd={onChatDrawerTransitionEnd}
                   >
                     <div className="chatDrawerHead">
                       <div style={{ fontWeight: 900 }}>Чат</div>
@@ -4858,11 +4876,27 @@ function openYandexRoute(lat, lon) {
                           {(playersDir || [])
                             .filter((p) => String(p.tg_id) !== String(me?.tg_id))
                             .filter((p) => chatPeerSearchValue(p).includes(String(chatPeerQuery || '').trim().toLowerCase()))
+                            .map((p) => {
+                              const conv = (chatConversations || []).find((c) => c.kind === 'dm' && String(c?.peer?.tg_id) === String(p.tg_id));
+                              const unread = Number(conv?.unread_count || 0);
+                              const lastId = Number(conv?.last_message?.id || 0);
+                              return { p, unread, lastId };
+                            })
+                            .sort((a, b) => {
+                              if (a.unread !== b.unread) return b.unread - a.unread;
+                              if (a.lastId !== b.lastId) return b.lastId - a.lastId;
+                              return showName(a.p).localeCompare(showName(b.p), 'ru', { sensitivity: 'base' });
+                            })
                             .slice(0, 100)
-                            .map((p) => (
+                            .map(({ p, unread }) => (
                               <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
                                 <span>{showName(p)}</span>
-                                <span className="small" style={{ opacity: 0.7 }}>{p.username ? `@${p.username}` : ''}</span>
+                                <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+                                  <span className="small" style={{ opacity: 0.7 }}>{p.username ? `@${p.username}` : ''}</span>
+                                  {unread > 0 ? (
+                                    <span className="chip active" style={{ minWidth: 26, justifyContent: 'center', fontWeight: 800 }}>{unread}</span>
+                                  ) : null}
+                                </span>
                               </button>
                             ))}
                         </div>
