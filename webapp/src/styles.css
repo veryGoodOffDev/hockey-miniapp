@@ -4157,7 +4157,7 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawerOverlay{
   position: fixed;
   inset: 0;
-  z-index: 1004;
+  z-index: 99999;
   background: rgba(5,8,18,.86);
   backdrop-filter: blur(4px);
   opacity: 0;
