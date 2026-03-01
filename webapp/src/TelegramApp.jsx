@@ -4997,9 +4997,6 @@ function openYandexRoute(lat, lon) {
                     </div>
 
                     <div className="commentComposer chatComposer" style={{ marginTop: 10 }}>
-                      {chatTab === 'dm' && chatActiveCid ? (
-                        <button type="button" className="chatMenuBtn" onClick={() => setChatDmMenuOpen((v) => !v)} title="Меню">⋯</button>
-                      ) : null}
                       <textarea
                         className="commentComposer__input"
                         value={chatDraft}
