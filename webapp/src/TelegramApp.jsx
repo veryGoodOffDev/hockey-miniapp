@@ -234,6 +234,7 @@ const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
 const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
+const chatCloseTimerRef = useRef(null);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
@@ -626,17 +627,32 @@ async function toggleReaction(commentId, emoji, on) {
   }
 }
 function openChatDrawer() {
+  if (chatCloseTimerRef.current) {
+    clearTimeout(chatCloseTimerRef.current);
+    chatCloseTimerRef.current = null;
+  }
   setChatVisible(true);
   requestAnimationFrame(() => setChatOpen(true));
 }
 
 function closeChatDrawer() {
   setChatOpen(false);
+  if (chatCloseTimerRef.current) clearTimeout(chatCloseTimerRef.current);
+  chatCloseTimerRef.current = setTimeout(() => {
+    setChatVisible(false);
+    chatCloseTimerRef.current = null;
+  }, 260);
 }
 
 function onChatDrawerTransitionEnd(e) {
   if (e?.target !== e?.currentTarget) return;
-  if (!chatOpen) setChatVisible(false);
+  if (!chatOpen) {
+    if (chatCloseTimerRef.current) {
+      clearTimeout(chatCloseTimerRef.current);
+      chatCloseTimerRef.current = null;
+    }
+    setChatVisible(false);
+  }
 }
 
 function chatPeerSearchValue(p) {
@@ -1275,12 +1291,10 @@ useEffect(() => {
   } else if (chatTab === 'dm') {
     const activeIsDm = (chatConversations || []).some((c) => c.kind === 'dm' && String(c.id) === String(chatActiveCid));
     if (activeIsDm) return;
-    const firstDm = chatConversations.find((c) => c.kind === 'dm');
-    setChatDmPeer(firstDm?.peer || null);
-    setChatActiveCid(firstDm?.id || null);
+    setChatDmPeer(null);
+    setChatActiveCid(null);
     setChatMessages([]);
     chatLastMessageIdRef.current = 0;
-    if (firstDm?.id) loadChatMessages({ cid: firstDm.id, reset: true }).catch(() => {});
   }
 }, [chatTab, chatVisible, chatConversations]);
 useEffect(() => {
@@ -1291,6 +1305,9 @@ useEffect(() => {
   window.addEventListener('keydown', onKey);
   return () => window.removeEventListener('keydown', onKey);
 }, [chatVisible]);
+useEffect(() => () => {
+  if (chatCloseTimerRef.current) clearTimeout(chatCloseTimerRef.current);
+}, []);
 function clipText(s, max = 70) {
   const t = String(s || "").trim().replace(/\s+/g, " ");
   if (!t) return "";
