@@ -4190,7 +4190,7 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .commentComposer__input{ background: #121a2a; border-color: rgba(255,255,255,.14); color: #eaf1ff; }
 .chatDrawerHead{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 2px; }
 .chatTabs{ display:flex; gap:8px; }
-.chatDmList{ display:grid; gap:8px; margin: 0; overflow:auto; padding-right:4px; max-height: 260px; }
+.chatDmList{ display:grid; gap:8px; margin-top: 45px; overflow:auto; padding-right:4px; }
 .chatPeerInput{
   width: 100%;
   height: 42px;
