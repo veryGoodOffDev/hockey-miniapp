@@ -632,27 +632,16 @@ function openChatDrawer() {
     chatCloseTimerRef.current = null;
   }
   setChatVisible(true);
-  requestAnimationFrame(() => setChatOpen(true));
+  setChatOpen(true);
 }
 
 function closeChatDrawer() {
   setChatOpen(false);
-  if (chatCloseTimerRef.current) clearTimeout(chatCloseTimerRef.current);
-  chatCloseTimerRef.current = setTimeout(() => {
-    setChatVisible(false);
-    chatCloseTimerRef.current = null;
-  }, 260);
+  setChatVisible(false);
 }
 
 function onChatDrawerTransitionEnd(e) {
   if (e?.target !== e?.currentTarget) return;
-  if (!chatOpen) {
-    if (chatCloseTimerRef.current) {
-      clearTimeout(chatCloseTimerRef.current);
-      chatCloseTimerRef.current = null;
-    }
-    setChatVisible(false);
-  }
 }
 
 function chatPeerSearchValue(p) {
@@ -683,7 +672,7 @@ async function loadChatConversations() {
     }
   }
   if (chatTab === 'dm' && chatActiveCid) {
-    const exists = list.some((c) => c.id === chatActiveCid && c.kind === 'dm');
+    const exists = list.some((c) => String(c.id) === String(chatActiveCid) && c.kind === 'dm');
     if (!exists) {
       setChatActiveCid(null);
       setChatMessages([]);
