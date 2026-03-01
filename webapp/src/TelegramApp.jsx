@@ -231,6 +231,7 @@ const [chatReactPickFor, setChatReactPickFor] = useState(null);
 const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
 const [chatReactWhoList, setChatReactWhoList] = useState([]);
 const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
+const [chatDmMenuOpen, setChatDmMenuOpen] = useState(false);
 const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
@@ -745,6 +746,7 @@ async function openDmWithPeer(peerTgId) {
   if (!r?.ok || !r.conversation_id) return;
   const picked = (playersDir || []).find((x) => String(x.tg_id) === String(peerTgId)) || null;
   setChatDmPeer(picked);
+  setChatDmMenuOpen(false);
   setChatTab('dm');
   setChatActiveCid(Number(r.conversation_id));
   setChatMessages([]);
@@ -755,6 +757,7 @@ async function openDmWithPeer(peerTgId) {
 async function selectChatConversation(cid) {
   const conv = (chatConversations || []).find((x) => String(x.id) === String(cid));
   setChatDmPeer(conv?.peer || null);
+  setChatDmMenuOpen(false);
   setChatActiveCid(Number(cid));
   setChatMessages([]);
   chatLastMessageIdRef.current = 0;
@@ -796,6 +799,7 @@ async function clearActiveDm() {
   const ok = confirm('Очистить историю личного чата у обоих?');
   if (!ok) return;
   await apiPost(`/api/chat/dm/${cid}/clear`, {});
+  setChatDmMenuOpen(false);
   setChatActiveCid(null);
   setChatDmPeer(null);
   setChatMessages([]);
@@ -4852,20 +4856,20 @@ function openYandexRoute(lat, lon) {
                     </div>
 
                     <div className="chatTabs">
-                      <button type="button" className={`btn ${chatTab === 'team' ? '' : 'secondary'}`} onClick={() => setChatTab('team')}>Общий</button>
+                      <button type="button" className={`btn ${chatTab === 'team' ? '' : 'secondary'}`} onClick={() => {
+                        setChatTab('team');
+                        setChatDmMenuOpen(false);
+                      }}>Общий</button>
                       <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>Личный</button>
                     </div>
 
                     {chatTab === 'team' ? (
                       <div className="chatSectionTitle">Общий чат команды</div>
-                    ) : (
-                      <div className="chatSectionTitle">
-                        {chatActiveCid && chatDmPeer ? `Личный чат: ${showName(chatDmPeer)}` : 'Выберите игрока для личного чата'}
-                      </div>
-                    )}
+                    ) : null}
 
                     {chatTab === 'dm' && !chatActiveCid ? (
                       <>
+                        <div className="chatSectionTitle">Контакты</div>
                         <input
                           className="input"
                           placeholder="Поиск игрока по имени или @username"
@@ -4880,7 +4884,7 @@ function openYandexRoute(lat, lon) {
                               const conv = (chatConversations || []).find((c) => c.kind === 'dm' && String(c?.peer?.tg_id) === String(p.tg_id));
                               const unread = Number(conv?.unread_count || 0);
                               const lastId = Number(conv?.last_message?.id || 0);
-                              return { p, unread, lastId };
+                              return { p, unread, lastId, conv };
                             })
                             .sort((a, b) => {
                               if (a.unread !== b.unread) return b.unread - a.unread;
@@ -4888,68 +4892,114 @@ function openYandexRoute(lat, lon) {
                               return showName(a.p).localeCompare(showName(b.p), 'ru', { sensitivity: 'base' });
                             })
                             .slice(0, 100)
-                            .map(({ p, unread }) => (
-                              <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
-                                <span>{showName(p)}</span>
-                                <span className="row" style={{ gap: 8, alignItems: 'center' }}>
-                                  <span className="small" style={{ opacity: 0.7 }}>{p.username ? `@${p.username}` : ''}</span>
+                            .map(({ p, unread, conv }) => {
+                              const lastText = String(conv?.last_message?.body || '').trim();
+                              const hasLast = !!lastText;
+                              return (
+                                <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
+                                  <div className="chatDmItemMain">
+                                    <AvatarCircle tgId={p.tg_id} url={(p.photo_url || "").trim()} name={showName(p)} size={42} />
+                                    <div className="chatDmMeta">
+                                      <div className="chatDmTop">
+                                        <span className="chatDmName">{showName(p)}</span>
+                                        {conv?.last_message?.created_at ? <span className="chatDmTime">{formatChatMsgTime(conv.last_message.created_at)}</span> : null}
+                                      </div>
+                                      <div className="chatDmSubline">
+                                        <span className="small" style={{ opacity: 0.75 }}>{p.username ? `@${p.username}` : ''}</span>
+                                        {hasLast ? <span className="chatDmPreview">{lastText}</span> : null}
+                                      </div>
+                                    </div>
+                                  </div>
                                   {unread > 0 ? (
-                                    <span className="chip active" style={{ minWidth: 26, justifyContent: 'center', fontWeight: 800 }}>{unread}</span>
+                                    <span className="chip active chatUnreadChip">{unread}</span>
                                   ) : null}
-                                </span>
-                              </button>
-                            ))}
+                                </button>
+                              );
+                            })}
                         </div>
                       </>
                     ) : null}
 
                     {chatTab === 'dm' && chatActiveCid ? (
-                      <div className="chatConvList">
-                        <button type="button" className="btn secondary" onClick={() => {
-                          setChatActiveCid(null);
-                          setChatDmPeer(null);
-                          setChatMessages([]);
-                          chatLastMessageIdRef.current = 0;
-                        }}>
-                          ← Выбрать другой контакт
-                        </button>
-                        <button type="button" className="btn secondary" onClick={clearActiveDm}>Очистить историю</button>
+                      <div className="chatDmHeaderWrap">
+                        <div className="chatDmHeaderMain">
+                          <AvatarCircle tgId={chatDmPeer?.tg_id} url={(chatDmPeer?.photo_url || '').trim()} name={showName(chatDmPeer || {})} size={42} />
+                          <div className="chatDmHeaderTitleWrap">
+                            <div className="chatDmHeaderName">{showName(chatDmPeer || {})}</div>
+                            {isAdmin && chatDmPeer?.last_seen_at ? (
+                              <div className="chatDmHeaderSeen">{formatLastSeenLabel(chatDmPeer.last_seen_at)}</div>
+                            ) : null}
+                          </div>
+                          <button type="button" className="btn secondary" onClick={() => {
+                            setChatDmMenuOpen(false);
+                            setChatActiveCid(null);
+                            setChatDmPeer(null);
+                            setChatMessages([]);
+                            chatLastMessageIdRef.current = 0;
+                          }}>
+                            ← Назад
+                          </button>
+                        </div>
+                        <div className="chatDmHeaderActions">
+                          <button type="button" className="chatMenuBtn" onClick={() => setChatDmMenuOpen((v) => !v)}>⋯</button>
+                          {chatDmMenuOpen ? (
+                            <div className="chatDmMenu">
+                              <button type="button" className="btn secondary" onClick={clearActiveDm}>Очистить историю</button>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     ) : null}
 
                     <div className="chatMessages">
-                      {chatMessages.map((m) => (
-                        <div key={m.id} className={`cmtRow ${String(m.sender_tg_id) === String(me?.tg_id) ? 'mine' : ''}`}>
-                          <div className="cmtBubble">
-                            <div className="small" style={{ opacity: 0.8 }}>{showName(m.sender || {})}</div>
-                            <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
-                            {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
-                            <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                              {(m.reactions || []).map((r) => {
-                                const mine = (m.my_reactions || []).includes(r.emoji);
-                                return (
-                                  <button
-                                    key={r.emoji}
-                                    className={`chip ${mine ? 'active' : ''}`}
-                                    type="button"
-                                    onClick={() => toggleChatReaction(m.id, r.emoji, !mine)}
-                                  >
-                                    {r.emoji} {r.count}
-                                  </button>
-                                );
-                              })}
-                              <button type="button" className="chip" onClick={() => setChatReactPickFor(m.id)}>➕</button>
-                              <button type="button" className="chip" onClick={() => openChatReactors(m.id)}>👥</button>
-                              {String(m.sender_tg_id) === String(me?.tg_id) || isAdmin ? (
-                                <button type="button" className="chip" onClick={() => deleteChatMessage(m.id)}>🗑</button>
-                              ) : null}
+                      {chatMessages.map((m) => {
+                        const mine = String(m.sender_tg_id) === String(me?.tg_id);
+                        const senderName = mine ? 'Вы' : showName(m.sender || {});
+                        const senderPhoto = (m?.sender?.photo_url || '').trim();
+                        return (
+                          <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''}`}>
+                            {!mine ? (
+                              <div className="chatMsgAvatar">
+                                <AvatarCircle tgId={m.sender_tg_id} url={senderPhoto} name={senderName} size={30} />
+                              </div>
+                            ) : null}
+                            <div className="cmtBubble">
+                              <div className="chatMsgHead">
+                                <div className="small" style={{ opacity: 0.85 }}>{senderName}</div>
+                                <div className="small" style={{ opacity: 0.65 }}>{formatChatMsgTime(m.created_at)}</div>
+                              </div>
+                              <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+                              {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
+                              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                                {(m.reactions || []).map((r) => {
+                                  const hasMine = (m.my_reactions || []).includes(r.emoji);
+                                  return (
+                                    <button
+                                      key={r.emoji}
+                                      className={`chip ${hasMine ? 'active' : ''}`}
+                                      type="button"
+                                      onClick={() => toggleChatReaction(m.id, r.emoji, !hasMine)}
+                                    >
+                                      {r.emoji} {r.count}
+                                    </button>
+                                  );
+                                })}
+                                <button type="button" className="chip" onClick={() => setChatReactPickFor(m.id)}>➕</button>
+                                <button type="button" className="chip" onClick={() => openChatReactors(m.id)}>👥</button>
+                                {mine || isAdmin ? (
+                                  <button type="button" className="chip" onClick={() => deleteChatMessage(m.id)}>🗑</button>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
-                    <div className="commentComposer" style={{ marginTop: 10 }}>
+                    <div className="commentComposer chatComposer" style={{ marginTop: 10 }}>
+                      {chatTab === 'dm' && chatActiveCid ? (
+                        <button type="button" className="chatMenuBtn" onClick={() => setChatDmMenuOpen((v) => !v)} title="Меню">⋯</button>
+                      ) : null}
                       <textarea
                         className="commentComposer__input"
                         value={chatDraft}
@@ -5030,6 +5080,27 @@ function showNum(p) {
   if (!Number.isFinite(nn)) return "";
   return `${Math.trunc(nn)}`;
 }
+function formatChatMsgTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const t = d.getTime();
+  if (!Number.isFinite(t)) return "";
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatLastSeenLabel(ts) {
   if (!ts) return "";
   const d = new Date(ts);
