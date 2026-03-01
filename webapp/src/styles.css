@@ -4073,9 +4073,9 @@ html[data-theme="light"] .btn.outline.active{
 .engCell.isFuture{ opacity:.45; background: color-mix(in srgb, var(--card-bg) 84%, #9ca3af); }
 .engCell.isSelected{ outline:2px solid #93c5fd; outline-offset:1px; }
 .engCell.low{ background: linear-gradient(160deg, color-mix(in srgb, #64748b 64%, var(--card-bg)), color-mix(in srgb, #334155 52%, var(--card-bg))); }
-.engCell.warn{ background: linear-gradient(160deg, color-mix(in srgb, #facc15 70%, var(--card-bg)), color-mix(in srgb, #ca8a04 45%, var(--card-bg))); }
-.engCell.mid{ background: linear-gradient(160deg, color-mix(in srgb, #84cc16 72%, var(--card-bg)), color-mix(in srgb, #65a30d 45%, var(--card-bg))); }
-.engCell.high{ background: linear-gradient(160deg, color-mix(in srgb, #22c55e 82%, var(--card-bg)), color-mix(in srgb, #16a34a 60%, var(--card-bg))); }
+.engCell.warn{ background: linear-gradient(160deg, color-mix(in srgb, #facc15 20%, var(--card-bg)), color-mix(in srgb, #ca8a04 45%, var(--card-bg))); }
+.engCell.mid{ background: linear-gradient(160deg, color-mix(in srgb, #84cc16 20%, var(--card-bg)), color-mix(in srgb, #65a30d 45%, var(--card-bg))); }
+.engCell.high{ background: linear-gradient(160deg, color-mix(in srgb, #22c55e 20%, var(--card-bg)), color-mix(in srgb, #16a34a 60%, var(--card-bg))); }
 .engDay{
   position:absolute;
   top:6px;
@@ -4095,6 +4095,7 @@ html[data-theme="light"] .btn.outline.active{
   color: rgba(255,255,255,.58);
   text-shadow: 0 1px 2px rgba(0,0,0,.25);
   pointer-events:none;
+  z-index: 100;
 }
 .engBattery{
   position:absolute;
