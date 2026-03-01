@@ -4435,6 +4435,13 @@ app.post("/api/teams/manual", async (req, res) => {
     [gid, JSON.stringify(A), JSON.stringify(B), JSON.stringify(meta)]
   );
 
+  // best-effort: если составы уже были отправлены в чат — сразу обновляем опубликованное сообщение
+  try {
+    await syncPostedTeamsMessageIfAny(gid);
+  } catch (e) {
+    console.error("syncPostedTeamsMessageIfAny failed (manual edit):", e?.description || e?.message || e);
+  }
+
   res.json({ ok: true, teamA: A, teamB: B, meta });
 });
 
