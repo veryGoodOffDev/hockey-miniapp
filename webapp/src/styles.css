@@ -4203,6 +4203,13 @@ html[data-theme="light"] .btn.outline.active{
   outline: none;
 }
 .chatPeerInput::placeholder{ color: rgba(234,241,255,.6); }
+/* самый простой вариант */
+@media (max-width: 768px) {
+  .chatPeerInput {
+    font-size: 16px;
+    line-height: 20px;
+  }
+}
 .chatDmItem{
   display:flex;
   justify-content:space-between;
