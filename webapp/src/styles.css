@@ -4188,7 +4188,7 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .btn,
 .chatDrawer .input,
 .chatDrawer .commentComposer__input{ background: #121a2a; border-color: rgba(255,255,255,.14); color: #eaf1ff; }
-.chatDrawerHead{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 2px; }
+.chatDrawerHead{ display:flex; gap: 25px; align-items:center; margin-bottom: 2px; }
 .chatTabs{ display:flex; gap:8px; }
 .chatDmList{
   min-height: 0;              /* важно, чтобы overflow работал */

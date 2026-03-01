@@ -4878,8 +4878,8 @@ function openYandexRoute(lat, lon) {
                     onTransitionEnd={onChatDrawerTransitionEnd}
                   >
                     <div className="chatDrawerHead">
-                      <div style={{ fontWeight: 900 }}>Чат</div>
                       <button type="button" className="btn secondary" onClick={closeChatDrawer}>✕</button>
+                      <div style={{ fontWeight: 900 }}>Чат</div>
                     </div>
 
                     <div className="chatTabs">
