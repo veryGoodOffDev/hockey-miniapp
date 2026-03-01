@@ -234,6 +234,7 @@ const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
 const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
+const chatCloseTimerRef = useRef(null);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
@@ -626,17 +627,34 @@ async function toggleReaction(commentId, emoji, on) {
   }
 }
 function openChatDrawer() {
+  if (chatCloseTimerRef.current) {
+    clearTimeout(chatCloseTimerRef.current);
+    chatCloseTimerRef.current = null;
+  }
   setChatVisible(true);
   requestAnimationFrame(() => setChatOpen(true));
 }
 
 function closeChatDrawer() {
+  if (chatCloseTimerRef.current) {
+    clearTimeout(chatCloseTimerRef.current);
+    chatCloseTimerRef.current = null;
+  }
   setChatOpen(false);
+  chatCloseTimerRef.current = setTimeout(() => {
+    setChatVisible(false);
+    chatCloseTimerRef.current = null;
+  }, 280);
 }
 
 function onChatDrawerTransitionEnd(e) {
   if (e?.target !== e?.currentTarget) return;
-  if (!chatOpen) setChatVisible(false);
+  if (chatOpen) return;
+  if (chatCloseTimerRef.current) {
+    clearTimeout(chatCloseTimerRef.current);
+    chatCloseTimerRef.current = null;
+  }
+  setChatVisible(false);
 }
 
 function chatPeerSearchValue(p) {
@@ -667,7 +685,7 @@ async function loadChatConversations() {
     }
   }
   if (chatTab === 'dm' && chatActiveCid) {
-    const exists = list.some((c) => c.id === chatActiveCid && c.kind === 'dm');
+    const exists = list.some((c) => String(c.id) === String(chatActiveCid) && c.kind === 'dm');
     if (!exists) {
       setChatActiveCid(null);
       setChatMessages([]);
@@ -1275,12 +1293,10 @@ useEffect(() => {
   } else if (chatTab === 'dm') {
     const activeIsDm = (chatConversations || []).some((c) => c.kind === 'dm' && String(c.id) === String(chatActiveCid));
     if (activeIsDm) return;
-    const firstDm = chatConversations.find((c) => c.kind === 'dm');
-    setChatDmPeer(firstDm?.peer || null);
-    setChatActiveCid(firstDm?.id || null);
+    setChatDmPeer(null);
+    setChatActiveCid(null);
     setChatMessages([]);
     chatLastMessageIdRef.current = 0;
-    if (firstDm?.id) loadChatMessages({ cid: firstDm.id, reset: true }).catch(() => {});
   }
 }, [chatTab, chatVisible, chatConversations]);
 useEffect(() => {
@@ -1291,6 +1307,14 @@ useEffect(() => {
   window.addEventListener('keydown', onKey);
   return () => window.removeEventListener('keydown', onKey);
 }, [chatVisible]);
+useEffect(() => {
+  return () => {
+    if (chatCloseTimerRef.current) {
+      clearTimeout(chatCloseTimerRef.current);
+      chatCloseTimerRef.current = null;
+    }
+  };
+}, []);
 function clipText(s, max = 70) {
   const t = String(s || "").trim().replace(/\s+/g, " ");
   if (!t) return "";
@@ -4814,13 +4838,13 @@ function openYandexRoute(lat, lon) {
                 <div
                   className={`chatDrawerOverlay ${chatOpen ? "isOpen" : ""}`}
                   onClick={closeChatDrawer}
-                  onTransitionEnd={onChatDrawerTransitionEnd}
                 >
                   <div
                     className={`chatDrawer ${chatOpen ? "isOpen" : ""}`}
                     role="dialog"
                     aria-modal="true"
                     onClick={(e) => e.stopPropagation()}
+                    onTransitionEnd={onChatDrawerTransitionEnd}
                   >
                     <div className="chatDrawerHead">
                       <div style={{ fontWeight: 900 }}>Чат</div>
@@ -4852,11 +4876,27 @@ function openYandexRoute(lat, lon) {
                           {(playersDir || [])
                             .filter((p) => String(p.tg_id) !== String(me?.tg_id))
                             .filter((p) => chatPeerSearchValue(p).includes(String(chatPeerQuery || '').trim().toLowerCase()))
+                            .map((p) => {
+                              const conv = (chatConversations || []).find((c) => c.kind === 'dm' && String(c?.peer?.tg_id) === String(p.tg_id));
+                              const unread = Number(conv?.unread_count || 0);
+                              const lastId = Number(conv?.last_message?.id || 0);
+                              return { p, unread, lastId };
+                            })
+                            .sort((a, b) => {
+                              if (a.unread !== b.unread) return b.unread - a.unread;
+                              if (a.lastId !== b.lastId) return b.lastId - a.lastId;
+                              return showName(a.p).localeCompare(showName(b.p), 'ru', { sensitivity: 'base' });
+                            })
                             .slice(0, 100)
-                            .map((p) => (
+                            .map(({ p, unread }) => (
                               <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
                                 <span>{showName(p)}</span>
-                                <span className="small" style={{ opacity: 0.7 }}>{p.username ? `@${p.username}` : ''}</span>
+                                <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+                                  <span className="small" style={{ opacity: 0.7 }}>{p.username ? `@${p.username}` : ''}</span>
+                                  {unread > 0 ? (
+                                    <span className="chip active" style={{ minWidth: 26, justifyContent: 'center', fontWeight: 800 }}>{unread}</span>
+                                  ) : null}
+                                </span>
                               </button>
                             ))}
                         </div>
