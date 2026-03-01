@@ -234,6 +234,7 @@ const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
 const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
+const chatCloseTimerRef = useRef(null);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
@@ -626,6 +627,10 @@ async function toggleReaction(commentId, emoji, on) {
   }
 }
 function openChatDrawer() {
+  if (chatCloseTimerRef.current) {
+    clearTimeout(chatCloseTimerRef.current);
+    chatCloseTimerRef.current = null;
+  }
   setChatVisible(true);
   setChatOpen(true);
 }
@@ -1289,6 +1294,9 @@ useEffect(() => {
   window.addEventListener('keydown', onKey);
   return () => window.removeEventListener('keydown', onKey);
 }, [chatVisible]);
+useEffect(() => () => {
+  if (chatCloseTimerRef.current) clearTimeout(chatCloseTimerRef.current);
+}, []);
 function clipText(s, max = 70) {
   const t = String(s || "").trim().replace(/\s+/g, " ");
   if (!t) return "";
