@@ -627,16 +627,16 @@ async function toggleReaction(commentId, emoji, on) {
 }
 function openChatDrawer() {
   setChatVisible(true);
-  requestAnimationFrame(() => setChatOpen(true));
+  setChatOpen(true);
 }
 
 function closeChatDrawer() {
   setChatOpen(false);
+  setChatVisible(false);
 }
 
 function onChatDrawerTransitionEnd(e) {
   if (e?.target !== e?.currentTarget) return;
-  if (!chatOpen) setChatVisible(false);
 }
 
 function chatPeerSearchValue(p) {
@@ -667,7 +667,7 @@ async function loadChatConversations() {
     }
   }
   if (chatTab === 'dm' && chatActiveCid) {
-    const exists = list.some((c) => c.id === chatActiveCid && c.kind === 'dm');
+    const exists = list.some((c) => String(c.id) === String(chatActiveCid) && c.kind === 'dm');
     if (!exists) {
       setChatActiveCid(null);
       setChatMessages([]);
@@ -1275,12 +1275,10 @@ useEffect(() => {
   } else if (chatTab === 'dm') {
     const activeIsDm = (chatConversations || []).some((c) => c.kind === 'dm' && String(c.id) === String(chatActiveCid));
     if (activeIsDm) return;
-    const firstDm = chatConversations.find((c) => c.kind === 'dm');
-    setChatDmPeer(firstDm?.peer || null);
-    setChatActiveCid(firstDm?.id || null);
+    setChatDmPeer(null);
+    setChatActiveCid(null);
     setChatMessages([]);
     chatLastMessageIdRef.current = 0;
-    if (firstDm?.id) loadChatMessages({ cid: firstDm.id, reset: true }).catch(() => {});
   }
 }, [chatTab, chatVisible, chatConversations]);
 useEffect(() => {
