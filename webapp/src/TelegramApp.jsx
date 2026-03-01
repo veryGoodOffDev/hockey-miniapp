@@ -139,6 +139,7 @@ useEffect(() => {
   const [editTeams, setEditTeams] = useState(false);
   const [picked, setPicked] = useState(null); // { team:'A'|'B', tg_id }
   const [teamsBusy, setTeamsBusy] = useState(false);
+  const [teamsLockModalOpen, setTeamsLockModalOpen] = useState(false);
 
   // статистика
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2103,6 +2104,38 @@ async function sendActiveJersey() {
     }
 
 
+    async function toggleTeamsLock(nextLocked) {
+      if (!selectedGameId) return;
+
+      await runOp(
+        nextLocked ? "Фиксирую составы…" : "Разблокирую составы…",
+        async () => {
+          setTeamsBusy(true);
+          try {
+            const res = await apiPost("/api/teams/manual", {
+              game_id: selectedGameId,
+              op: "lock",
+              locked: !!nextLocked,
+            });
+            if (res?.ok) {
+              setTeams(normalizeTeams(res));
+              if (nextLocked) {
+                setEditTeams(false);
+                setPicked(null);
+              }
+            }
+          } finally {
+            setTeamsBusy(false);
+          }
+        },
+        {
+          successText: nextLocked ? "🔒 Составы зафиксированы" : "🔓 Составы разблокированы",
+          errorText: "❌ Не удалось изменить статус замка",
+          sync: false,
+        }
+      );
+    }
+
     async function movePicked() {
       if (!picked || !selectedGameId) return;
     
@@ -2120,6 +2153,12 @@ async function sendActiveJersey() {
             if (res?.ok) {
               setTeams(normalizeTeams(res));
               setPicked(null);
+              return;
+            }
+            if (res?.reason === "teams_locked") {
+              setEditTeams(false);
+              setPicked(null);
+              setTeamsLockModalOpen(true);
             }
           } finally {
             setTeamsBusy(false);
@@ -2149,6 +2188,12 @@ async function sendActiveJersey() {
             if (res?.ok) {
               setTeams(normalizeTeams(res));
               setPicked(null);
+              return;
+            }
+            if (res?.reason === "teams_locked") {
+              setEditTeams(false);
+              setPicked(null);
+              setTeamsLockModalOpen(true);
             }
           } finally {
             setTeamsBusy(false);
@@ -2378,6 +2423,8 @@ const teamsWithActualPos = React.useMemo(() => {
     teamB: (teams.teamB || []).map(patchPos),
   };
 }, [teams, yesPosById]);
+
+const teamsLocked = !!teamsWithActualPos?.meta?.locked;
 
   // ВНИМАНИЕ: прошедшие теперь показываем не из games, а из pastPage (загружаем постранично)
   const listToShow = showPast ? pastPage : upcomingGames;
@@ -4695,8 +4742,21 @@ function openYandexRoute(lat, lon) {
         {isAdmin && (
           <div className="row" style={{ marginTop: 10 }}>
             <button
+              className={teamsLocked ? "btn" : "btn secondary"}
+              onClick={() => toggleTeamsLock(!teamsLocked)}
+              disabled={teamsBusy}
+              title={teamsLocked ? "Составы зафиксированы" : "Составы можно менять"}
+            >
+              {teamsLocked ? "🔒" : "🔓"}
+            </button>
+
+            <button
               className={editTeams ? "btn" : "btn secondary"}
               onClick={() => {
+                if (teamsLocked) {
+                  setTeamsLockModalOpen(true);
+                  return;
+                }
                 setEditTeams((v) => !v);
                 setPicked(null);
               }}
@@ -4735,6 +4795,22 @@ function openYandexRoute(lat, lon) {
         Составов пока нет. Нажми “Сформировать сейчас”.
       </div>
     )}
+  </div>
+)}
+
+{teamsLockModalOpen && (
+  <div className="modalOverlay" onClick={() => setTeamsLockModalOpen(false)}>
+    <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+      <h3 style={{ marginTop: 0 }}>Составы зафиксированы</h3>
+      <div className="small" style={{ opacity: 0.95 }}>
+        Составы сформированы окончательно. Для изменения составов разблокируй замок.
+      </div>
+      <div className="row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+        <button className="btn" onClick={() => setTeamsLockModalOpen(false)}>
+          Понятно
+        </button>
+      </div>
+    </div>
   </div>
 )}
 
