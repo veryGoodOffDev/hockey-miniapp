@@ -632,7 +632,7 @@ function openChatDrawer() {
     chatCloseTimerRef.current = null;
   }
   setChatVisible(true);
-  requestAnimationFrame(() => setChatOpen(true));
+  setChatOpen(true);
 }
 
 function closeChatDrawer() {
