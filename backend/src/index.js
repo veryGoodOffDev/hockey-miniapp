@@ -4420,8 +4420,28 @@ app.post("/api/teams/manual", async (req, res) => {
     const tmp = ensureRating(A[ia]);
     A[ia] = ensureRating(B[ib]);
     B[ib] = tmp;
+  } else if (op === "lock") {
+    const prevMeta = row.meta && typeof row.meta === "object" ? row.meta : {};
+    const nextLocked = req.body?.locked === undefined ? true : !!req.body.locked;
+
+    const sumA = sum(A);
+    const sumB = sum(B);
+    const meta = { ...prevMeta, sumA, sumB, diff: Math.abs(sumA - sumB), locked: nextLocked };
+
+    await q(
+      `UPDATE teams
+       SET meta=$2, generated_at=NOW()
+       WHERE game_id=$1`,
+      [gid, JSON.stringify(meta)]
+    );
+
+    return res.json({ ok: true, teamA: A, teamB: B, meta });
   } else {
     return res.status(400).json({ ok: false, reason: "bad_op" });
+  }
+
+  if (row.meta?.locked) {
+    return res.status(423).json({ ok: false, reason: "teams_locked" });
   }
 
   const sumA = sum(A);
@@ -4434,6 +4454,13 @@ app.post("/api/teams/manual", async (req, res) => {
      WHERE game_id=$1`,
     [gid, JSON.stringify(A), JSON.stringify(B), JSON.stringify(meta)]
   );
+
+  // best-effort: если составы уже были отправлены в чат — сразу обновляем опубликованное сообщение
+  try {
+    await syncPostedTeamsMessageIfAny(gid);
+  } catch (e) {
+    console.error("syncPostedTeamsMessageIfAny failed (manual edit):", e?.description || e?.message || e);
+  }
 
   res.json({ ok: true, teamA: A, teamB: B, meta });
 });
