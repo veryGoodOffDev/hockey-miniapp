@@ -4190,7 +4190,12 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .commentComposer__input{ background: #121a2a; border-color: rgba(255,255,255,.14); color: #eaf1ff; }
 .chatDrawerHead{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 2px; }
 .chatTabs{ display:flex; gap:8px; }
-.chatDmList{ display:grid; gap:8px; margin-top: 45px; overflow:auto; padding-right:4px; }
+.chatDmList{
+  min-height: 0;              /* важно, чтобы overflow работал */
+  flex: 1;                    /* список занимает остаток места */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .chatPeerInput{
   width: 100%;
   height: 42px;
@@ -4283,3 +4288,16 @@ html[data-theme="light"] .btn.outline.active{
 .chatComposer{ display:flex; align-items:flex-end; gap:8px; }
 
 .chatSectionTitle{font-weight:800;opacity:.92;margin-top:2px;margin-bottom:2px;}
+.chatDrawerBody{
+  min-height: 0;              /* важно внутри grid */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+
+
+/* опционально: пустышка под 5-ю строку (auto) */
+.chatDrawerFooterSpacer{
+  height: 0;
+}

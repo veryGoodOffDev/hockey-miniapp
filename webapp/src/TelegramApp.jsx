@@ -4897,6 +4897,7 @@ function openYandexRoute(lat, lon) {
                     {chatTab === 'dm' && !chatActiveCid ? (
                       <>
                         <div className="chatSectionTitle">Контакты</div>
+                        <div className="chatDrawerBody">
                         <input
                           className="chatPeerInput"
                           placeholder="Поиск игрока по имени или @username"
@@ -4944,6 +4945,8 @@ function openYandexRoute(lat, lon) {
                               );
                             })}
                         </div>
+                        </div>
+                        <div className="chatDrawerFooterSpacer" />
                       </>
                     ) : null}
 
