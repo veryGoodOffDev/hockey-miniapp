@@ -3514,10 +3514,13 @@ function openYandexRoute(lat, lon) {
                                                   transform: swipeState.key === `comment:${c.id}` ? `translateX(${swipeState.dx}px)` : undefined,
                                                   transition: swipeState.key === `comment:${c.id}` ? 'none' : 'transform .18s ease',
                                                 }}
-                                                onClick={() => setCommentActionFor(c.id)}
+                                                onClick={() => openReactPicker(c.id)}
                                                 onTouchStart={(e) => !isMine && onSwipeStart('comment', c.id, e)}
                                                 onTouchMove={(e) => !isMine && onSwipeMove('comment', c.id, e)}
                                                 onTouchEnd={() => !isMine && onSwipeEnd('comment', c)}
+                                                onMouseDown={(e) => !isMine && onSwipeStart('comment', c.id, e)}
+                                                onMouseMove={(e) => !isMine && onSwipeMove('comment', c.id, e)}
+                                                onMouseUp={() => !isMine && onSwipeEnd('comment', c)}
                                               >
                                                 {c.is_pinned ? <span className="cmtPinTag">📌 закреплено</span> : null}
                                                 {showHead || c.is_pinned ? (
@@ -3569,38 +3572,7 @@ function openYandexRoute(lat, lon) {
                                         })}
                                     </div>
                                   </div>
-                                          {commentActionFor ? (() => {
-                                            const selected = comments.find((x) => Number(x.id) === Number(commentActionFor)) || null;
-                                            const isMineSelected = selected && String(selected.author_tg_id) === String(me?.tg_id);
-                                            const canDeleteSelected = !!(selected && (isMineSelected || isAdmin));
-                                            const canEditSelected = !!(selected && (isMineSelected || isAdmin));
-                                            return (
-                                              <div className="modalOverlay" onClick={() => setCommentActionFor(null)}>
-                                                <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-                                                  <div style={{ fontWeight: 900 }}>Комментарий</div>
-                                                  <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
-                                                    {isAdmin ? (
-                                                      <button type="button" className="btn secondary" disabled={commentBusy} onClick={async () => { await togglePin(commentActionFor, !selected?.is_pinned); setCommentActionFor(null); }}>
-                                                        {selected?.is_pinned ? 'Открепить' : 'Закрепить'}
-                                                      </button>
-                                                    ) : null}
-                                                    {canEditSelected ? (
-                                                      <button type="button" className="btn secondary" onClick={() => {
-                                                        setCommentEditId(commentActionFor);
-                                                        setCommentDraft(selected?.body || '');
-                                                        setCommentReplyTo(null);
-                                                        setCommentMentionIds([]);
-                                                        setCommentActionFor(null);
-                                                      }}>Изменить</button>
-                                                    ) : null}
-                                                    {canDeleteSelected ? (
-                                                      <button type="button" className="btn danger" onClick={async () => { await removeComment(commentActionFor); setCommentActionFor(null); }}>Удалить</button>
-                                                    ) : null}
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            );
-                                          })() : null}
+                                          
                                           {reactPickFor ? (
                                             <div className="reactOverlay" onClick={() => setReactPickFor(null)}>
                                               <div className="reactModal" onClick={(e) => e.stopPropagation()}>
@@ -3682,6 +3654,37 @@ function openYandexRoute(lat, lon) {
                                                     </button>
                                                   ))}
                                                 </div>
+                                                {(() => {
+                                                  const selected = comments.find((x) => Number(x.id) === Number(reactPickFor)) || null;
+                                                  const isMineSelected = selected && String(selected.author_tg_id) === String(me?.tg_id);
+                                                  const canDeleteSelected = !!(selected && (isMineSelected || isAdmin));
+                                                  const canEditSelected = !!(selected && (isMineSelected || isAdmin));
+                                                  return (
+                                                    <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+                                                      {isAdmin ? (
+                                                        <button type="button" className="btn secondary" disabled={commentBusy} onClick={async () => { await togglePin(reactPickFor, !selected?.is_pinned); setReactPickFor(null); }}>
+                                                          {selected?.is_pinned ? 'Открепить' : 'Закрепить'}
+                                                        </button>
+                                                      ) : null}
+                                                      {canEditSelected ? (
+                                                        <button type="button" className="btn secondary" onClick={() => {
+                                                          setCommentEditId(reactPickFor);
+                                                          setCommentDraft(selected?.body || '');
+                                                          setCommentReplyTo(null);
+                                                          setCommentMentionIds([]);
+                                                          setReactPickFor(null);
+                                                        }}>
+                                                          Изменить
+                                                        </button>
+                                                      ) : null}
+                                                      {canDeleteSelected ? (
+                                                        <button type="button" className="btn danger" onClick={async () => { await removeComment(reactPickFor); setReactPickFor(null); }}>
+                                                          Удалить
+                                                        </button>
+                                                      ) : null}
+                                                    </div>
+                                                  );
+                                                })()}
                                                 <button className="btn secondary" style={{ marginTop: 10, width: "100%" }} onClick={() => setReactPickFor(null)}>
                                                   Закрыть
                                                 </button>
