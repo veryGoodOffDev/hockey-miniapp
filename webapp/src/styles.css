@@ -2868,7 +2868,8 @@ html[data-theme="light"] .btn.outline.active{
 .reactModal{
   width: min(520px, 100%);
   max-height: min(86vh, 720px);
-  overflow: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 
   color: var(--tg-text);
   background: var(--card-bg);

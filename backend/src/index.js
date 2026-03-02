@@ -1995,7 +1995,15 @@ function fmtGameLine(g) {
 }
 
 
-const ALLOWED_REACTIONS = new Set(["❤️","🔥","👍","😂","👏","😡","🤔"]);
+const LEGACY_REACTIONS = new Set(["❤️", "🔥", "👍", "😂", "👏", "😡", "🤔"]);
+const EMOJI_REACTION_RE = /\p{Extended_Pictographic}/u;
+
+function isValidReactionEmoji(input) {
+  const emoji = String(input || "").trim();
+  if (!emoji) return false;
+  if (emoji.length > 24) return false;
+  return LEGACY_REACTIONS.has(emoji) || EMOJI_REACTION_RE.test(emoji);
+}
 
 function commentExcerpt(body, maxLen = 90) {
   const text = String(body || "").replace(/\s+/g, " ").trim();
@@ -7453,7 +7461,7 @@ app.post("/api/game-comments/:id/react", async (req, res) => {
   const on = !!req.body?.on;
 
   if (!Number.isFinite(id)) return res.status(400).json({ ok: false, reason: "bad_id" });
-  if (!ALLOWED_REACTIONS.has(emoji)) return res.status(400).json({ ok: false, reason: "bad_reaction" });
+  if (!isValidReactionEmoji(emoji)) return res.status(400).json({ ok: false, reason: "bad_reaction" });
 
   const cr = await q(`SELECT game_id FROM game_comments WHERE id=$1`, [id]);
   const row = cr.rows[0];
@@ -8078,6 +8086,106 @@ app.post('/api/chat/messages/:id/pin', async (req, res) => {
   }
 });
 
+
+app.get('/api/messages/:id', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
+
+    const is_admin = await isAdminId(user.id);
+    const mr = await q(
+      `SELECT m.id, m.conversation_id, c.kind, c.user_a, c.user_b
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id=m.conversation_id
+       WHERE m.id=$1`,
+      [id]
+    );
+    const row = mr.rows?.[0] || null;
+    if (!row) return res.status(404).json({ ok: false, reason: 'not_found' });
+
+    const access = await canAccessChatConversation(row, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    const rr = await q(
+      `SELECT reaction AS emoji, COUNT(*)::int AS count, BOOL_OR(user_tg_id = $2) AS me
+       FROM chat_message_reactions
+       WHERE message_id=$1
+       GROUP BY reaction
+       ORDER BY reaction`,
+      [id, user.id]
+    );
+
+    return res.json({ ok: true, id, reactions: rr.rows || [] });
+  } catch (e) {
+    console.error('GET /api/messages/:id failed:', e);
+    return res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/messages/:id/reactions', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const id = Number(req.params.id);
+    const emoji = String(req.body?.emoji || '').trim();
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
+    if (!isValidReactionEmoji(emoji)) return res.status(400).json({ ok: false, reason: 'bad_reaction' });
+
+    const is_admin = await isAdminId(user.id);
+    const mr = await q(
+      `SELECT m.id, m.conversation_id, c.kind, c.user_a, c.user_b
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id=m.conversation_id
+       WHERE m.id=$1`,
+      [id]
+    );
+    const row = mr.rows?.[0] || null;
+    if (!row) return res.status(404).json({ ok: false, reason: 'not_found' });
+
+    const access = await canAccessChatConversation(row, user, is_admin, req, res);
+    if (!access.ok) {
+      if (access.handled) return;
+      return res.status(access.status || 403).json({ ok: false, reason: access.reason || 'forbidden' });
+    }
+
+    const dr = await q(
+      `DELETE FROM chat_message_reactions
+       WHERE message_id=$1 AND user_tg_id=$2 AND reaction=$3`,
+      [id, user.id, emoji]
+    );
+
+    if (!dr.rowCount) {
+      await q(
+        `INSERT INTO chat_message_reactions(message_id, user_tg_id, reaction)
+         VALUES($1,$2,$3)
+         ON CONFLICT DO NOTHING`,
+        [id, user.id, emoji]
+      );
+    }
+
+    const rr = await q(
+      `SELECT reaction AS emoji, COUNT(*)::int AS count, BOOL_OR(user_tg_id = $2) AS me
+       FROM chat_message_reactions
+       WHERE message_id=$1
+       GROUP BY reaction
+       ORDER BY reaction`,
+      [id, user.id]
+    );
+
+    return res.json({ ok: true, id, toggled: !dr.rowCount, reactions: rr.rows || [] });
+  } catch (e) {
+    console.error('POST /api/messages/:id/reactions failed:', e);
+    return res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
 app.post('/api/chat/messages/:id/react', async (req, res) => {
   try {
     const user = req.webappUser || requireWebAppAuth(req, res);
@@ -8087,7 +8195,7 @@ app.post('/api/chat/messages/:id/react', async (req, res) => {
     const emoji = String(req.body?.emoji || '').trim();
     const on = !!req.body?.on;
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
-    if (!ALLOWED_REACTIONS.has(emoji)) return res.status(400).json({ ok: false, reason: 'bad_reaction' });
+    if (!isValidReactionEmoji(emoji)) return res.status(400).json({ ok: false, reason: 'bad_reaction' });
 
     const is_admin = await isAdminId(user.id);
     const mr = await q(
