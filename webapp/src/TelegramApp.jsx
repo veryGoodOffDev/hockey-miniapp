@@ -3608,14 +3608,6 @@ function openYandexRoute(lat, lon) {
                                                       {r.emoji} <b>{r.count}</b>
                                                     </button>
                                                   ))}
-                                                  <button
-                                                    className="reactChip add"
-                                                    type="button"
-                                                    disabled={commentBusy}
-                                                    onClick={(e) => { e.stopPropagation(); openReactPicker(c.id); }}
-                                                  >
-                                                    ➕
-                                                  </button>
                                                 </div>
                                               </div>
                                             </div>
@@ -5155,13 +5147,6 @@ function openYandexRoute(lat, lon) {
                                     </button>
                                   );
                                 })}
-                                <button
-                                  className="reactChip add"
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); openChatMessageMenu(m); }}
-                                >
-                                  ➕
-                                </button>
                               </div>
                             </div>
                           </div>
