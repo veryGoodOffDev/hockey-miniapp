@@ -755,11 +755,16 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
       conversation_id BIGINT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
       sender_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
       body TEXT NOT NULL,
+      reply_to_message_id BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL,
+      is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
       edited_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
   await q(`CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id_id ON chat_messages(conversation_id, id);`);
+  await q(`ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_message_id BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL;`);
+  await q(`ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_chat_messages_reply_to ON chat_messages(reply_to_message_id);`);
 
   await q(`
     CREATE TABLE IF NOT EXISTS chat_reads (
