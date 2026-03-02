@@ -5250,31 +5250,76 @@ function openYandexRoute(lat, lon) {
                 const canPinSelected = !!(selected && isAdmin);
 
                 return (
-                <div className="modalOverlay" onClick={() => setChatActionFor(null)}>
-                  <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-                    <div style={{ fontWeight: 900 }}>Сообщение</div>
-                    {chatReactWhoLoading ? <div className="small" style={{ marginTop: 10 }}>Загрузка...</div> : null}
-                    {!chatReactWhoLoading && !chatReactWhoCanView ? <div className="small" style={{ marginTop: 10 }}>🔒 Только premium/админ.</div> : null}
-                    {!chatReactWhoLoading && chatReactWhoCanView ? (
-                      <div className="reactWhoBlock" style={{ marginTop: 10 }}>
-                        <div className="reactWhoTitle">Кто поставил реакции</div>
-                        <div className="reactWhoList">
-                          {chatReactWhoList.map((it, i) => (
-                            <div key={i} className="reactWhoRow">
-                              <div className="reactWhoName">{showName(it.user || {})}</div>
-                              <div>{(it.emojis || []).join(' ')}</div>
-                            </div>
-                          ))}
-                        </div>
+                <div className="reactOverlay" onClick={() => setChatActionFor(null)}>
+                  <div className="reactModal" onClick={(e) => e.stopPropagation()}>
+                    <div className="reactWhoBlock">
+                      <div className="reactWhoTitle">Кто поставил реакции
+                        <button
+                          className="reactCloseBtn"
+                          type="button"
+                          onClick={() => setChatActionFor(null)}
+                          aria-label="Close"
+                          title="Закрыть"
+                        >
+                          ✕
+                        </button>
                       </div>
-                    ) : null}
-                    <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
+                      {!chatReactWhoCanView ? (
+                        <div className="reactLock">
+                          <div className="small" style={{ opacity: 0.85 }}>
+                            🔒 Доступно только для <b>🌟 Премиум</b>
+                          </div>
+                          <button
+                            className="btn secondary"
+                            style={{ marginTop: 8, width: "100%" }}
+                            onClick={() => {
+                              setChatActionFor(null);
+                              setTab("profile");
+                              setProfileView("thanks");
+                            }}
+                            type="button"
+                          >
+                            Получить Премиум 😄
+                          </button>
+                        </div>
+                      ) : chatReactWhoLoading ? (
+                        <div className="small" style={{ opacity: 0.8 }}>Загружаю…</div>
+                      ) : chatReactWhoList.length === 0 ? (
+                        <div className="small" style={{ opacity: 0.8 }}>Реакций на сообщение нет.</div>
+                      ) : (
+                        <div className="reactWhoList">
+                          {chatReactWhoList.map((it) => {
+                            const u = it.user || {};
+                            const name = u.display_name || u.first_name || (u.username ? `@${u.username}` : String(u.tg_id || ""));
+                            return (
+                              <div key={String(u.tg_id)} className="reactWhoRow">
+                                <AvatarCircle url={(u.photo_url || "").trim()} name={name} />
+                                <div className="reactWhoName">{name}</div>
+                                <div className="reactEmojiStack" title={(it.emojis || []).join(" ")}>
+                                  {(it.emojis || []).map((e, idx) => (
+                                    <span
+                                      key={`${e}-${idx}`}
+                                      className="reactEmoji"
+                                      style={{ zIndex: 50 - idx }}
+                                    >
+                                      {e}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div className="reactDivider" />
+                    <div className="reactGrid">
                       {reactionPickerChoices.map((emo) => {
                         const has = !!(selected?.reactions || []).find((r) => r.emoji === emo)?.me;
                         return (
                           <button
                             key={emo}
-                            className="btn secondary"
+                            className={has ? "reactPickBtn active" : "reactPickBtn"}
                             onClick={() => toggleChatReaction(chatActionFor, emo, !has).catch(() => {})}
                           >
                             {emo}
@@ -5283,13 +5328,14 @@ function openYandexRoute(lat, lon) {
                       })}
                       <button
                         type="button"
-                        className="btn secondary"
+                        className="reactPickBtn"
                         onClick={() => setChatReactPickerOpenFor((prev) => (prev === chatActionFor ? null : chatActionFor))}
                       >
                         ➕
                       </button>
                     </div>
-                    <div style={{ marginTop: 10 }}>
+                    {chatReactPickerOpenFor === chatActionFor ? (
+                      <div style={{ marginTop: 10 }}>
                         <EmojiPicker
                           onReactionClick={applyChatReactionFromPicker}
                           onEmojiClick={applyChatReactionFromPicker}
@@ -5301,6 +5347,7 @@ function openYandexRoute(lat, lon) {
                           height={320}
                         />
                       </div>
+                    ) : null}
                     <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" className="btn secondary" onClick={() => { setChatReplyTo(selected); setChatActionFor(null); }}>
                         Ответить
@@ -5317,7 +5364,7 @@ function openYandexRoute(lat, lon) {
                           disabled={chatMessageActionBusy}
                           onClick={() => editChatMessage(chatActionFor)}
                         >
-                          Изменить сообщение
+                          Изменить
                         </button>
                       ) : null}
                       {canDeleteSelected ? (
@@ -5327,10 +5374,13 @@ function openYandexRoute(lat, lon) {
                           disabled={chatMessageActionBusy}
                           onClick={() => deleteChatMessage(chatActionFor)}
                         >
-                          Удалить сообщение
+                          Удалить
                         </button>
                       ) : null}
                     </div>
+                    <button className="btn secondary" style={{ marginTop: 10, width: "100%" }} onClick={() => setChatActionFor(null)}>
+                      Закрыть
+                    </button>
                   </div>
                 </div>
                 );
