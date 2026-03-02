@@ -202,6 +202,7 @@ const [commentsLoading, setCommentsLoading] = useState(false);
 const [commentDraft, setCommentDraft] = useState("");
 const [commentEditId, setCommentEditId] = useState(null);
 const [commentReplyTo, setCommentReplyTo] = useState(null);
+const [commentActionFor, setCommentActionFor] = useState(null);
 const [commentMentionIds, setCommentMentionIds] = useState([]);
 const [mentionQuery, setMentionQuery] = useState("");
 const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -224,6 +225,7 @@ const [chatConversations, setChatConversations] = useState([]);
 const [chatActiveCid, setChatActiveCid] = useState(null);
 const [chatMessages, setChatMessages] = useState([]);
 const [chatDraft, setChatDraft] = useState("");
+const [chatReplyTo, setChatReplyTo] = useState(null);
 const [chatPeerQuery, setChatPeerQuery] = useState("");
 const [chatDmPeer, setChatDmPeer] = useState(null);
 const [chatBusy, setChatBusy] = useState(false);
@@ -232,6 +234,7 @@ const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
 const [chatReactWhoList, setChatReactWhoList] = useState([]);
 const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
 const [chatMessageActionBusy, setChatMessageActionBusy] = useState(false);
+const [swipeState, setSwipeState] = useState({ key: null, startX: 0, dx: 0, type: null });
 const [chatDmMenuOpen, setChatDmMenuOpen] = useState(false);
 const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
@@ -628,6 +631,39 @@ async function toggleReaction(commentId, emoji, on) {
     refreshCommentsOnly(gid, { silent: true }).catch(() => {});
   }
 }
+
+function getClientX(evt) {
+  if (evt?.touches?.[0]?.clientX != null) return evt.touches[0].clientX;
+  if (evt?.changedTouches?.[0]?.clientX != null) return evt.changedTouches[0].clientX;
+  return evt?.clientX ?? 0;
+}
+function onSwipeStart(type, key, evt) {
+  setSwipeState({ key: `${type}:${key}`, startX: getClientX(evt), dx: 0, type });
+}
+function onSwipeMove(type, key, evt) {
+  setSwipeState((prev) => {
+    const token = `${type}:${key}`;
+    if (prev.key !== token) return prev;
+    const dx = Math.min(0, getClientX(evt) - prev.startX);
+    return { ...prev, dx: Math.max(dx, -72) };
+  });
+}
+function onSwipeEnd(type, item) {
+  setSwipeState((prev) => {
+    const next = { key: null, startX: 0, dx: 0, type: null };
+    if (!prev.key || prev.type !== type) return next;
+    if (prev.dx <= -44) {
+      if (type === 'comment') {
+        setCommentReplyTo(item);
+        setCommentEditId(null);
+        setCommentDraft('');
+      } else {
+        setChatReplyTo(item);
+      }
+    }
+    return next;
+  });
+}
 function openChatDrawer() {
   if (chatCloseTimerRef.current) {
     clearTimeout(chatCloseTimerRef.current);
@@ -731,9 +767,14 @@ async function sendChatMessage() {
   if (!cid || !body || body.length > 800) return;
   setChatBusy(true);
   try {
-    const r = await apiPost('/api/chat/messages', { cid, body });
+    const r = await apiPost('/api/chat/messages', {
+      cid,
+      body,
+      reply_to_message_id: chatReplyTo?.id ?? null,
+    });
     if (r?.ok && r.message) {
       setChatDraft('');
+      setChatReplyTo(null);
       setChatMessages((prev) => [...prev, r.message]);
       chatLastMessageIdRef.current = Number(r.message?.id || chatLastMessageIdRef.current || 0);
       await Promise.all([loadChatConversations(), loadChatUnreadTotal()]);
@@ -778,6 +819,11 @@ async function deleteChatMessage(messageId) {
 
 async function toggleChatReaction(messageId, emoji, on) {
   await apiPost(`/api/chat/messages/${messageId}/react`, { emoji, on });
+  await loadChatMessages({ cid: chatActiveCid, reset: true });
+}
+
+async function toggleChatPin(messageId, pin) {
+  await apiPost(`/api/chat/messages/${messageId}/pin`, { pin });
   await loadChatMessages({ cid: chatActiveCid, reset: true });
 }
 async function openChatMessageMenu(message) {
@@ -3462,23 +3508,22 @@ function openYandexRoute(lat, lon) {
                                                 </div>
                                               ) : null}
                                               {/* BUBBLE */}
-                                              <div className="cmtBubble">
+                                              <div
+                                                className="cmtBubble"
+                                                style={{
+                                                  transform: swipeState.key === `comment:${c.id}` ? `translateX(${swipeState.dx}px)` : undefined,
+                                                  transition: swipeState.key === `comment:${c.id}` ? 'none' : 'transform .18s ease',
+                                                }}
+                                                onClick={() => setCommentActionFor(c.id)}
+                                                onTouchStart={(e) => !isMine && onSwipeStart('comment', c.id, e)}
+                                                onTouchMove={(e) => !isMine && onSwipeMove('comment', c.id, e)}
+                                                onTouchEnd={() => !isMine && onSwipeEnd('comment', c)}
+                                              >
                                                 {c.is_pinned ? <span className="cmtPinTag">📌 закреплено</span> : null}
-                                                  {showHead || c.is_pinned ? (
-                                                    <div className="cmtHead">
-                                                      <div className="cmtAuthor">{isMine ? "Я" : authorName}</div>
-                                                      <div className="cmtMeta">
-                                                        {new Date(c.created_at).toLocaleString("ru-RU", {
-                                                          day: "2-digit",
-                                                          month: "2-digit",
-                                                          hour: "2-digit",
-                                                          minute: "2-digit",
-                                                        })}
-                                                        {edited ? " · изменено" : ""}
-                                                      </div>
-                                                    </div>
-                                                  ) : (
-                                                    <div className="cmtMetaOnly">
+                                                {showHead || c.is_pinned ? (
+                                                  <div className="cmtHead">
+                                                    <div className="cmtAuthor">{isMine ? "Я" : authorName}</div>
+                                                    <div className="cmtMeta">
                                                       {new Date(c.created_at).toLocaleString("ru-RU", {
                                                         day: "2-digit",
                                                         month: "2-digit",
@@ -3487,7 +3532,18 @@ function openYandexRoute(lat, lon) {
                                                       })}
                                                       {edited ? " · изменено" : ""}
                                                     </div>
-                                                  )}
+                                                  </div>
+                                                ) : (
+                                                  <div className="cmtMetaOnly">
+                                                    {new Date(c.created_at).toLocaleString("ru-RU", {
+                                                      day: "2-digit",
+                                                      month: "2-digit",
+                                                      hour: "2-digit",
+                                                      minute: "2-digit",
+                                                    })}
+                                                    {edited ? " · изменено" : ""}
+                                                  </div>
+                                                )}
                                                 {c.reply_to_preview ? (
                                                   <div className="cmtReplyPreview">
                                                     <b>{c.reply_to_preview.author_name}</b>: {c.reply_to_preview.excerpt}
@@ -3495,94 +3551,56 @@ function openYandexRoute(lat, lon) {
                                                 ) : null}
                                                 <div className="cmtText">{c.body}</div>
                                                 <div className="cmtActions">
-                                                  {isAdmin ? (
-                                                        <button
-                                                          className="iconBtn"
-                                                          type="button"
-                                                          title={c.is_pinned ? "Открепить" : "Закрепить"}
-                                                          disabled={commentBusy}
-                                                          onClick={() => togglePin(c.id, !c.is_pinned)}
-                                                        >
-                                                          {c.is_pinned ? "📌" : "📍"}
-                                                        </button>
-                                                      ) : null}
                                                   {reactions.map((r) => (
                                                     <button
                                                       key={r.emoji}
                                                       className={r.my ? "reactChip on" : "reactChip"}
                                                       disabled={commentBusy}
-                                                      onClick={() => toggleReaction(c.id, r.emoji, !r.my)}
+                                                      onClick={(e) => { e.stopPropagation(); toggleReaction(c.id, r.emoji, !r.my); }}
                                                       type="button"
                                                     >
                                                       {r.emoji} <b>{r.count}</b>
                                                     </button>
                                                   ))}
-                                                  <button
-                                                    className="reactChip add"
-                                                    type="button"
-                                                    onClick={() => openReactPicker(c.id)}
-                                                    disabled={commentBusy}
-                                                    title="Добавить реакцию"
-                                                  >
-                                                    ➕
-                                                  </button>
-                                                  <button
-                                                    className="iconBtn"
-                                                    type="button"
-                                                    title="Ответить"
-                                                    onClick={() => {
-                                                      setCommentReplyTo(c);
-                                                      setCommentEditId(null);
-                                                      setCommentDraft("");
-                                                    }}
-                                                  >
-                                                    ↪️
-                                                  </button>
-                                                  <div style={{ flex: 1 }} />
-                                                  {canEdit ? (
-                                                    <button
-                                                      className="iconBtn"
-                                                      type="button"
-                                                      title="Редактировать"
-                                                      onClick={() => {
-                                                        setCommentEditId(c.id);
-                                                        setCommentDraft(c.body || "");
-                                                        setCommentReplyTo(null);
-                                                        setCommentMentionIds([]);
-                                                      }}
-                                                    >
-                                                      ✏️
-                                                    </button>
-                                                  ) : null}
-                                                  {canDelete ? (
-                                                    <button
-                                                      className="iconBtn"
-                                                      type="button"
-                                                      title="Удалить"
-                                                      onClick={() => removeComment(c.id)}
-                                                    >
-                                                      🗑️
-                                                    </button>
-                                                  ) : null}
                                                 </div>
                                               </div>
-                                              {/* AVATAR RIGHT for mine */}
-                                                {isMine ? (
-                                                  <div className={`cmtAvatar ${showAvatar ? "" : "ghost"}`}>
-                                                    {showAvatar ? (
-                                                      <AvatarCircle
-                                                        url={avatarUrl}
-                                                        fallbackUrl={(author?.photo_url_fallback || "").trim()}
-                                                        name={authorName}
-                                                      />
-                                                    ) : null}
-                                                  </div>
-                                                ) : null}
                                             </div>
                                           );
                                         })}
                                     </div>
                                   </div>
+                                          {commentActionFor ? (() => {
+                                            const selected = comments.find((x) => Number(x.id) === Number(commentActionFor)) || null;
+                                            const isMineSelected = selected && String(selected.author_tg_id) === String(me?.tg_id);
+                                            const canDeleteSelected = !!(selected && (isMineSelected || isAdmin));
+                                            const canEditSelected = !!(selected && (isMineSelected || isAdmin));
+                                            return (
+                                              <div className="modalOverlay" onClick={() => setCommentActionFor(null)}>
+                                                <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+                                                  <div style={{ fontWeight: 900 }}>Комментарий</div>
+                                                  <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
+                                                    {isAdmin ? (
+                                                      <button type="button" className="btn secondary" disabled={commentBusy} onClick={async () => { await togglePin(commentActionFor, !selected?.is_pinned); setCommentActionFor(null); }}>
+                                                        {selected?.is_pinned ? 'Открепить' : 'Закрепить'}
+                                                      </button>
+                                                    ) : null}
+                                                    {canEditSelected ? (
+                                                      <button type="button" className="btn secondary" onClick={() => {
+                                                        setCommentEditId(commentActionFor);
+                                                        setCommentDraft(selected?.body || '');
+                                                        setCommentReplyTo(null);
+                                                        setCommentMentionIds([]);
+                                                        setCommentActionFor(null);
+                                                      }}>Изменить</button>
+                                                    ) : null}
+                                                    {canDeleteSelected ? (
+                                                      <button type="button" className="btn danger" onClick={async () => { await removeComment(commentActionFor); setCommentActionFor(null); }}>Удалить</button>
+                                                    ) : null}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          })() : null}
                                           {reactPickFor ? (
                                             <div className="reactOverlay" onClick={() => setReactPickFor(null)}>
                                               <div className="reactModal" onClick={(e) => e.stopPropagation()}>
@@ -5005,6 +5023,7 @@ function openYandexRoute(lat, lon) {
                         const showAvatar = !mine && !isDmActive && !prevSame;
                         const showHead = !prevSame && !isDmActive;
                         const reactions = Array.isArray(m.reactions) ? m.reactions : [];
+                        const replyMsg = m.reply_to_message_id ? arr.find((x) => Number(x.id) === Number(m.reply_to_message_id)) : null;
 
                         return (
                           <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!prevSame ? 'tail' : ''}`}>
@@ -5013,7 +5032,15 @@ function openYandexRoute(lat, lon) {
                                 <AvatarCircle tgId={m.sender_tg_id} url={senderPhoto} name={senderName} size={30} />
                               </div>
                             ) : !mine && !isDmActive ? <div className="cmtAvatar ghost" /> : null}
-                            <div className="cmtBubble" onClick={() => openChatMessageMenu(m)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openChatMessageMenu(m); }}>
+                            <div className="cmtBubble"
+                              style={{
+                                transform: swipeState.key === `chat:${m.id}` ? `translateX(${swipeState.dx}px)` : undefined,
+                                transition: swipeState.key === `chat:${m.id}` ? 'none' : 'transform .18s ease',
+                              }}
+                              onClick={() => openChatMessageMenu(m)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openChatMessageMenu(m); }}
+                              onTouchStart={(e) => !mine && onSwipeStart('chat', m.id, e)}
+                              onTouchMove={(e) => !mine && onSwipeMove('chat', m.id, e)}
+                              onTouchEnd={() => !mine && onSwipeEnd('chat', m)}>
 
                               {showHead ? (
                                 <div className="chatMsgHead">
@@ -5023,6 +5050,11 @@ function openYandexRoute(lat, lon) {
                               ) : (
                                 <div className="cmtMetaOnly" style={{ marginBottom: 4 }}>{formatChatMsgTime(m.created_at)}</div>
                               )}
+                              {replyMsg ? (
+                                <div className="cmtReplyPreview">
+                                  <b>{String(replyMsg.sender_tg_id) === String(me?.tg_id) ? 'Вы' : showName(replyMsg.sender || {})}</b>: {String(replyMsg.body || '').slice(0, 90)}
+                                </div>
+                              ) : null}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
                               <div className="cmtActions">
@@ -5048,6 +5080,13 @@ function openYandexRoute(lat, lon) {
                     )}
 
                     {(chatTab === 'dm' && !chatActiveCid) ? null : (
+                    <>
+                    {chatReplyTo ? (
+                      <div className="commentReplyBar" style={{ marginTop: 8 }}>
+                        <div>↪️ Ответ: <b>{String(chatReplyTo.sender_tg_id) === String(me?.tg_id) ? 'Вы' : showName(chatReplyTo.sender || {})}</b><div className="small">{String(chatReplyTo.body || '').slice(0, 120)}</div></div>
+                        <button className="iconBtn" type="button" onClick={() => setChatReplyTo(null)}>✕</button>
+                      </div>
+                    ) : null}
                     <div className="commentComposer chatComposer" style={{ marginTop: 10 }}>
                       <textarea
                         className="commentComposer__input"
@@ -5065,6 +5104,7 @@ function openYandexRoute(lat, lon) {
                         ➤
                       </button>
                     </div>
+                    </>
                     )}
                   </div>
                 </div>
@@ -5075,6 +5115,7 @@ function openYandexRoute(lat, lon) {
                 const isMineSelected = selected && String(selected.sender_tg_id) === String(me?.tg_id);
                 const canDeleteSelected = !!(selected && (isMineSelected || isAdmin));
                 const canEditSelected = !!(selected && (isMineSelected || (isAdmin && chatTab === 'team')));
+                const canPinSelected = !!(selected && isAdmin);
 
                 return (
                 <div className="modalOverlay" onClick={() => setChatActionFor(null)}>
@@ -5109,30 +5150,36 @@ function openYandexRoute(lat, lon) {
                         );
                       })}
                     </div>
-                    {(canEditSelected || canDeleteSelected) ? (
-                      <div className="row" style={{ marginTop: 12, gap: 8 }}>
-                        {canEditSelected ? (
-                          <button
-                            type="button"
-                            className="btn secondary"
-                            disabled={chatMessageActionBusy}
-                            onClick={() => editChatMessage(chatActionFor)}
-                          >
-                            Изменить сообщение
-                          </button>
-                        ) : null}
-                        {canDeleteSelected ? (
-                          <button
-                            type="button"
-                            className="btn danger"
-                            disabled={chatMessageActionBusy}
-                            onClick={() => deleteChatMessage(chatActionFor)}
-                          >
-                            Удалить сообщение
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" className="btn secondary" onClick={() => { setChatReplyTo(selected); setChatActionFor(null); }}>
+                        Ответить
+                      </button>
+                      {canPinSelected ? (
+                        <button type="button" className="btn secondary" disabled={chatMessageActionBusy} onClick={async () => { await toggleChatPin(chatActionFor, !selected?.is_pinned); setChatActionFor(null); }}>
+                          {selected?.is_pinned ? 'Открепить' : 'Закрепить'}
+                        </button>
+                      ) : null}
+                      {canEditSelected ? (
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          disabled={chatMessageActionBusy}
+                          onClick={() => editChatMessage(chatActionFor)}
+                        >
+                          Изменить сообщение
+                        </button>
+                      ) : null}
+                      {canDeleteSelected ? (
+                        <button
+                          type="button"
+                          className="btn danger"
+                          disabled={chatMessageActionBusy}
+                          onClick={() => deleteChatMessage(chatActionFor)}
+                        >
+                          Удалить сообщение
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 );

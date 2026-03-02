@@ -7818,6 +7818,8 @@ app.get('/api/chat/messages', async (req, res) => {
         m.conversation_id,
         m.sender_tg_id,
         m.body,
+        m.reply_to_message_id,
+        m.is_pinned,
         m.created_at,
         m.edited_at,
 
@@ -7871,6 +7873,8 @@ app.get('/api/chat/messages', async (req, res) => {
         updated_at: row.p_updated_at || null,
       }, baseUrl),
       body: row.body,
+      reply_to_message_id: row.reply_to_message_id,
+      is_pinned: !!row.is_pinned,
       created_at: row.created_at,
       edited_at: row.edited_at,
       reactions: row.reactions || [],
@@ -7924,8 +7928,10 @@ app.post('/api/chat/messages', async (req, res) => {
 
     const cid = Number(req.body?.cid);
     const body = String(req.body?.body || '').replace(/\r\n/g, '\n').trim();
+    const replyToMessageId = req.body?.reply_to_message_id == null ? null : Number(req.body?.reply_to_message_id);
 
     if (!Number.isFinite(cid) || cid <= 0) return res.status(400).json({ ok: false, reason: 'bad_cid' });
+    if (replyToMessageId != null && (!Number.isFinite(replyToMessageId) || replyToMessageId <= 0)) return res.status(400).json({ ok: false, reason: 'bad_reply_to_message_id' });
     if (!body) return res.status(400).json({ ok: false, reason: 'empty_body' });
     if (body.length > 800) return res.status(400).json({ ok: false, reason: 'too_long' });
 
@@ -7940,10 +7946,10 @@ app.post('/api/chat/messages', async (req, res) => {
     }
 
     const ir = await q(
-      `INSERT INTO chat_messages(conversation_id, sender_tg_id, body)
-       VALUES($1,$2,$3)
-       RETURNING id, conversation_id, sender_tg_id, body, created_at, edited_at`,
-      [cid, user.id, body]
+      `INSERT INTO chat_messages(conversation_id, sender_tg_id, body, reply_to_message_id)
+       VALUES($1,$2,$3,$4)
+       RETURNING id, conversation_id, sender_tg_id, body, reply_to_message_id, is_pinned, created_at, edited_at`,
+      [cid, user.id, body, replyToMessageId]
     );
 
     await touchChatRead(cid, user.id, ir.rows?.[0]?.id || null);
@@ -7998,7 +8004,7 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
       `UPDATE chat_messages
        SET body=$1, edited_at=NOW()
        WHERE id=$2
-       RETURNING id, conversation_id, sender_tg_id, body, created_at, edited_at`,
+       RETURNING id, conversation_id, sender_tg_id, body, reply_to_message_id, is_pinned, created_at, edited_at`,
       [body, id]
     );
 
@@ -8049,6 +8055,25 @@ app.delete('/api/chat/messages/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /api/chat/messages/:id failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+
+app.post('/api/chat/messages/:id/pin', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    const pin = req.body?.pin !== false;
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, reason: 'bad_id' });
+    const is_admin = await isAdminId(user.id);
+    if (!is_admin) return res.status(403).json({ ok: false, reason: 'forbidden' });
+    await q(`UPDATE chat_messages SET is_pinned = FALSE WHERE conversation_id=(SELECT conversation_id FROM chat_messages WHERE id=$1)`, [id]);
+    if (pin) await q(`UPDATE chat_messages SET is_pinned = TRUE WHERE id=$1`, [id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/chat/messages/:id/pin failed:', e);
     res.status(500).json({ ok: false, reason: 'server_error' });
   }
 });
