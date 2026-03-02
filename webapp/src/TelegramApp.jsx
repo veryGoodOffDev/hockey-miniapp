@@ -219,6 +219,7 @@ const [reactPickFor, setReactPickFor] = useState(null);
 const [reactWhoLoading, setReactWhoLoading] = useState(false);
 const [reactWhoList, setReactWhoList] = useState([]);
 const [reactWhoCanView, setReactWhoCanView] = useState(true);
+const [reactPickerOpenFor, setReactPickerOpenFor] = useState(null);
 const [chatOpen, setChatOpen] = useState(false);
 const [chatVisible, setChatVisible] = useState(false);
 const [chatTab, setChatTab] = useState("team");
@@ -235,6 +236,13 @@ const [chatActionFor, setChatActionFor] = useState(null);
 const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
 const [chatReactWhoList, setChatReactWhoList] = useState([]);
 const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
+const [chatReactPickerOpenFor, setChatReactPickerOpenFor] = useState(null);
+useEffect(() => {
+  if (!reactPickFor) setReactPickerOpenFor(null);
+}, [reactPickFor]);
+useEffect(() => {
+  if (!chatActionFor) setChatReactPickerOpenFor(null);
+}, [chatActionFor]);
 const [chatMessageActionBusy, setChatMessageActionBusy] = useState(false);
 const [swipeState, setSwipeState] = useState({ key: null, startX: 0, startY: 0, dx: 0, type: null });
 const suppressCommentTapUntilRef = useRef(0);
@@ -3600,6 +3608,14 @@ function openYandexRoute(lat, lon) {
                                                       {r.emoji} <b>{r.count}</b>
                                                     </button>
                                                   ))}
+                                                  <button
+                                                    className="reactChip add"
+                                                    type="button"
+                                                    disabled={commentBusy}
+                                                    onClick={(e) => { e.stopPropagation(); openReactPicker(c.id); }}
+                                                  >
+                                                    ➕
+                                                  </button>
                                                 </div>
                                               </div>
                                             </div>
@@ -3683,11 +3699,19 @@ function openYandexRoute(lat, lon) {
                                                         const found = (c?.reactions || []).find((r) => r.emoji === emo);
                                                         toggleReaction(reactPickFor, emo, !(found?.my));
                                                         setReactPickFor(null);
+                                                        setReactPickerOpenFor(null);
                                                       }}
                                                     >
                                                       {emo}
                                                     </button>
                                                   ))}
+                                                  <button
+                                                    type="button"
+                                                    className="reactPickBtn"
+                                                    onClick={() => setReactPickerOpenFor((prev) => (prev === reactPickFor ? null : reactPickFor))}
+                                                  >
+                                                    ➕
+                                                  </button>
                                                 </div>
                                                 <div style={{ marginTop: 10 }}>
                                                     <EmojiPicker
@@ -5131,6 +5155,13 @@ function openYandexRoute(lat, lon) {
                                     </button>
                                   );
                                 })}
+                                <button
+                                  className="reactChip add"
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); openChatMessageMenu(m); }}
+                                >
+                                  ➕
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -5209,6 +5240,13 @@ function openYandexRoute(lat, lon) {
                           </button>
                         );
                       })}
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => setChatReactPickerOpenFor((prev) => (prev === chatActionFor ? null : chatActionFor))}
+                      >
+                        ➕
+                      </button>
                     </div>
                     <div style={{ marginTop: 10 }}>
                         <EmojiPicker
