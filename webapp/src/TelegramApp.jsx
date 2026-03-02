@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import EmojiPicker from "emoji-picker-react";
 import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
@@ -212,11 +213,13 @@ const [flashId, setFlashId] = useState(null);               // подсвети�
 const commentsPollRef = useRef(null);
 const commentsHashRef = useRef(""); // чтобы не перерендеривать без изменений
 const commentsBlockRef = useRef(null);
-const REACTIONS = ["❤️","🔥","👍","😂","👏","😡","🤔"];
+const QUICK_REACTIONS = ["🔥", "😱", "👍", "❤️", "😂", "😮", "😢", "😡"];
+const PREMIUM_REACTIONS = ["🔥", "😱", "👍", "❤️", "😂", "😮", "😢", "😡", "👏", "🤔", "🎉", "🙏", "🤝", "💯", "🥶", "🥳"];
 const [reactPickFor, setReactPickFor] = useState(null);
 const [reactWhoLoading, setReactWhoLoading] = useState(false);
 const [reactWhoList, setReactWhoList] = useState([]);
 const [reactWhoCanView, setReactWhoCanView] = useState(true);
+const [reactPickerOpenFor, setReactPickerOpenFor] = useState(null);
 const [chatOpen, setChatOpen] = useState(false);
 const [chatVisible, setChatVisible] = useState(false);
 const [chatTab, setChatTab] = useState("team");
@@ -233,6 +236,13 @@ const [chatActionFor, setChatActionFor] = useState(null);
 const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
 const [chatReactWhoList, setChatReactWhoList] = useState([]);
 const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
+const [chatReactPickerOpenFor, setChatReactPickerOpenFor] = useState(null);
+useEffect(() => {
+  if (!reactPickFor) setReactPickerOpenFor(null);
+}, [reactPickFor]);
+useEffect(() => {
+  if (!chatActionFor) setChatReactPickerOpenFor(null);
+}, [chatActionFor]);
 const [chatMessageActionBusy, setChatMessageActionBusy] = useState(false);
 const [swipeState, setSwipeState] = useState({ key: null, startX: 0, startY: 0, dx: 0, type: null });
 const suppressCommentTapUntilRef = useRef(0);
@@ -396,6 +406,13 @@ function closePhotoModal() {
 });
 const [funBusy, setFunBusy] = useState(false);
   const [fun, setFun] = useState(null); // {thanks_total, donate_total, premium}
+const nowMs = Date.now();
+const isPremiumUser =
+  !!me?.joke_premium ||
+  !!me?.joke_premium_active ||
+  (!!me?.joke_premium_until && new Date(me.joke_premium_until).getTime() > nowMs) ||
+  !!fun?.premium;
+const reactionPickerChoices = isPremiumUser ? PREMIUM_REACTIONS : QUICK_REACTIONS;
   const [donateOpen, setDonateOpen] = useState(false);
 function tgPopup({ title, message, buttons }) {
   const tg = window.Telegram?.WebApp;
@@ -563,13 +580,7 @@ async function removeComment(id) {
 //   }
 // }
 async function openReactPicker(commentId) {
-  const now = Date.now();
-  const isPremium =
-    !!me?.joke_premium ||
-    !!me?.joke_premium_active ||
-    (!!me?.joke_premium_until && new Date(me.joke_premium_until).getTime() > now) ||
-    !!fun?.premium; // если вдруг оставляешь совместимость
-  const canViewReactors = !!(isAdmin || isPremium);
+  const canViewReactors = !!(isAdmin || isPremiumUser);
   setReactPickFor(commentId);
   setReactWhoList([]);
   setReactWhoCanView(canViewReactors);
@@ -631,6 +642,11 @@ async function toggleReaction(commentId, emoji, on) {
     // откат: просто рефрешим с сервера
     refreshCommentsOnly(gid, { silent: true }).catch(() => {});
   }
+}
+
+
+function resolvePickedEmoji(payload) {
+  return String(payload?.emoji || payload?.unified || "").trim();
 }
 
 function getClientX(evt) {
@@ -831,6 +847,24 @@ async function deleteChatMessage(messageId) {
 async function toggleChatReaction(messageId, emoji, on) {
   await apiPost(`/api/chat/messages/${messageId}/react`, { emoji, on });
   await loadChatMessages({ cid: chatActiveCid, reset: true });
+}
+
+async function applyCommentReactionFromPicker(payload) {
+  const emoji = resolvePickedEmoji(payload);
+  if (!emoji || !reactPickFor) return;
+  const c = comments.find((x) => Number(x.id) === Number(reactPickFor));
+  const found = (c?.reactions || []).find((r) => r.emoji === emoji);
+  await toggleReaction(reactPickFor, emoji, !(found?.my));
+  setReactPickerOpenFor(null);
+}
+
+async function applyChatReactionFromPicker(payload) {
+  const emoji = resolvePickedEmoji(payload);
+  if (!emoji || !chatActionFor) return;
+  const selected = chatMessages.find((x) => Number(x.id) === Number(chatActionFor));
+  const has = (selected?.my_reactions || []).includes(emoji);
+  await toggleChatReaction(chatActionFor, emoji, !has);
+  setChatReactPickerOpenFor(null);
 }
 
 async function toggleChatPin(messageId, pin) {
@@ -3576,6 +3610,14 @@ function openYandexRoute(lat, lon) {
                                                       {r.emoji} <b>{r.count}</b>
                                                     </button>
                                                   ))}
+                                                  <button
+                                                    className="reactChip add"
+                                                    type="button"
+                                                    disabled={commentBusy}
+                                                    onClick={(e) => { e.stopPropagation(); openReactPicker(c.id); }}
+                                                  >
+                                                    ➕
+                                                  </button>
                                                 </div>
                                               </div>
                                             </div>
@@ -3650,21 +3692,43 @@ function openYandexRoute(lat, lon) {
                                                   </div>
                                                   <div className="reactDivider" />
                                                 <div className="reactGrid">
-                                                  {REACTIONS.map((emo) => (
+                                                  {reactionPickerChoices.map((emo) => (
                                                     <button
                                                       key={emo}
                                                       className="reactPickBtn"
                                                       onClick={() => {
-                                                        const c = comments.find(x => x.id === reactPickFor);
-                                                        const found = (c?.reactions || []).find(r => r.emoji === emo);
+                                                        const c = comments.find((x) => x.id === reactPickFor);
+                                                        const found = (c?.reactions || []).find((r) => r.emoji === emo);
                                                         toggleReaction(reactPickFor, emo, !(found?.my));
                                                         setReactPickFor(null);
+                                                        setReactPickerOpenFor(null);
                                                       }}
                                                     >
                                                       {emo}
                                                     </button>
                                                   ))}
+                                                  <button
+                                                    type="button"
+                                                    className="reactPickBtn"
+                                                    onClick={() => setReactPickerOpenFor((prev) => (prev === reactPickFor ? null : reactPickFor))}
+                                                  >
+                                                    ➕
+                                                  </button>
                                                 </div>
+                                                {reactPickerOpenFor === reactPickFor ? (
+                                                  <div style={{ marginTop: 10 }}>
+                                                    <EmojiPicker
+                                                      onReactionClick={applyCommentReactionFromPicker}
+                                                      onEmojiClick={applyCommentReactionFromPicker}
+                                                      reactions={reactionPickerChoices}
+                                                      reactionsDefaultOpen
+                                                      allowExpandReactions={isPremiumUser}
+                                                      emojiStyle="apple"
+                                                      width="100%"
+                                                      height={320}
+                                                    />
+                                                  </div>
+                                                ) : null}
                                                 {(() => {
                                                   const selected = comments.find((x) => Number(x.id) === Number(reactPickFor)) || null;
                                                   const isMineSelected = selected && String(selected.author_tg_id) === String(me?.tg_id);
@@ -5095,6 +5159,13 @@ function openYandexRoute(lat, lon) {
                                     </button>
                                   );
                                 })}
+                                <button
+                                  className="reactChip add"
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); openChatMessageMenu(m); }}
+                                >
+                                  ➕
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -5161,7 +5232,7 @@ function openYandexRoute(lat, lon) {
                       </div>
                     ) : null}
                     <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
-                      {REACTIONS.map((emo) => {
+                      {reactionPickerChoices.map((emo) => {
                         const has = (selected?.my_reactions || []).includes(emo);
                         return (
                           <button
@@ -5173,7 +5244,28 @@ function openYandexRoute(lat, lon) {
                           </button>
                         );
                       })}
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => setChatReactPickerOpenFor((prev) => (prev === chatActionFor ? null : chatActionFor))}
+                      >
+                        ➕
+                      </button>
                     </div>
+                    {chatReactPickerOpenFor === chatActionFor ? (
+                      <div style={{ marginTop: 10 }}>
+                        <EmojiPicker
+                          onReactionClick={applyChatReactionFromPicker}
+                          onEmojiClick={applyChatReactionFromPicker}
+                          reactions={reactionPickerChoices}
+                          reactionsDefaultOpen
+                          allowExpandReactions={isPremiumUser}
+                          emojiStyle="apple"
+                          width="100%"
+                          height={320}
+                        />
+                      </div>
+                    ) : null}
                     <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" className="btn secondary" onClick={() => { setChatReplyTo(selected); setChatActionFor(null); }}>
                         Ответить
