@@ -202,6 +202,7 @@ const [commentsLoading, setCommentsLoading] = useState(false);
 const [commentDraft, setCommentDraft] = useState("");
 const [commentEditId, setCommentEditId] = useState(null);
 const [commentReplyTo, setCommentReplyTo] = useState(null);
+const [commentActionFor, setCommentActionFor] = useState(null);
 const [commentMentionIds, setCommentMentionIds] = useState([]);
 const [mentionQuery, setMentionQuery] = useState("");
 const [showMentionDropdown, setShowMentionDropdown] = useState(false);
