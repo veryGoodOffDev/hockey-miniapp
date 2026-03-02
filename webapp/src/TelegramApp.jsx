@@ -5051,6 +5051,11 @@ function openYandexRoute(lat, lon) {
                             .map(({ p, unread, conv }) => {
                               const lastText = String(conv?.last_message?.body || '').trim();
                               const hasLast = !!lastText;
+                              const peerReadId = Number(conv?.peer_last_read_id || 0);
+                              const lastMsgId = Number(conv?.last_message?.id || 0);
+                              const lastSenderId = Number(conv?.last_message?.sender_tg_id || 0);
+                              const isMyLast = lastMsgId > 0 && String(lastSenderId) === String(me?.tg_id);
+                              const lastReadState = isMyLast ? (lastMsgId <= peerReadId ? 'read' : 'sent') : null;
                               return (
                                 <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
                                   <div className="chatDmItemMain">
@@ -5060,9 +5065,14 @@ function openYandexRoute(lat, lon) {
                                         <span className="chatDmName">{showName(p)}</span>
                                         {conv?.last_message?.created_at ? <span className="chatDmTime">{formatChatMsgTime(conv.last_message.created_at)}</span> : null}
                                       </div>
-                                      <div className="chatDmSubline">
-                                        <span className="small" style={{ opacity: 0.75 }}>{p.username ? `@${p.username}` : ''}</span>
-                                        {hasLast ? <span className="chatDmPreview">{lastText}</span> : null}
+                                      {p.username ? <div className="chatDmUsername">@{p.username}</div> : null}
+                                      <div className="chatDmSubline chatDmSubline--preview">
+                                        {hasLast ? <span className="chatDmPreview">{lastText}</span> : <span className="chatDmPreview chatDmPreview--empty">Нет сообщений</span>}
+                                        {lastReadState ? (
+                                          <span className={`chatListTicks ${lastReadState === 'read' ? 'isRead' : ''}`} aria-label={lastReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                            {lastReadState === 'read' ? '✓✓' : '✓'}
+                                          </span>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </div>
@@ -5111,7 +5121,10 @@ function openYandexRoute(lat, lon) {
 
                     {(chatTab === 'dm' && !chatActiveCid) ? null : (
                     <div className="chatMessages">
-                      {chatMessages.map((m, idx, arr) => {
+                      {(() => {
+                        const activeConversation = (chatConversations || []).find((c) => String(c.id) === String(chatActiveCid)) || null;
+                        const peerLastReadId = Number(activeConversation?.peer_last_read_id || 0);
+                        return chatMessages.map((m, idx, arr) => {
                         const mine = String(m.sender_tg_id) === String(me?.tg_id);
                         const senderName = mine ? 'Вы' : showName(m.sender || {});
                         const senderPhoto = (m?.sender?.photo_url || '').trim();
@@ -5134,6 +5147,9 @@ function openYandexRoute(lat, lon) {
                         const showHead = !prevSame && !isDmActive;
                         const reactions = Array.isArray(m.reactions) ? m.reactions : [];
                         const replyMsg = m.reply_to_message_id ? arr.find((x) => Number(x.id) === Number(m.reply_to_message_id)) : null;
+                        const dmReadState = (chatTab === 'dm' && mine)
+                          ? (Number(m.id || 0) <= peerLastReadId ? 'read' : 'sent')
+                          : null;
 
                         return (
                           <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!prevSame ? 'tail' : ''}`}>
@@ -5167,6 +5183,11 @@ function openYandexRoute(lat, lon) {
                               ) : null}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
+                              {dmReadState ? (
+                                <div className={`chatDmTicks ${dmReadState === 'read' ? 'isRead' : ''}`} aria-label={dmReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                  {dmReadState === 'read' ? '✓✓' : '✓'}
+                                </div>
+                              ) : null}
                               <div className="cmtActions">
                                 {reactions.map((r) => {
                                   const hasMine = !!r.me;
@@ -5185,7 +5206,8 @@ function openYandexRoute(lat, lon) {
                             </div>
                           </div>
                         );
-                      })}
+                        });
+                      })()}
                     </div>
                     )}
 
@@ -5228,31 +5250,76 @@ function openYandexRoute(lat, lon) {
                 const canPinSelected = !!(selected && isAdmin);
 
                 return (
-                <div className="modalOverlay" onClick={() => setChatActionFor(null)}>
-                  <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-                    <div style={{ fontWeight: 900 }}>Сообщение</div>
-                    {chatReactWhoLoading ? <div className="small" style={{ marginTop: 10 }}>Загрузка...</div> : null}
-                    {!chatReactWhoLoading && !chatReactWhoCanView ? <div className="small" style={{ marginTop: 10 }}>🔒 Только premium/админ.</div> : null}
-                    {!chatReactWhoLoading && chatReactWhoCanView ? (
-                      <div className="reactWhoBlock" style={{ marginTop: 10 }}>
-                        <div className="reactWhoTitle">Кто поставил реакции</div>
-                        <div className="reactWhoList">
-                          {chatReactWhoList.map((it, i) => (
-                            <div key={i} className="reactWhoRow">
-                              <div className="reactWhoName">{showName(it.user || {})}</div>
-                              <div>{(it.emojis || []).join(' ')}</div>
-                            </div>
-                          ))}
-                        </div>
+                <div className="reactOverlay" onClick={() => setChatActionFor(null)}>
+                  <div className="reactModal" onClick={(e) => e.stopPropagation()}>
+                    <div className="reactWhoBlock">
+                      <div className="reactWhoTitle">Кто поставил реакции
+                        <button
+                          className="reactCloseBtn"
+                          type="button"
+                          onClick={() => setChatActionFor(null)}
+                          aria-label="Close"
+                          title="Закрыть"
+                        >
+                          ✕
+                        </button>
                       </div>
-                    ) : null}
-                    <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
+                      {!chatReactWhoCanView ? (
+                        <div className="reactLock">
+                          <div className="small" style={{ opacity: 0.85 }}>
+                            🔒 Доступно только для <b>🌟 Премиум</b>
+                          </div>
+                          <button
+                            className="btn secondary"
+                            style={{ marginTop: 8, width: "100%" }}
+                            onClick={() => {
+                              setChatActionFor(null);
+                              setTab("profile");
+                              setProfileView("thanks");
+                            }}
+                            type="button"
+                          >
+                            Получить Премиум 😄
+                          </button>
+                        </div>
+                      ) : chatReactWhoLoading ? (
+                        <div className="small" style={{ opacity: 0.8 }}>Загружаю…</div>
+                      ) : chatReactWhoList.length === 0 ? (
+                        <div className="small" style={{ opacity: 0.8 }}>Реакций на сообщение нет.</div>
+                      ) : (
+                        <div className="reactWhoList">
+                          {chatReactWhoList.map((it) => {
+                            const u = it.user || {};
+                            const name = u.display_name || u.first_name || (u.username ? `@${u.username}` : String(u.tg_id || ""));
+                            return (
+                              <div key={String(u.tg_id)} className="reactWhoRow">
+                                <AvatarCircle url={(u.photo_url || "").trim()} name={name} />
+                                <div className="reactWhoName">{name}</div>
+                                <div className="reactEmojiStack" title={(it.emojis || []).join(" ")}>
+                                  {(it.emojis || []).map((e, idx) => (
+                                    <span
+                                      key={`${e}-${idx}`}
+                                      className="reactEmoji"
+                                      style={{ zIndex: 50 - idx }}
+                                    >
+                                      {e}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div className="reactDivider" />
+                    <div className="reactGrid">
                       {reactionPickerChoices.map((emo) => {
                         const has = !!(selected?.reactions || []).find((r) => r.emoji === emo)?.me;
                         return (
                           <button
                             key={emo}
-                            className="btn secondary"
+                            className={has ? "reactPickBtn active" : "reactPickBtn"}
                             onClick={() => toggleChatReaction(chatActionFor, emo, !has).catch(() => {})}
                           >
                             {emo}
@@ -5261,13 +5328,14 @@ function openYandexRoute(lat, lon) {
                       })}
                       <button
                         type="button"
-                        className="btn secondary"
+                        className="reactPickBtn"
                         onClick={() => setChatReactPickerOpenFor((prev) => (prev === chatActionFor ? null : chatActionFor))}
                       >
                         ➕
                       </button>
                     </div>
-                    <div style={{ marginTop: 10 }}>
+                    {chatReactPickerOpenFor === chatActionFor ? (
+                      <div style={{ marginTop: 10 }}>
                         <EmojiPicker
                           onReactionClick={applyChatReactionFromPicker}
                           onEmojiClick={applyChatReactionFromPicker}
@@ -5279,6 +5347,7 @@ function openYandexRoute(lat, lon) {
                           height={320}
                         />
                       </div>
+                    ) : null}
                     <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" className="btn secondary" onClick={() => { setChatReplyTo(selected); setChatActionFor(null); }}>
                         Ответить
@@ -5295,7 +5364,7 @@ function openYandexRoute(lat, lon) {
                           disabled={chatMessageActionBusy}
                           onClick={() => editChatMessage(chatActionFor)}
                         >
-                          Изменить сообщение
+                          Изменить
                         </button>
                       ) : null}
                       {canDeleteSelected ? (
@@ -5305,10 +5374,13 @@ function openYandexRoute(lat, lon) {
                           disabled={chatMessageActionBusy}
                           onClick={() => deleteChatMessage(chatActionFor)}
                         >
-                          Удалить сообщение
+                          Удалить
                         </button>
                       ) : null}
                     </div>
+                    <button className="btn secondary" style={{ marginTop: 10, width: "100%" }} onClick={() => setChatActionFor(null)}>
+                      Закрыть
+                    </button>
                   </div>
                 </div>
                 );

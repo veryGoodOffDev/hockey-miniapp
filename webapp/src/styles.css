@@ -4239,7 +4239,20 @@ html[data-theme="light"] .btn.outline.active{
 .chatDmName{ font-weight: 800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chatDmTime{ font-size: 12px; opacity: .68; flex: 0 0 auto; }
 .chatDmSubline{ display:flex; gap:8px; align-items:center; min-width: 0; }
-.chatDmPreview{ font-size: 12px; opacity: .68; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatDmSubline--preview{ justify-content: space-between; align-items: center; }
+.chatDmUsername{ font-size: 12px; opacity: .75; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatDmPreview{ font-size: 12px; opacity: .68; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex: 1; min-width: 0; }
+.chatDmPreview--empty{ opacity: .48; }
+.chatListTicks{
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 800;
+  color: rgba(234,241,255,.72);
+  flex: 0 0 auto;
+}
+.chatListTicks.isRead{
+  color: #60a5fa;
+}
 .chatUnreadChip{ min-width: 28px; justify-content:center; font-weight: 800; }
 .chatDmHeaderWrap{
   position: relative;
@@ -4290,6 +4303,17 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .reactChip{ background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.16); color:#eaf1ff; }
 .chatDrawer .reactChip.on{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #3b82f6 22%, transparent); }
 .chatDrawer .iconBtn{ background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.16); color:#eaf1ff; }
+.chatDmTicks{
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 800;
+  color: rgba(234,241,255,.72);
+  text-align: right;
+}
+.chatDmTicks.isRead{
+  color: #60a5fa;
+}
 .chatDrawer .commentComposer{ margin-top: 0; }
 .chatComposer{ display:flex; align-items:flex-end; gap:8px; }
 
