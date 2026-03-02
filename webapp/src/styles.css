@@ -4131,7 +4131,7 @@ html[data-theme="light"] .btn.outline.active{
   height: 58px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,.14);
-  background: radial-gradient(120% 120% at 20% 20%, #3f8cff 0%, #2654ff 55%, #182a92 100%);
+  background: radial-gradient(120% 120% at 20% 20%, #626e81, #252a3b 55%, #617f87);
   color: #fff;
   box-shadow: 0 12px 28px rgba(27,72,220,.42);
   display: inline-flex;
