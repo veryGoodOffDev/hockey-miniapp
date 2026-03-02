@@ -855,7 +855,6 @@ async function applyCommentReactionFromPicker(payload) {
   const c = comments.find((x) => Number(x.id) === Number(reactPickFor));
   const found = (c?.reactions || []).find((r) => r.emoji === emoji);
   await toggleReaction(reactPickFor, emoji, !(found?.my));
-  setReactPickerOpenFor(null);
 }
 
 async function applyChatReactionFromPicker(payload) {
@@ -864,7 +863,6 @@ async function applyChatReactionFromPicker(payload) {
   const selected = chatMessages.find((x) => Number(x.id) === Number(chatActionFor));
   const has = (selected?.my_reactions || []).includes(emoji);
   await toggleChatReaction(chatActionFor, emoji, !has);
-  setChatReactPickerOpenFor(null);
 }
 
 async function toggleChatPin(messageId, pin) {
@@ -3715,8 +3713,7 @@ function openYandexRoute(lat, lon) {
                                                     ➕
                                                   </button>
                                                 </div>
-                                                {reactPickerOpenFor === reactPickFor ? (
-                                                  <div style={{ marginTop: 10 }}>
+                                                <div style={{ marginTop: 10 }}>
                                                     <EmojiPicker
                                                       onReactionClick={applyCommentReactionFromPicker}
                                                       onEmojiClick={applyCommentReactionFromPicker}
@@ -3728,7 +3725,6 @@ function openYandexRoute(lat, lon) {
                                                       height={320}
                                                     />
                                                   </div>
-                                                ) : null}
                                                 {(() => {
                                                   const selected = comments.find((x) => Number(x.id) === Number(reactPickFor)) || null;
                                                   const isMineSelected = selected && String(selected.author_tg_id) === String(me?.tg_id);
@@ -5252,8 +5248,7 @@ function openYandexRoute(lat, lon) {
                         ➕
                       </button>
                     </div>
-                    {chatReactPickerOpenFor === chatActionFor ? (
-                      <div style={{ marginTop: 10 }}>
+                    <div style={{ marginTop: 10 }}>
                         <EmojiPicker
                           onReactionClick={applyChatReactionFromPicker}
                           onEmojiClick={applyChatReactionFromPicker}
@@ -5265,7 +5260,6 @@ function openYandexRoute(lat, lon) {
                           height={320}
                         />
                       </div>
-                    ) : null}
                     <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" className="btn secondary" onClick={() => { setChatReplyTo(selected); setChatActionFor(null); }}>
                         Ответить
