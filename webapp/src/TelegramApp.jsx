@@ -234,7 +234,8 @@ const [chatReactWhoLoading, setChatReactWhoLoading] = useState(false);
 const [chatReactWhoList, setChatReactWhoList] = useState([]);
 const [chatReactWhoCanView, setChatReactWhoCanView] = useState(true);
 const [chatMessageActionBusy, setChatMessageActionBusy] = useState(false);
-const [swipeState, setSwipeState] = useState({ key: null, startX: 0, dx: 0, type: null });
+const [swipeState, setSwipeState] = useState({ key: null, startX: 0, startY: 0, dx: 0, type: null });
+const suppressCommentTapUntilRef = useRef(0);
 const [chatDmMenuOpen, setChatDmMenuOpen] = useState(false);
 const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
@@ -637,22 +638,32 @@ function getClientX(evt) {
   if (evt?.changedTouches?.[0]?.clientX != null) return evt.changedTouches[0].clientX;
   return evt?.clientX ?? 0;
 }
+function getClientY(evt) {
+  if (evt?.touches?.[0]?.clientY != null) return evt.touches[0].clientY;
+  if (evt?.changedTouches?.[0]?.clientY != null) return evt.changedTouches[0].clientY;
+  return evt?.clientY ?? 0;
+}
 function onSwipeStart(type, key, evt) {
-  setSwipeState({ key: `${type}:${key}`, startX: getClientX(evt), dx: 0, type });
+  setSwipeState({ key: `${type}:${key}`, startX: getClientX(evt), startY: getClientY(evt), dx: 0, type });
 }
 function onSwipeMove(type, key, evt) {
   setSwipeState((prev) => {
     const token = `${type}:${key}`;
     if (prev.key !== token) return prev;
-    const dx = Math.min(0, getClientX(evt) - prev.startX);
-    return { ...prev, dx: Math.max(dx, -72) };
+    const rawDx = getClientX(evt) - prev.startX;
+    const dy = getClientY(evt) - prev.startY;
+    const horizontal = Math.abs(rawDx) > Math.abs(dy) && rawDx < 0;
+    if (!horizontal) return prev;
+    if (evt?.cancelable) evt.preventDefault();
+    return { ...prev, dx: Math.max(-72, rawDx) };
   });
 }
 function onSwipeEnd(type, item) {
   setSwipeState((prev) => {
-    const next = { key: null, startX: 0, dx: 0, type: null };
+    const next = { key: null, startX: 0, startY: 0, dx: 0, type: null };
     if (!prev.key || prev.type !== type) return next;
-    if (prev.dx <= -44) {
+    if (type === 'comment' && Math.abs(prev.dx) > 10) suppressCommentTapUntilRef.current = Date.now() + 320;
+    if (prev.dx <= -36) {
       if (type === 'comment') {
         setCommentReplyTo(item);
         setCommentEditId(null);
@@ -3514,7 +3525,7 @@ function openYandexRoute(lat, lon) {
                                                   transform: swipeState.key === `comment:${c.id}` ? `translateX(${swipeState.dx}px)` : undefined,
                                                   transition: swipeState.key === `comment:${c.id}` ? 'none' : 'transform .18s ease',
                                                 }}
-                                                onClick={() => openReactPicker(c.id)}
+                                                onClick={() => { if (Date.now() < suppressCommentTapUntilRef.current) return; openReactPicker(c.id); }}
                                                 onTouchStart={(e) => !isMine && onSwipeStart('comment', c.id, e)}
                                                 onTouchMove={(e) => !isMine && onSwipeMove('comment', c.id, e)}
                                                 onTouchEnd={() => !isMine && onSwipeEnd('comment', c)}

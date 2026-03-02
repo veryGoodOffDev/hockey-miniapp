@@ -2619,6 +2619,9 @@ html[data-theme="light"] .btn.outline.active{
   border-radius: 18px;
   padding: 10px 12px;
   box-shadow: 0 6px 18px rgba(0,0,0,.16);
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .cmtRow.mine .cmtBubble{
