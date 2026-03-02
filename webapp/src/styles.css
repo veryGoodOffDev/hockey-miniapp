@@ -2684,7 +2684,7 @@ html[data-theme="light"] .btn.outline.active{
 }
 
 /* хвостик справа */
-.cmtRow.mine .cmtBubble::after{
+/* .cmtRow.mine .cmtBubble::after{
   content:"";
   position:absolute;
   right:-6px;
@@ -2696,7 +2696,7 @@ html[data-theme="light"] .btn.outline.active{
   border-right:1px solid var(--border);
   border-top:1px solid var(--border);
   border-top-right-radius: 3px;
-}
+} */
 
 /* Резерв места под аватар, чтобы пузыри не прыгали */
 .cmtAvatar{ width: 38px; }
