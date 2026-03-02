@@ -2,6 +2,11 @@ import React, { useMemo, useState } from "react";
 
 const DEFAULT_EMOJIS = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤔", "😮", "😢", "😡", "👍", "👎", "👏", "🙏", "🔥", "❤️", "🎉", "💯", "🥶", "🥳"];
 
+export function Emoji({ emoji, unified, size = 16 }) {
+  const value = String(emoji || unified || "").trim();
+  return <span style={{ fontSize: size, lineHeight: 1 }}>{value}</span>;
+}
+
 export default function EmojiPicker({
   reactions = [],
   allowExpandReactions = true,
