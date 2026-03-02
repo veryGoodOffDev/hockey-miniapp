@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import EmojiPicker from "emoji-picker-react";
+import EmojiPicker, { Emoji } from "emoji-picker-react";
 import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { JerseyBadge } from "./JerseyBadge.jsx";
@@ -412,7 +412,8 @@ const isPremiumUser =
   !!me?.joke_premium_active ||
   (!!me?.joke_premium_until && new Date(me.joke_premium_until).getTime() > nowMs) ||
   !!fun?.premium;
-const reactionPickerChoices = isPremiumUser ? PREMIUM_REACTIONS : QUICK_REACTIONS;
+const canUseExtendedReactions = isPremiumUser || isAdmin;
+const reactionPickerChoices = canUseExtendedReactions ? PREMIUM_REACTIONS : QUICK_REACTIONS;
   const [donateOpen, setDonateOpen] = useState(false);
 function tgPopup({ title, message, buttons }) {
   const tg = window.Telegram?.WebApp;
@@ -580,7 +581,7 @@ async function removeComment(id) {
 //   }
 // }
 async function openReactPicker(commentId) {
-  const canViewReactors = !!(isAdmin || isPremiumUser);
+  const canViewReactors = !!canUseExtendedReactions;
   setReactPickFor(commentId);
   setReactWhoList([]);
   setReactWhoCanView(canViewReactors);
@@ -845,8 +846,41 @@ async function deleteChatMessage(messageId) {
 }
 
 async function toggleChatReaction(messageId, emoji, on) {
-  await apiPost(`/api/chat/messages/${messageId}/react`, { emoji, on });
-  await loadChatMessages({ cid: chatActiveCid, reset: true });
+  const id = Number(messageId);
+  if (!id || !emoji) return;
+  const prevMessages = chatMessages;
+  setChatMessages((prev) => (prev || []).map((m) => {
+    if (Number(m.id) !== id) return m;
+    const list = Array.isArray(m.reactions) ? [...m.reactions] : [];
+    const idx = list.findIndex((r) => r.emoji === emoji);
+    if (idx >= 0) {
+      const row = { ...list[idx] };
+      const count = Number(row.count || 0);
+      if (on && !row.me) {
+        row.me = true;
+        row.count = count + 1;
+      } else if (!on && row.me) {
+        row.me = false;
+        row.count = Math.max(0, count - 1);
+      }
+      if (Number(row.count || 0) <= 0) list.splice(idx, 1);
+      else list[idx] = row;
+    } else if (on) {
+      list.push({ emoji, count: 1, me: true });
+    }
+    return { ...m, reactions: list };
+  }));
+  try {
+    const r = await apiPost(`/api/chat/messages/${messageId}/react`, { emoji, on });
+    if (r?.ok && Array.isArray(r.reactions)) {
+      setChatMessages((prev) => (prev || []).map((m) => (Number(m.id) === id ? { ...m, reactions: r.reactions } : m)));
+    } else {
+      await loadChatMessages({ cid: chatActiveCid, reset: true });
+    }
+  } catch (e) {
+    console.error('toggleChatReaction failed:', e);
+    setChatMessages(prevMessages);
+  }
 }
 
 async function applyCommentReactionFromPicker(payload) {
@@ -861,8 +895,8 @@ async function applyChatReactionFromPicker(payload) {
   const emoji = resolvePickedEmoji(payload);
   if (!emoji || !chatActionFor) return;
   const selected = chatMessages.find((x) => Number(x.id) === Number(chatActionFor));
-  const has = (selected?.my_reactions || []).includes(emoji);
-  await toggleChatReaction(chatActionFor, emoji, !has);
+  const found = (selected?.reactions || []).find((r) => r.emoji === emoji);
+  await toggleChatReaction(chatActionFor, emoji, !(found?.me));
 }
 
 async function toggleChatPin(messageId, pin) {
@@ -3605,7 +3639,7 @@ function openYandexRoute(lat, lon) {
                                                       onClick={(e) => { e.stopPropagation(); toggleReaction(c.id, r.emoji, !r.my); }}
                                                       type="button"
                                                     >
-                                                      {r.emoji} <b>{r.count}</b>
+                                                      <Emoji unified={r.emoji} size={16} /> <b>{r.count}</b>
                                                     </button>
                                                   ))}
                                                 </div>
@@ -5135,7 +5169,7 @@ function openYandexRoute(lat, lon) {
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
                               <div className="cmtActions">
                                 {reactions.map((r) => {
-                                  const hasMine = (m.my_reactions || []).includes(r.emoji);
+                                  const hasMine = !!r.me;
                                   return (
                                     <button
                                       key={r.emoji}
@@ -5143,7 +5177,7 @@ function openYandexRoute(lat, lon) {
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); toggleChatReaction(m.id, r.emoji, !hasMine); }}
                                     >
-                                      {r.emoji} <b>{r.count}</b>
+                                      <Emoji unified={r.emoji} size={16} /> <b>{r.count}</b>
                                     </button>
                                   );
                                 })}
@@ -5214,7 +5248,7 @@ function openYandexRoute(lat, lon) {
                     ) : null}
                     <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
                       {reactionPickerChoices.map((emo) => {
-                        const has = (selected?.my_reactions || []).includes(emo);
+                        const has = !!(selected?.reactions || []).find((r) => r.emoji === emo)?.me;
                         return (
                           <button
                             key={emo}
@@ -5239,7 +5273,7 @@ function openYandexRoute(lat, lon) {
                           onEmojiClick={applyChatReactionFromPicker}
                           reactions={reactionPickerChoices}
                           reactionsDefaultOpen
-                          allowExpandReactions={isPremiumUser}
+                          allowExpandReactions={canUseExtendedReactions}
                           emojiStyle="apple"
                           width="100%"
                           height={320}

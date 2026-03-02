@@ -7839,27 +7839,21 @@ app.get('/api/chat/messages', async (req, res) => {
         p.avatar_file_id AS p_avatar_file_id,
         p.updated_at AS p_updated_at,
 
-        COALESCE(rx.reactions, '[]'::jsonb) AS reactions,
-        COALESCE(my.my_reactions, '[]'::jsonb) AS my_reactions
+        COALESCE(rx.reactions, '[]'::jsonb) AS reactions
       FROM chat_messages m
       LEFT JOIN players p ON p.tg_id = m.sender_tg_id
       LEFT JOIN LATERAL (
-        SELECT jsonb_agg(jsonb_build_object('emoji', t.reaction, 'count', t.cnt) ORDER BY t.reaction) AS reactions
+        SELECT jsonb_agg(
+          jsonb_build_object('emoji', t.reaction, 'count', t.cnt, 'me', t.me)
+          ORDER BY t.reaction
+        ) AS reactions
         FROM (
-          SELECT reaction, COUNT(*)::int AS cnt
+          SELECT reaction, COUNT(*)::int AS cnt, BOOL_OR(user_tg_id = $2) AS me
           FROM chat_message_reactions
           WHERE message_id = m.id
           GROUP BY reaction
         ) t
       ) rx ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT jsonb_agg(t.reaction ORDER BY t.reaction) AS my_reactions
-        FROM (
-          SELECT DISTINCT reaction
-          FROM chat_message_reactions
-          WHERE message_id = m.id AND user_tg_id = $2
-        ) t
-      ) my ON TRUE
       WHERE m.conversation_id=$1
         AND m.id > $3
       ORDER BY m.id ASC
@@ -7886,7 +7880,6 @@ app.get('/api/chat/messages', async (req, res) => {
       created_at: row.created_at,
       edited_at: row.edited_at,
       reactions: row.reactions || [],
-      my_reactions: row.my_reactions || [],
     }));
 
     if (messages.length) {
@@ -8229,7 +8222,16 @@ app.post('/api/chat/messages/:id/react', async (req, res) => {
       );
     }
 
-    res.json({ ok: true });
+    const rr = await q(
+      `SELECT reaction AS emoji, COUNT(*)::int AS count, BOOL_OR(user_tg_id = $2) AS me
+       FROM chat_message_reactions
+       WHERE message_id=$1
+       GROUP BY reaction
+       ORDER BY reaction`,
+      [id, user.id]
+    );
+
+    res.json({ ok: true, id, reactions: rr.rows || [] });
   } catch (e) {
     console.error('POST /api/chat/messages/:id/react failed:', e);
     res.status(500).json({ ok: false, reason: 'server_error' });
