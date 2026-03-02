@@ -4239,7 +4239,20 @@ html[data-theme="light"] .btn.outline.active{
 .chatDmName{ font-weight: 800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chatDmTime{ font-size: 12px; opacity: .68; flex: 0 0 auto; }
 .chatDmSubline{ display:flex; gap:8px; align-items:center; min-width: 0; }
-.chatDmPreview{ font-size: 12px; opacity: .68; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatDmSubline--preview{ justify-content: space-between; align-items: center; }
+.chatDmUsername{ font-size: 12px; opacity: .75; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chatDmPreview{ font-size: 12px; opacity: .68; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex: 1; min-width: 0; }
+.chatDmPreview--empty{ opacity: .48; }
+.chatListTicks{
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 800;
+  color: rgba(234,241,255,.72);
+  flex: 0 0 auto;
+}
+.chatListTicks.isRead{
+  color: #60a5fa;
+}
 .chatUnreadChip{ min-width: 28px; justify-content:center; font-weight: 800; }
 .chatDmHeaderWrap{
   position: relative;

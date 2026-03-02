@@ -5051,6 +5051,11 @@ function openYandexRoute(lat, lon) {
                             .map(({ p, unread, conv }) => {
                               const lastText = String(conv?.last_message?.body || '').trim();
                               const hasLast = !!lastText;
+                              const peerReadId = Number(conv?.peer_last_read_id || 0);
+                              const lastMsgId = Number(conv?.last_message?.id || 0);
+                              const lastSenderId = Number(conv?.last_message?.sender_tg_id || 0);
+                              const isMyLast = lastMsgId > 0 && String(lastSenderId) === String(me?.tg_id);
+                              const lastReadState = isMyLast ? (lastMsgId <= peerReadId ? 'read' : 'sent') : null;
                               return (
                                 <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
                                   <div className="chatDmItemMain">
@@ -5060,9 +5065,14 @@ function openYandexRoute(lat, lon) {
                                         <span className="chatDmName">{showName(p)}</span>
                                         {conv?.last_message?.created_at ? <span className="chatDmTime">{formatChatMsgTime(conv.last_message.created_at)}</span> : null}
                                       </div>
-                                      <div className="chatDmSubline">
-                                        <span className="small" style={{ opacity: 0.75 }}>{p.username ? `@${p.username}` : ''}</span>
-                                        {hasLast ? <span className="chatDmPreview">{lastText}</span> : null}
+                                      {p.username ? <div className="chatDmUsername">@{p.username}</div> : null}
+                                      <div className="chatDmSubline chatDmSubline--preview">
+                                        {hasLast ? <span className="chatDmPreview">{lastText}</span> : <span className="chatDmPreview chatDmPreview--empty">Нет сообщений</span>}
+                                        {lastReadState ? (
+                                          <span className={`chatListTicks ${lastReadState === 'read' ? 'isRead' : ''}`} aria-label={lastReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                            {lastReadState === 'read' ? '✓✓' : '✓'}
+                                          </span>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </div>

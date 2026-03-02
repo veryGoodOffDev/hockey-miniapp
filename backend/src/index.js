@@ -7693,12 +7693,13 @@ app.get('/api/chat/conversations', async (req, res) => {
         c.user_b,
         lm.id AS last_message_id,
         lm.body AS last_message_body,
+        lm.sender_tg_id AS last_message_sender_tg_id,
         lm.created_at AS last_message_created_at,
         COALESCE(pr.last_read_id,0)::bigint AS peer_last_read_id,
         COALESCE(uc.unread_count,0)::int AS unread_count
       FROM convs c
       LEFT JOIN LATERAL (
-        SELECT m.id, m.body, m.created_at
+        SELECT m.id, m.body, m.sender_tg_id, m.created_at
         FROM chat_messages m
         WHERE m.conversation_id = c.id
         ORDER BY m.id DESC
@@ -7758,7 +7759,12 @@ app.get('/api/chat/conversations', async (req, res) => {
         kind: row.kind,
         unread_count: Number(row.unread_count || 0),
         last_message: row.last_message_id
-          ? { id: row.last_message_id, body: row.last_message_body || '', created_at: row.last_message_created_at }
+          ? {
+            id: row.last_message_id,
+            body: row.last_message_body || '',
+            sender_tg_id: row.last_message_sender_tg_id == null ? null : Number(row.last_message_sender_tg_id),
+            created_at: row.last_message_created_at,
+          }
           : null,
         peer_last_read_id: isDm ? Number(row.peer_last_read_id || 0) : 0,
         peer: isDm ? (peersMap.get(String(peerTgId)) || { tg_id: peerTgId }) : null,
