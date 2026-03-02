@@ -3672,6 +3672,16 @@ function openYandexRoute(lat, lon) {
                                                   const canEditSelected = !!(selected && (isMineSelected || isAdmin));
                                                   return (
                                                     <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+                                                      {selected ? (
+                                                        <button type="button" className="btn secondary" onClick={() => {
+                                                          setCommentReplyTo(selected);
+                                                          setCommentEditId(null);
+                                                          setCommentDraft('');
+                                                          setReactPickFor(null);
+                                                        }}>
+                                                          Ответить
+                                                        </button>
+                                                      ) : null}
                                                       {isAdmin ? (
                                                         <button type="button" className="btn secondary" disabled={commentBusy} onClick={async () => { await togglePin(reactPickFor, !selected?.is_pinned); setReactPickFor(null); }}>
                                                           {selected?.is_pinned ? 'Открепить' : 'Закрепить'}
