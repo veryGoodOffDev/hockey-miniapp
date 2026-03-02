@@ -5111,7 +5111,10 @@ function openYandexRoute(lat, lon) {
 
                     {(chatTab === 'dm' && !chatActiveCid) ? null : (
                     <div className="chatMessages">
-                      {chatMessages.map((m, idx, arr) => {
+                      {(() => {
+                        const activeConversation = (chatConversations || []).find((c) => String(c.id) === String(chatActiveCid)) || null;
+                        const peerLastReadId = Number(activeConversation?.peer_last_read_id || 0);
+                        return chatMessages.map((m, idx, arr) => {
                         const mine = String(m.sender_tg_id) === String(me?.tg_id);
                         const senderName = mine ? 'Вы' : showName(m.sender || {});
                         const senderPhoto = (m?.sender?.photo_url || '').trim();
@@ -5134,6 +5137,9 @@ function openYandexRoute(lat, lon) {
                         const showHead = !prevSame && !isDmActive;
                         const reactions = Array.isArray(m.reactions) ? m.reactions : [];
                         const replyMsg = m.reply_to_message_id ? arr.find((x) => Number(x.id) === Number(m.reply_to_message_id)) : null;
+                        const dmReadState = (chatTab === 'dm' && mine)
+                          ? (Number(m.id || 0) <= peerLastReadId ? 'read' : 'sent')
+                          : null;
 
                         return (
                           <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!prevSame ? 'tail' : ''}`}>
@@ -5167,6 +5173,11 @@ function openYandexRoute(lat, lon) {
                               ) : null}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
+                              {dmReadState ? (
+                                <div className={`chatDmTicks ${dmReadState === 'read' ? 'isRead' : ''}`} aria-label={dmReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                  {dmReadState === 'read' ? '✓✓' : '✓'}
+                                </div>
+                              ) : null}
                               <div className="cmtActions">
                                 {reactions.map((r) => {
                                   const hasMine = !!r.me;
@@ -5185,7 +5196,8 @@ function openYandexRoute(lat, lon) {
                             </div>
                           </div>
                         );
-                      })}
+                        });
+                      })()}
                     </div>
                     )}
 
