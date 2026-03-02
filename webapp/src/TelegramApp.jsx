@@ -5051,6 +5051,11 @@ function openYandexRoute(lat, lon) {
                             .map(({ p, unread, conv }) => {
                               const lastText = String(conv?.last_message?.body || '').trim();
                               const hasLast = !!lastText;
+                              const peerReadId = Number(conv?.peer_last_read_id || 0);
+                              const lastMsgId = Number(conv?.last_message?.id || 0);
+                              const lastSenderId = Number(conv?.last_message?.sender_tg_id || 0);
+                              const isMyLast = lastMsgId > 0 && String(lastSenderId) === String(me?.tg_id);
+                              const lastReadState = isMyLast ? (lastMsgId <= peerReadId ? 'read' : 'sent') : null;
                               return (
                                 <button key={p.tg_id} className="chatDmItem" type="button" onClick={() => openDmWithPeer(p.tg_id)}>
                                   <div className="chatDmItemMain">
@@ -5060,9 +5065,14 @@ function openYandexRoute(lat, lon) {
                                         <span className="chatDmName">{showName(p)}</span>
                                         {conv?.last_message?.created_at ? <span className="chatDmTime">{formatChatMsgTime(conv.last_message.created_at)}</span> : null}
                                       </div>
-                                      <div className="chatDmSubline">
-                                        <span className="small" style={{ opacity: 0.75 }}>{p.username ? `@${p.username}` : ''}</span>
-                                        {hasLast ? <span className="chatDmPreview">{lastText}</span> : null}
+                                      {p.username ? <div className="chatDmUsername">@{p.username}</div> : null}
+                                      <div className="chatDmSubline chatDmSubline--preview">
+                                        {hasLast ? <span className="chatDmPreview">{lastText}</span> : <span className="chatDmPreview chatDmPreview--empty">Нет сообщений</span>}
+                                        {lastReadState ? (
+                                          <span className={`chatListTicks ${lastReadState === 'read' ? 'isRead' : ''}`} aria-label={lastReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                            {lastReadState === 'read' ? '✓✓' : '✓'}
+                                          </span>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </div>
@@ -5111,7 +5121,10 @@ function openYandexRoute(lat, lon) {
 
                     {(chatTab === 'dm' && !chatActiveCid) ? null : (
                     <div className="chatMessages">
-                      {chatMessages.map((m, idx, arr) => {
+                      {(() => {
+                        const activeConversation = (chatConversations || []).find((c) => String(c.id) === String(chatActiveCid)) || null;
+                        const peerLastReadId = Number(activeConversation?.peer_last_read_id || 0);
+                        return chatMessages.map((m, idx, arr) => {
                         const mine = String(m.sender_tg_id) === String(me?.tg_id);
                         const senderName = mine ? 'Вы' : showName(m.sender || {});
                         const senderPhoto = (m?.sender?.photo_url || '').trim();
@@ -5134,6 +5147,9 @@ function openYandexRoute(lat, lon) {
                         const showHead = !prevSame && !isDmActive;
                         const reactions = Array.isArray(m.reactions) ? m.reactions : [];
                         const replyMsg = m.reply_to_message_id ? arr.find((x) => Number(x.id) === Number(m.reply_to_message_id)) : null;
+                        const dmReadState = (chatTab === 'dm' && mine)
+                          ? (Number(m.id || 0) <= peerLastReadId ? 'read' : 'sent')
+                          : null;
 
                         return (
                           <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!prevSame ? 'tail' : ''}`}>
@@ -5167,6 +5183,11 @@ function openYandexRoute(lat, lon) {
                               ) : null}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
+                              {dmReadState ? (
+                                <div className={`chatDmTicks ${dmReadState === 'read' ? 'isRead' : ''}`} aria-label={dmReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                  {dmReadState === 'read' ? '✓✓' : '✓'}
+                                </div>
+                              ) : null}
                               <div className="cmtActions">
                                 {reactions.map((r) => {
                                   const hasMine = !!r.me;
@@ -5185,7 +5206,8 @@ function openYandexRoute(lat, lon) {
                             </div>
                           </div>
                         );
-                      })}
+                        });
+                      })()}
                     </div>
                     )}
 
