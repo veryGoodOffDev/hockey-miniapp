@@ -251,6 +251,8 @@ const chatPollRef = useRef(null);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
 const chatCloseTimerRef = useRef(null);
+const chatMessagesRef = useRef(null);
+const chatScrollToBottomOnNextPaintRef = useRef(false);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
@@ -772,6 +774,7 @@ async function loadChatMessages({ cid = chatActiveCid, reset = false } = {}) {
     const incoming = r.messages || [];
     if (reset) {
       setChatMessages(incoming);
+      chatScrollToBottomOnNextPaintRef.current = true;
       chatLastMessageIdRef.current = Number(incoming[incoming.length - 1]?.id || 0);
     } else if (incoming.length) {
       setChatMessages((prev) => {
@@ -804,6 +807,7 @@ async function sendChatMessage() {
       setChatDraft('');
       setChatReplyTo(null);
       setChatMessages((prev) => [...prev, r.message]);
+      chatScrollToBottomOnNextPaintRef.current = true;
       chatLastMessageIdRef.current = Number(r.message?.id || chatLastMessageIdRef.current || 0);
       await Promise.all([loadChatConversations(), loadChatUnreadTotal()]);
     }
@@ -1435,6 +1439,16 @@ useEffect(() => {
 }, [chatVisible, chatActiveCid]);
 useEffect(() => {
   if (!chatVisible) return;
+  if (!chatScrollToBottomOnNextPaintRef.current) return;
+  chatScrollToBottomOnNextPaintRef.current = false;
+  requestAnimationFrame(() => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  });
+}, [chatMessages, chatVisible]);
+useEffect(() => {
+  if (!chatVisible) return;
   if (chatTab === 'team') {
     const team = chatConversations.find((c) => c.kind === 'team');
     if (team?.id && String(chatActiveCid) !== String(team.id)) {
@@ -1453,6 +1467,12 @@ useEffect(() => {
     chatLastMessageIdRef.current = 0;
   }
 }, [chatTab, chatVisible, chatConversations]);
+useEffect(() => {
+  if (chatTab !== 'dm' || !chatActiveCid) return;
+  const conv = (chatConversations || []).find((c) => c.kind === 'dm' && String(c.id) === String(chatActiveCid));
+  if (!conv?.peer) return;
+  setChatDmPeer(conv.peer);
+}, [chatTab, chatActiveCid, chatConversations]);
 useEffect(() => {
   if (!chatVisible) return;
   const onKey = (e) => {
@@ -5011,11 +5031,25 @@ function openYandexRoute(lat, lon) {
                     </div>
 
                     <div className="chatTabs">
+                      {(() => {
+                        const teamUnread = Number((chatConversations || []).find((c) => c.kind === 'team')?.unread_count || 0);
+                        const dmUnread = (chatConversations || []).reduce((sum, c) => (c.kind === 'dm' ? sum + Number(c?.unread_count || 0) : sum), 0);
+                        return (
+                          <>
                       <button type="button" className={`btn ${chatTab === 'team' ? '' : 'secondary'}`} onClick={() => {
                         setChatTab('team');
                         setChatDmMenuOpen(false);
-                      }}>Общий</button>
-                      <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>Личный</button>
+                      }}>
+                        Общий
+                        {teamUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
+                      </button>
+                      <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>
+                        Личный
+                        {dmUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
+                      </button>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {chatTab === 'team' ? (
@@ -5120,11 +5154,24 @@ function openYandexRoute(lat, lon) {
                     ) : null}
 
                     {(chatTab === 'dm' && !chatActiveCid) ? null : (
-                    <div className="chatMessages">
+                    <div className="chatMessages" ref={chatMessagesRef}>
                       {(() => {
                         const activeConversation = (chatConversations || []).find((c) => String(c.id) === String(chatActiveCid)) || null;
                         const peerLastReadId = Number(activeConversation?.peer_last_read_id || 0);
-                        return chatMessages.map((m, idx, arr) => {
+                        const dayKey = (ts) => {
+                          const d = ts ? new Date(ts) : null;
+                          const t = d?.getTime?.() || 0;
+                          if (!Number.isFinite(t) || !t) return '';
+                          return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+                        };
+                        const dayLabel = (ts) => {
+                          if (!ts) return '';
+                          const d = new Date(ts);
+                          if (!Number.isFinite(d.getTime())) return '';
+                          return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+                        };
+
+                        return chatMessages.flatMap((m, idx, arr) => {
                         const mine = String(m.sender_tg_id) === String(me?.tg_id);
                         const senderName = mine ? 'Вы' : showName(m.sender || {});
                         const senderPhoto = (m?.sender?.photo_url || '').trim();
@@ -5143,7 +5190,7 @@ function openYandexRoute(lat, lon) {
                         };
                         const prevSame = canGroupWith(prev, m);
                         const nextSame = canGroupWith(m, next);
-                        const showAvatar = !mine && !isDmActive && !prevSame;
+                        const showAvatar = !mine && !isDmActive && !nextSame;
                         const showHead = !prevSame && !isDmActive;
                         const reactions = Array.isArray(m.reactions) ? m.reactions : [];
                         const replyMsg = m.reply_to_message_id ? arr.find((x) => Number(x.id) === Number(m.reply_to_message_id)) : null;
@@ -5151,8 +5198,19 @@ function openYandexRoute(lat, lon) {
                           ? (Number(m.id || 0) <= peerLastReadId ? 'read' : 'sent')
                           : null;
 
-                        return (
-                          <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!prevSame ? 'tail' : ''}`}>
+                        const items = [];
+                        const prevDay = idx > 0 ? dayKey(arr[idx - 1]?.created_at) : '';
+                        const thisDay = dayKey(m.created_at);
+                        if (thisDay && thisDay !== prevDay) {
+                          items.push(
+                            <div key={`day:${thisDay}:${m.id}`} className="chatDayChipWrap">
+                              <div className="chatDayChip">{dayLabel(m.created_at)}</div>
+                            </div>
+                          );
+                        }
+
+                        items.push(
+                          <div key={m.id} className={`cmtRow ${mine ? 'mine' : ''} ${prevSame ? 'contPrev' : ''} ${nextSame ? 'contNext' : ''} ${!nextSame ? 'tail' : ''}`}>
                             {showAvatar ? (
                               <div className="chatMsgAvatar">
                                 <AvatarCircle tgId={m.sender_tg_id} url={senderPhoto} name={senderName} size={30} />
@@ -5171,11 +5229,8 @@ function openYandexRoute(lat, lon) {
                               {showHead ? (
                                 <div className="chatMsgHead">
                                   <div className="small" style={{ opacity: 0.85 }}>{senderName}</div>
-                                  <div className="small" style={{ opacity: 0.65 }}>{formatChatMsgTime(m.created_at)}</div>
                                 </div>
-                              ) : (
-                                <div className="cmtMetaOnly" style={{ marginBottom: 4 }}>{formatChatMsgTime(m.created_at)}</div>
-                              )}
+                              ) : null}
                               {replyMsg ? (
                                 <div className="cmtReplyPreview">
                                   <b>{String(replyMsg.sender_tg_id) === String(me?.tg_id) ? 'Вы' : showName(replyMsg.sender || {})}</b>: {String(replyMsg.body || '').slice(0, 90)}
@@ -5183,11 +5238,6 @@ function openYandexRoute(lat, lon) {
                               ) : null}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
-                              {dmReadState ? (
-                                <div className={`chatDmTicks ${dmReadState === 'read' ? 'isRead' : ''}`} aria-label={dmReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
-                                  {dmReadState === 'read' ? '✓✓' : '✓'}
-                                </div>
-                              ) : null}
                               <div className="cmtActions">
                                 {reactions.map((r) => {
                                   const hasMine = !!r.me;
@@ -5203,9 +5253,18 @@ function openYandexRoute(lat, lon) {
                                   );
                                 })}
                               </div>
+                              <div className="chatMsgFoot">
+                                <span className="cmtMetaOnly">{formatChatTimeOnly(m.created_at)}</span>
+                                {dmReadState ? (
+                                  <div className={`chatDmTicks ${dmReadState === 'read' ? 'isRead' : ''}`} aria-label={dmReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                    {dmReadState === 'read' ? '✓✓' : '✓'}
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         );
+                        return items;
                         });
                       })()}
                     </div>
@@ -5416,25 +5475,16 @@ function showNum(p) {
   if (!Number.isFinite(nn)) return "";
   return `${Math.trunc(nn)}`;
 }
-function formatChatMsgTime(ts) {
+function formatChatTimeOnly(ts) {
   if (!ts) return "";
   const d = new Date(ts);
   const t = d.getTime();
   if (!Number.isFinite(t)) return "";
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) {
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  }
-  return d.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatChatMsgTime(ts) {
+  return formatChatTimeOnly(ts);
 }
 
 function formatLastSeenLabel(ts) {
@@ -5443,7 +5493,9 @@ function formatLastSeenLabel(ts) {
   const t = d.getTime();
   if (!Number.isFinite(t)) return "";
   const diffMs = Date.now() - t;
+  const diffSec = Math.max(0, Math.floor(diffMs / 1000));
   const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffSec <= 70) return "Онлайн";
   if (diffMin <= 0) return "Был только что";
   if (diffMin <= 5) {
     return `Был ${diffMin} ${
