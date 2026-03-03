@@ -4265,7 +4265,7 @@ html[data-theme="light"] .btn.outline.active{
 .chatListTicks.isRead{
   color: #60a5fa;
 }
-.chatUnreadChip{ min-width: 25px; justify-content:center; font-weight: 800; position: absolute; background: #3b82f6; font-size: 12px; display: flex; align-items: center; right: 0; top: -10px; border-radius: 50%;}
+.chatUnreadChip{ min-width: 25px; justify-content:center; font-weight: 800; position: absolute; background: #3b82f6; font-size: 12px; display: flex; align-items: center; right: 0; top: -10px; border-radius: 50%; padding: 5px;}
 .chatDmHeaderWrap{
   position: relative;
   display:flex;
