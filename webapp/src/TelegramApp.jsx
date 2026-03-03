@@ -5168,6 +5168,11 @@ function openYandexRoute(lat, lon) {
                           if (!ts) return '';
                           const d = new Date(ts);
                           if (!Number.isFinite(d.getTime())) return '';
+                          const now = new Date();
+                          const isToday = d.getFullYear() === now.getFullYear()
+                            && d.getMonth() === now.getMonth()
+                            && d.getDate() === now.getDate();
+                          if (isToday) return 'сегодня';
                           return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
                         };
 
@@ -5238,28 +5243,30 @@ function openYandexRoute(lat, lon) {
                               ) : null}
                               <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
-                              <div className="cmtActions">
-                                {reactions.map((r) => {
-                                  const hasMine = !!r.me;
-                                  return (
-                                    <button
-                                      key={r.emoji}
-                                      className={hasMine ? 'reactChip on' : 'reactChip'}
-                                      type="button"
-                                      onClick={(e) => { e.stopPropagation(); toggleChatReaction(m.id, r.emoji, !hasMine); }}
-                                    >
-                                      <Emoji unified={r.emoji} size={16} /> <b>{r.count}</b>
-                                    </button>
-                                  );
-                                })}
-                              </div>
                               <div className="chatMsgFoot">
-                                <span className="cmtMetaOnly">{formatChatTimeOnly(m.created_at)}</span>
-                                {dmReadState ? (
-                                  <div className={`chatDmTicks ${dmReadState === 'read' ? 'isRead' : ''}`} aria-label={dmReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
-                                    {dmReadState === 'read' ? '✓✓' : '✓'}
-                                  </div>
-                                ) : null}
+                                <div className="cmtActions chatMsgReactions">
+                                  {reactions.map((r) => {
+                                    const hasMine = !!r.me;
+                                    return (
+                                      <button
+                                        key={r.emoji}
+                                        className={hasMine ? 'reactChip on' : 'reactChip'}
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); toggleChatReaction(m.id, r.emoji, !hasMine); }}
+                                      >
+                                        <Emoji unified={r.emoji} size={16} /> <b>{r.count}</b>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div className="chatMsgMeta">
+                                  <span className="cmtMetaOnly">{formatChatTimeOnly(m.created_at)}</span>
+                                  {dmReadState ? (
+                                    <div className={`chatDmTicks ${dmReadState === 'read' ? 'isRead' : ''}`} aria-label={dmReadState === 'read' ? 'Прочитано' : 'Отправлено'}>
+                                      {dmReadState === 'read' ? '✓✓' : '✓'}
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           </div>
