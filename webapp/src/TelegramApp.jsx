@@ -250,6 +250,7 @@ const [chatDmMenuOpen, setChatDmMenuOpen] = useState(false);
 const chatPollRef = useRef(null);
 const chatReactionPollRef = useRef(null);
 const chatReactionHashRef = useRef("");
+const chatLastFullSyncAtRef = useRef(0);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
 const chatCloseTimerRef = useRef(null);
@@ -1483,6 +1484,7 @@ useEffect(() => {
     chatPollRef.current = null;
     chatReactionPollRef.current = null;
     chatReactionHashRef.current = "";
+    chatLastFullSyncAtRef.current = 0;
     return;
   }
   if (!playersDir?.length) {
@@ -1494,7 +1496,12 @@ useEffect(() => {
   chatPollRef.current = setInterval(() => {
     if (document.hidden) return;
     loadChatConversations().catch(() => {});
-    if (chatActiveCid) loadChatMessages({ cid: chatActiveCid, reset: false }).catch(() => {});
+    if (chatActiveCid) {
+      const now = Date.now();
+      const needFullSync = now - Number(chatLastFullSyncAtRef.current || 0) >= 9000;
+      loadChatMessages({ cid: chatActiveCid, reset: needFullSync }).catch(() => {});
+      if (needFullSync) chatLastFullSyncAtRef.current = now;
+    }
     loadChatUnreadTotal().catch(() => {});
   }, 2500);
   if (chatReactionPollRef.current) clearInterval(chatReactionPollRef.current);
