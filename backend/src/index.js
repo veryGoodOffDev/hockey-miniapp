@@ -7739,7 +7739,7 @@ app.get('/api/chat/conversations', async (req, res) => {
     let peersMap = new Map();
     if (peerIds.length) {
       const pr = await q(
-        `SELECT tg_id, display_name, first_name, username, photo_url, avatar_file_id, updated_at
+        `SELECT tg_id, display_name, first_name, username, photo_url, avatar_file_id, updated_at, last_seen_at
          FROM players
          WHERE tg_id = ANY($1::bigint[])`,
         [Array.from(new Set(peerIds))]

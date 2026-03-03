@@ -4194,6 +4194,17 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .commentComposer__input{ background: #121a2a; border-color: rgba(255,255,255,.14); color: #eaf1ff; }
 .chatDrawerHead{ display:flex; gap: 25px; align-items:center; margin-bottom: 2px; }
 .chatTabs{ display:flex; gap:8px; }
+.chatTabs .btn{ position: relative; }
+.chatTabDot{
+  position:absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(11,18,32,.95);
+}
 .chatDmList{
   min-height: 0;              /* важно, чтобы overflow работал */
   flex: 1;                    /* список занимает остаток места */
@@ -4295,6 +4306,24 @@ html[data-theme="light"] .btn.outline.active{
   justify-content:center;
 }
 .chatMessages{ overflow:auto; padding:2px 4px 2px 0; }
+.chatDayChipWrap{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  margin: 6px 0 8px;
+}
+.chatDayChip{
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(10,18,32,.9);
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(234,241,255,.92);
+}
 .chatMsgAvatar{ width: 32px; display:flex; justify-content:center; align-items:flex-end; }
 .chatMsgHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 4px; }
 .chatDrawer .cmtRow{ margin-top: 4px; }
@@ -4303,8 +4332,16 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .reactChip{ background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.16); color:#eaf1ff; }
 .chatDrawer .reactChip.on{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #3b82f6 22%, transparent); }
 .chatDrawer .iconBtn{ background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.16); color:#eaf1ff; }
+.chatMsgFoot{
+  margin-top: 6px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:flex-end;
+  gap: 8px;
+}
+.chatMsgFoot .cmtMetaOnly{ margin: 0; opacity: .68; }
 .chatDmTicks{
-  margin-top: 4px;
+  margin-top: 0;
   font-size: 12px;
   line-height: 1;
   font-weight: 800;
