@@ -4197,10 +4197,10 @@ html[data-theme="light"] .btn.outline.active{
 .chatTabs .btn{ position: relative; }
 .chatTabDot{
   position:absolute;
-  top: 6px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
+  top: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #3b82f6;
   box-shadow: 0 0 0 2px rgba(11,18,32,.95);
@@ -4243,6 +4243,7 @@ html[data-theme="light"] .btn.outline.active{
   text-align: left;
   margin: 10px 0;
   width: 100%;
+  position: relative;
 }
 .chatDmItemMain{ display:flex; align-items:center; gap:10px; min-width: 0; flex: 1; }
 .chatDmMeta{ min-width: 0; flex: 1; display:grid; gap:2px; }
@@ -4264,7 +4265,7 @@ html[data-theme="light"] .btn.outline.active{
 .chatListTicks.isRead{
   color: #60a5fa;
 }
-.chatUnreadChip{ min-width: 28px; justify-content:center; font-weight: 800; }
+.chatUnreadChip{ min-width: 25px; justify-content:center; font-weight: 800; position: absolute; background: #3b82f6; font-size: 12px; display: flex; align-items: center; right: 0; top: -10px;}
 .chatDmHeaderWrap{
   position: relative;
   display:flex;
