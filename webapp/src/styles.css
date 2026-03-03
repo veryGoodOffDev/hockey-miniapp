@@ -4294,7 +4294,7 @@ html[data-theme="light"] .btn.outline.active{
   align-items:center;
   justify-content:center;
 }
-.chatMessages{ display:grid; gap:4px; overflow:auto; padding:2px 4px 2px 0; }
+.chatMessages{ overflow:auto; padding:2px 4px 2px 0; }
 .chatMsgAvatar{ width: 32px; display:flex; justify-content:center; align-items:flex-end; }
 .chatMsgHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 4px; }
 .chatDrawer .cmtRow{ margin-top: 4px; }
