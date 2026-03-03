@@ -4337,8 +4337,18 @@ html[data-theme="light"] .btn.outline.active{
   margin-top: 6px;
   display:flex;
   align-items:flex-end;
-  justify-content:flex-end;
+  justify-content:space-between;
   gap: 8px;
+}
+.chatMsgReactions{
+  margin-top: 0;
+  flex: 1 1 auto;
+}
+.chatMsgMeta{
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 6px;
+  white-space: nowrap;
 }
 .chatMsgFoot .cmtMetaOnly{ margin: 0; opacity: .68; }
 .chatDmTicks{
