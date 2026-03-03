@@ -248,10 +248,14 @@ const [swipeState, setSwipeState] = useState({ key: null, startX: 0, startY: 0, 
 const suppressCommentTapUntilRef = useRef(0);
 const [chatDmMenuOpen, setChatDmMenuOpen] = useState(false);
 const chatPollRef = useRef(null);
+const chatReactionPollRef = useRef(null);
+const chatReactionHashRef = useRef("");
+const chatLastFullSyncAtRef = useRef(0);
 const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
 const chatCloseTimerRef = useRef(null);
 const chatMessagesRef = useRef(null);
+const chatMessagesSnapshotRef = useRef([]);
 const chatScrollToBottomOnNextPaintRef = useRef(false);
 const chatScrollLockRef = useRef(null);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
@@ -742,6 +746,29 @@ function chatPeerSearchValue(p) {
     .join(" ")
     .toLowerCase();
 }
+async function pollChatReactions() {
+  const ids = (chatMessagesSnapshotRef.current || []).map((m) => Number(m?.id || 0)).filter((v) => Number.isFinite(v) && v > 0);
+  if (!ids.length) {
+    chatReactionHashRef.current = "";
+    return;
+  }
+
+  const r = await apiGet(`/api/chat/messages/reactions?ids=${ids.join(',')}`);
+  if (!r?.ok || !Array.isArray(r.items)) return;
+
+  const map = new Map((r.items || []).map((it) => [Number(it.id), Array.isArray(it.reactions) ? it.reactions : []]));
+  const nextHash = JSON.stringify((r.items || []).map((it) => ({ id: Number(it.id), reactions: it.reactions || [] })));
+  if (nextHash === chatReactionHashRef.current) return;
+
+  chatReactionHashRef.current = nextHash;
+  setChatMessages((prev) => (prev || []).map((m) => {
+    const rid = Number(m?.id || 0);
+    if (!map.has(rid)) return m;
+    const nextReactions = map.get(rid) || [];
+    return { ...m, reactions: nextReactions };
+  }));
+}
+
 async function loadChatUnreadTotal() {
   try {
     const r = await apiGet('/api/chat/unread-total');
@@ -1447,9 +1474,17 @@ useEffect(() => {
   };
 }, [chatVisible]);
 useEffect(() => {
+  chatMessagesSnapshotRef.current = chatMessages || [];
+}, [chatMessages]);
+
+useEffect(() => {
   if (!chatVisible) {
     if (chatPollRef.current) clearInterval(chatPollRef.current);
+    if (chatReactionPollRef.current) clearInterval(chatReactionPollRef.current);
     chatPollRef.current = null;
+    chatReactionPollRef.current = null;
+    chatReactionHashRef.current = "";
+    chatLastFullSyncAtRef.current = 0;
     return;
   }
   if (!playersDir?.length) {
@@ -1461,12 +1496,24 @@ useEffect(() => {
   chatPollRef.current = setInterval(() => {
     if (document.hidden) return;
     loadChatConversations().catch(() => {});
-    if (chatActiveCid) loadChatMessages({ cid: chatActiveCid, reset: false }).catch(() => {});
+    if (chatActiveCid) {
+      const now = Date.now();
+      const needFullSync = now - Number(chatLastFullSyncAtRef.current || 0) >= 9000;
+      loadChatMessages({ cid: chatActiveCid, reset: needFullSync }).catch(() => {});
+      if (needFullSync) chatLastFullSyncAtRef.current = now;
+    }
     loadChatUnreadTotal().catch(() => {});
   }, 2500);
+  if (chatReactionPollRef.current) clearInterval(chatReactionPollRef.current);
+  chatReactionPollRef.current = setInterval(() => {
+    if (document.hidden || !chatActiveCid) return;
+    pollChatReactions().catch(() => {});
+  }, 3000);
   return () => {
     if (chatPollRef.current) clearInterval(chatPollRef.current);
+    if (chatReactionPollRef.current) clearInterval(chatReactionPollRef.current);
     chatPollRef.current = null;
+    chatReactionPollRef.current = null;
   };
 }, [chatVisible, chatActiveCid]);
 useEffect(() => {

@@ -7940,6 +7940,74 @@ app.post('/api/chat/read', async (req, res) => {
   }
 });
 
+app.get('/api/chat/messages/reactions', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const raw = String(req.query?.ids || '');
+    const ids = Array.from(new Set(
+      raw
+        .split(',')
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isFinite(v) && v > 0)
+    )).slice(0, 120);
+
+    if (!ids.length) return res.json({ ok: true, items: [] });
+
+    const is_admin = await isAdminId(user.id);
+    const accessRows = await q(
+      `SELECT m.id, c.id AS cid, c.kind, c.user_a, c.user_b
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id = m.conversation_id
+       WHERE m.id = ANY($1::bigint[])
+       LIMIT 200`,
+      [ids]
+    );
+
+    const allowed = new Set();
+    for (const row of (accessRows.rows || [])) {
+      const access = await canAccessChatConversation(row, user, is_admin, req, res);
+      if (access.ok) allowed.add(Number(row.id));
+    }
+
+    if (!allowed.size) return res.json({ ok: true, items: [] });
+
+    const allowedIds = Array.from(allowed);
+    const rr = await q(
+      `SELECT
+        m.id AS message_id,
+        COALESCE(rx.reactions, '[]'::jsonb) AS reactions
+      FROM chat_messages m
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object('emoji', t.reaction, 'count', t.cnt, 'me', t.me)
+          ORDER BY t.reaction
+        ) AS reactions
+        FROM (
+          SELECT reaction, COUNT(*)::int AS cnt, BOOL_OR(user_tg_id = $2) AS me
+          FROM chat_message_reactions
+          WHERE message_id = m.id
+          GROUP BY reaction
+        ) t
+      ) rx ON TRUE
+      WHERE m.id = ANY($1::bigint[])
+      ORDER BY m.id ASC`,
+      [allowedIds, user.id]
+    );
+
+    const items = (rr.rows || []).map((row) => ({
+      id: Number(row.message_id),
+      reactions: Array.isArray(row.reactions) ? row.reactions : [],
+    }));
+
+    res.json({ ok: true, items });
+  } catch (e) {
+    console.error('GET /api/chat/messages/reactions failed:', e);
+    res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
 app.post('/api/chat/messages', async (req, res) => {
   try {
     const user = req.webappUser || requireWebAppAuth(req, res);
