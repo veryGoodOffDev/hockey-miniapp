@@ -253,6 +253,7 @@ const chatLoadInFlightRef = useRef(false);
 const chatCloseTimerRef = useRef(null);
 const chatMessagesRef = useRef(null);
 const chatScrollToBottomOnNextPaintRef = useRef(false);
+const chatScrollLockRef = useRef(null);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
@@ -725,6 +726,15 @@ function onChatDrawerTransitionEnd(e) {
   setChatVisible(false);
 }
 
+function unlockBackgroundScroll() {
+  const prev = chatScrollLockRef.current;
+  if (!prev) return;
+  document.body.style.overflow = prev.bodyOverflow;
+  document.body.style.touchAction = prev.bodyTouchAction;
+  document.documentElement.style.overflow = prev.htmlOverflow;
+  chatScrollLockRef.current = null;
+}
+
 function chatPeerSearchValue(p) {
 
   return [p?.display_name, p?.first_name, p?.last_name, p?.username ? `@${p.username}` : ""]
@@ -898,9 +908,12 @@ async function applyCommentReactionFromPicker(payload) {
 async function applyChatReactionFromPicker(payload) {
   const emoji = resolvePickedEmoji(payload);
   if (!emoji || !chatActionFor) return;
-  const selected = chatMessages.find((x) => Number(x.id) === Number(chatActionFor));
+  const messageId = chatActionFor;
+  const selected = chatMessages.find((x) => Number(x.id) === Number(messageId));
   const found = (selected?.reactions || []).find((r) => r.emoji === emoji);
-  await toggleChatReaction(chatActionFor, emoji, !(found?.me));
+  await toggleChatReaction(messageId, emoji, !(found?.me));
+  setChatReactPickerOpenFor(null);
+  setChatActionFor(null);
 }
 
 async function toggleChatPin(messageId, pin) {
@@ -1416,6 +1429,25 @@ useEffect(() => {
 }, []);
 useEffect(() => {
   if (!chatVisible) {
+    unlockBackgroundScroll();
+    return;
+  }
+  if (!chatScrollLockRef.current) {
+    chatScrollLockRef.current = {
+      bodyOverflow: document.body.style.overflow,
+      bodyTouchAction: document.body.style.touchAction,
+      htmlOverflow: document.documentElement.style.overflow,
+    };
+  }
+  document.body.style.overflow = 'hidden';
+  document.body.style.touchAction = 'none';
+  document.documentElement.style.overflow = 'hidden';
+  return () => {
+    unlockBackgroundScroll();
+  };
+}, [chatVisible]);
+useEffect(() => {
+  if (!chatVisible) {
     if (chatPollRef.current) clearInterval(chatPollRef.current);
     chatPollRef.current = null;
     return;
@@ -1483,6 +1515,7 @@ useEffect(() => {
 }, [chatVisible]);
 useEffect(() => {
   return () => {
+    unlockBackgroundScroll();
     if (chatCloseTimerRef.current) {
       clearTimeout(chatCloseTimerRef.current);
       chatCloseTimerRef.current = null;
@@ -5386,7 +5419,11 @@ function openYandexRoute(lat, lon) {
                           <button
                             key={emo}
                             className={has ? "reactPickBtn active" : "reactPickBtn"}
-                            onClick={() => toggleChatReaction(chatActionFor, emo, !has).catch(() => {})}
+                            onClick={async () => {
+                              await toggleChatReaction(chatActionFor, emo, !has).catch(() => {});
+                              setChatReactPickerOpenFor(null);
+                              setChatActionFor(null);
+                            }}
                           >
                             {emo}
                           </button>
