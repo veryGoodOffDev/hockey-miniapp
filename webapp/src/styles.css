@@ -2614,7 +2614,6 @@ html[data-theme="light"] .btn.outline.active{
 
 .cmtBubble{
   max-width: min(520px, 78%);
-  border: 1px solid var(--border);
   background: color-mix(in srgb, var(--card-bg) 92%, black);
   border-radius: 18px;
   padding: 10px 12px;
@@ -2622,6 +2621,7 @@ html[data-theme="light"] .btn.outline.active{
   touch-action: pan-y;
   -webkit-user-select: none;
   user-select: none;
+  min-width: 130px;
 }
 
 .cmtRow.mine .cmtBubble{
@@ -2675,14 +2675,12 @@ html[data-theme="light"] .btn.outline.active{
 .cmtRow:not(.mine) .cmtBubble::after{
   content:"";
   position:absolute;
-  left:-6px;
-  bottom:12px;
+  left:-2px;
+  bottom:9px;
   width:12px;
   height:12px;
   background: inherit;
   transform: rotate(45deg);
-  border-left:1px solid var(--border);
-  border-bottom:1px solid var(--border);
   border-bottom-left-radius: 3px;
 }
 
