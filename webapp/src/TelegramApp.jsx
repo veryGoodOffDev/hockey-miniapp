@@ -799,7 +799,7 @@ async function loadChatConversations() {
   }
   return list;
 }
-async function loadChatMessages({ cid = chatActiveCid, reset = false } = {}) {
+async function loadChatMessages({ cid = chatActiveCid, reset = false, scrollOnReset = true } = {}) {
   if (!cid) return;
   if (chatLoadInFlightRef.current) return;
   const targetCid = Number(cid);
@@ -811,7 +811,7 @@ async function loadChatMessages({ cid = chatActiveCid, reset = false } = {}) {
     const incoming = r.messages || [];
     if (reset) {
       setChatMessages(incoming);
-      chatScrollToBottomOnNextPaintRef.current = true;
+      if (scrollOnReset) chatScrollToBottomOnNextPaintRef.current = true;
       chatLastMessageIdRef.current = Number(incoming[incoming.length - 1]?.id || 0);
     } else if (incoming.length) {
       setChatMessages((prev) => {
@@ -1499,7 +1499,7 @@ useEffect(() => {
     if (chatActiveCid) {
       const now = Date.now();
       const needFullSync = now - Number(chatLastFullSyncAtRef.current || 0) >= 9000;
-      loadChatMessages({ cid: chatActiveCid, reset: needFullSync }).catch(() => {});
+      loadChatMessages({ cid: chatActiveCid, reset: needFullSync, scrollOnReset: !needFullSync }).catch(() => {});
       if (needFullSync) chatLastFullSyncAtRef.current = now;
     }
     loadChatUnreadTotal().catch(() => {});
