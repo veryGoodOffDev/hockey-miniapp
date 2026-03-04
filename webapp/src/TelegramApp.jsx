@@ -5187,7 +5187,8 @@ function openYandexRoute(lat, lon) {
                       </button>
                       ) : null}
                       {canUseSandboxTab ? (
-                      <button type="button" className={`btn ${chatTab === 'sandbox' ? '' : 'secondary'}`} onClick={() => {
+                        className={`btn ${chatTab === 'sandbox' ? '' : 'secondary'} chatTabSandbox`}
+                        onClick={() => {
                         setChatTab('sandbox');
                         setChatDmMenuOpen(false);
                       }}>
