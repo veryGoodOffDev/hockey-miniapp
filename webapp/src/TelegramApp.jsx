@@ -5180,6 +5180,12 @@ function openYandexRoute(lat, lon) {
                         {teamUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
                       </button>
                       ) : null}
+                      {canUseDmTab ? (
+                      <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>
+                        Личный
+                        {dmUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
+                      </button>
+                      ) : null}
                       {canUseSandboxTab ? (
                       <button type="button" className={`btn ${chatTab === 'sandbox' ? '' : 'secondary'}`} onClick={() => {
                         setChatTab('sandbox');
@@ -5187,12 +5193,6 @@ function openYandexRoute(lat, lon) {
                       }}>
                         Песочница
                         {sandboxUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
-                      </button>
-                      ) : null}
-                      {canUseDmTab ? (
-                      <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>
-                        Личный
-                        {dmUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
                       </button>
                       ) : null}
                           </>
