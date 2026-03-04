@@ -998,8 +998,62 @@ async function setAttend(pOrId, nextStatus) {
 
         .guestFormGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .guestFormGrid .full{ grid-column: 1 / -1; }
+
+        .gsRemCard{
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          align-items:center;
+          border:1px solid var(--border);
+          border-radius:12px;
+          padding:9px 10px;
+          background: color-mix(in srgb, var(--card-bg) 92%, var(--bg));
+        }
+        .gsRemControls{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .gsRemMeta{
+          display:flex;
+          flex-direction:column;
+          gap:2px;
+          font-size:12px;
+          line-height:1.25;
+          opacity:.9;
+          min-width: 170px;
+        }
+        .gsRemActions{ display:flex; gap:6px; margin-left:auto; }
+        .gsSwitch{ display:inline-flex; align-items:center; gap:8px; user-select:none; cursor:pointer; }
+        .gsSwitch input{ position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
+        .gsSwitchTrack{
+          position:relative;
+          width:42px;
+          height:24px;
+          border-radius:999px;
+          border:1px solid color-mix(in srgb, var(--border) 85%, transparent);
+          background: color-mix(in srgb, var(--bg) 88%, black);
+          transition: background .18s ease, border-color .18s ease;
+        }
+        .gsSwitchTrack::after{
+          content:"";
+          position:absolute;
+          top:2px;
+          left:2px;
+          width:18px;
+          height:18px;
+          border-radius:50%;
+          background:#fff;
+          box-shadow: 0 1px 3px rgba(0,0,0,.35);
+          transition: transform .18s ease;
+        }
+        .gsSwitch input:checked + .gsSwitchTrack{
+          background: color-mix(in srgb, var(--tg-button-color, #16a34a) 75%, #0f172a);
+          border-color: transparent;
+        }
+        .gsSwitch input:checked + .gsSwitchTrack::after{ transform: translateX(18px); }
+        .gsSwitch input:disabled + .gsSwitchTrack{ opacity:.45; }
+        .gsSwitchText{ font-size:12px; font-weight:700; opacity:.9; }
+
         @media (max-width: 520px){
           .guestFormGrid{ grid-template-columns:1fr; }
+          .gsRemActions{ width:100%; margin-left:0; justify-content:flex-end; }
         }
       `}</style>
 
@@ -1040,24 +1094,16 @@ async function setAttend(pOrId, nextStatus) {
               {reminders.map((r) => (
                 <div
                   key={keyOfRem(r)}
-                  className="row"
-                  style={{
-                    gap: 10,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    padding: 10,
-                    background: "var(--card-bg)",
-                  }}
+                  className="gsRemCard"
                 >
-                  <label className="row" style={{ gap: 8, alignItems: "center" }}>
+                  <label className="gsSwitch" title="Включить напоминание">
                     <input
                       type="checkbox"
                       checked={!!r.enabled}
                       onChange={(e) => updateReminderRow(r, { enabled: e.target.checked })}
                     />
-                    <span>Вкл</span>
+                    <span className="gsSwitchTrack" />
+                    <span className="gsSwitchText">Вкл</span>
                   </label>
 
                   <input
@@ -1069,17 +1115,18 @@ async function setAttend(pOrId, nextStatus) {
                     disabled={!r.enabled}
                   />
 
-                  <label className="row" style={{ gap: 8, alignItems: "center" }}>
+                  <label className="gsSwitch" title="Закрепить сообщение напоминания">
                     <input
                       type="checkbox"
                       checked={r.pin !== false}
                       onChange={(e) => updateReminderRow(r, { pin: e.target.checked })}
                       disabled={!r.enabled}
                     />
-                    <span>Закрепить</span>
+                    <span className="gsSwitchTrack" />
+                    <span className="gsSwitchText">Закрепить</span>
                   </label>
 
-                  <div className="small" style={{ opacity: 0.85 }}>
+                  <div className="gsRemMeta">
                     {r.sent_at ? (
                       <>✅ Отправлено: <b>{formatWhen(r.sent_at)}</b></>
                     ) : (
@@ -1090,7 +1137,7 @@ async function setAttend(pOrId, nextStatus) {
                     ) : null}
                   </div>
 
-                  <div className="row" style={{ gap: 8, marginLeft: "auto" }}>
+                  <div className="gsRemActions">
                     {r.id && r.sent_at ? (
                       <button className="btn secondary" type="button" onClick={() => resetReminderSent(r)} disabled={r.saving || opBusy}>
                         ↻ Сбросить
