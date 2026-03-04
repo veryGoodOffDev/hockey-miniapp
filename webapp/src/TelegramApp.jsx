@@ -16,6 +16,7 @@ import player from "./player.png";
 import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
 import usePullToRefresh from "./usePullToRefresh.js";
+import { isPwaPushSupported, canRequestPushOnIOS, enablePushNotifications, syncAppBadge } from "./pwaPush.js";
 const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 const JERSEY_COLOR_OPTS = [
@@ -226,6 +227,10 @@ const [chatOpen, setChatOpen] = useState(false);
 const [chatVisible, setChatVisible] = useState(false);
 const [chatTab, setChatTab] = useState("team");
 const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
+const [pushBusy, setPushBusy] = useState(false);
+const [pushStatus, setPushStatus] = useState(() => (typeof Notification !== "undefined" ? Notification.permission : "default"));
+const pushSupported = isPwaPushSupported();
+const iosPushReady = canRequestPushOnIOS();
 const [chatConversations, setChatConversations] = useState([]);
 const [chatSandboxPlayers, setChatSandboxPlayers] = useState([]);
 const [chatActiveCid, setChatActiveCid] = useState(null);
@@ -325,6 +330,29 @@ const onChanged = async ({ label, gameId, action } = {}) => {
   }
   await refreshAll(gameId ?? selectedGameId);
 };
+
+const handleEnablePush = async () => {
+  if (!pushSupported) return;
+  setPushBusy(true);
+  try {
+    await enablePushNotifications();
+    setPushStatus('granted');
+    await tgSafeAlert('✅ Уведомления включены');
+  } catch (e) {
+    const msg = String(e?.message || e || 'push_error');
+    if (msg === 'ios_add_to_home_screen_required') {
+      await tgSafeAlert('На iOS push работает только для приложения, добавленного на Home Screen.');
+    } else if (msg === 'notification_permission_denied') {
+      setPushStatus('denied');
+      await tgSafeAlert('Разрешение на уведомления не выдано.');
+    } else {
+      await tgSafeAlert('Не удалось включить push-уведомления.');
+    }
+  } finally {
+    setPushBusy(false);
+  }
+};
+
 const handleBottomNavSelect = (nextTab) => {
   if (nextTab === "game") {
     setTab("game");
@@ -782,6 +810,42 @@ async function loadChatUnreadTotal() {
     if (r?.ok) setChatUnreadTotal(Number(r.total || 0));
   } catch {}
 }
+useEffect(() => {
+  syncAppBadge(chatUnreadTotal).catch(() => {});
+  const baseTitle = 'Mighty Sheep App';
+  document.title = chatUnreadTotal > 0 ? `(${chatUnreadTotal}) ${baseTitle}` : baseTitle;
+}, [chatUnreadTotal]);
+
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search || '');
+  const shouldOpenChat = params.get('chat') === '1';
+  const cid = Number(params.get('cid') || 0);
+  if (!shouldOpenChat || !Number.isFinite(cid) || cid <= 0) return;
+
+  setChatTab('team');
+  setChatActiveCid(cid);
+  openChatDrawer();
+}, []);
+
+useEffect(() => {
+  const onSwMessage = (event) => {
+    const url = String(event?.data?.url || '');
+    if (!url) return;
+    try {
+      const parsed = new URL(url, window.location.origin);
+      const chat = parsed.searchParams.get('chat');
+      const cid = Number(parsed.searchParams.get('cid') || 0);
+      if (chat === '1' && cid > 0) {
+        setChatTab('team');
+        setChatActiveCid(cid);
+        openChatDrawer();
+      }
+    } catch {}
+  };
+  navigator.serviceWorker?.addEventListener?.('message', onSwMessage);
+  return () => navigator.serviceWorker?.removeEventListener?.('message', onSwMessage);
+}, []);
+
 async function loadChatConversations() {
   const r = await apiGet('/api/chat/conversations');
   if (!r?.ok) return [];
@@ -3997,7 +4061,25 @@ function openYandexRoute(lat, lon) {
           {profileView === "me" && (
             <div className="card">
               <h2>Мой профиль</h2>
-              <div className="small">Заполни один раз — дальше просто отмечайся.</div>
+                            <div className="small">Заполни один раз — дальше просто отмечайся.</div>
+              {pushSupported ? (
+                <div className="card" style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 700 }}>🔔 Web Push уведомления</div>
+                  {!iosPushReady ? (
+                    <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+                      На iOS уведомления доступны только после добавления веб-приложения на Home Screen.
+                    </div>
+                  ) : null}
+                  <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+                    Статус: {pushStatus === 'granted' ? 'включены' : pushStatus === 'denied' ? 'запрещены' : 'не включены'}
+                  </div>
+                  {pushStatus !== 'granted' ? (
+                    <button type="button" className="btn" style={{ marginTop: 8 }} disabled={pushBusy || !iosPushReady} onClick={handleEnablePush}>
+                      {pushBusy ? 'Подключаем…' : 'Включить уведомления'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <div style={{ marginTop: 10 }}>
                 <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
                 <input
