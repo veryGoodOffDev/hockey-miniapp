@@ -7665,7 +7665,8 @@ app.get('/api/chat/unread-total', async (req, res) => {
     await ensurePlayer(user);
 
     const is_admin = await isAdminId(user.id);
-    if (!is_admin) {
+    const myState = await getPlayerSandboxState(user.id);
+    if (!is_admin && !myState.isSandboxed) {
       if (!(await requireGroupMember(req, res, user))) return;
     }
 
@@ -7673,7 +7674,6 @@ app.get('/api/chat/unread-total', async (req, res) => {
     const sandboxConv = await ensureSandboxConversation();
     const teamId = Number(teamConv?.id || 0);
     const sandboxId = Number(sandboxConv?.id || 0);
-    const myState = await getPlayerSandboxState(user.id);
 
     const r = await q(
       `WITH convs AS (
@@ -7710,7 +7710,8 @@ app.get('/api/chat/conversations', async (req, res) => {
     await ensurePlayer(user);
 
     const is_admin = await isAdminId(user.id);
-    if (!is_admin) {
+    const myState = await getPlayerSandboxState(user.id);
+    if (!is_admin && !myState.isSandboxed) {
       if (!(await requireGroupMember(req, res, user))) return;
     }
 
@@ -7718,7 +7719,6 @@ app.get('/api/chat/conversations', async (req, res) => {
     const sandboxConv = await ensureSandboxConversation();
     const teamId = Number(teamConv?.id || 0);
     const sandboxId = Number(sandboxConv?.id || 0);
-    const myState = await getPlayerSandboxState(user.id);
 
     const rr = await q(
       `WITH convs AS (
@@ -7813,7 +7813,24 @@ app.get('/api/chat/conversations', async (req, res) => {
       };
     });
 
-    res.json({ ok: true, conversations });
+    let sandbox_players = undefined;
+    if (is_admin) {
+      const sr = await q(
+        `SELECT tg_id, display_name, first_name, username, photo_url, avatar_file_id, updated_at, disabled, player_kind
+         FROM players
+         WHERE is_admin IS DISTINCT FROM TRUE
+           AND (disabled IS TRUE OR LOWER(COALESCE(player_kind, ''))='web')
+         ORDER BY disabled DESC, updated_at DESC NULLS LAST, tg_id DESC`
+      );
+      const baseUrl = getPublicBaseUrl(req);
+      sandbox_players = (sr.rows || []).map((row) => ({
+        ...presentPlayer(row, baseUrl),
+        disabled: !!row.disabled,
+        player_kind: row.player_kind || null,
+      }));
+    }
+
+    res.json({ ok: true, conversations, sandbox_players });
   } catch (e) {
     console.error('GET /api/chat/conversations failed:', e);
     res.status(500).json({ ok: false, reason: 'server_error' });
@@ -7827,7 +7844,8 @@ app.post('/api/chat/dm/open', async (req, res) => {
     await ensurePlayer(user);
 
     const is_admin = await isAdminId(user.id);
-    if (!is_admin) {
+    const myState = await getPlayerSandboxState(user.id);
+    if (!is_admin && !myState.isSandboxed) {
       if (!(await requireGroupMember(req, res, user))) return;
     }
 
@@ -7841,7 +7859,6 @@ app.post('/api/chat/dm/open', async (req, res) => {
     const peerKind = String(pr.rows[0].player_kind || '').toLowerCase();
     if (peerKind === 'web') return res.status(403).json({ ok: false, reason: 'peer_not_found' });
 
-    const myState = await getPlayerSandboxState(user.id);
     const peerState = await getPlayerSandboxState(peer);
     if (myState.isSandboxed && !peerState.isAdmin) {
       return res.status(403).json({ ok: false, reason: 'sandbox_only_admin_dm' });

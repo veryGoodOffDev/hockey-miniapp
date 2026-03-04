@@ -227,6 +227,7 @@ const [chatVisible, setChatVisible] = useState(false);
 const [chatTab, setChatTab] = useState("team");
 const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
 const [chatConversations, setChatConversations] = useState([]);
+const [chatSandboxPlayers, setChatSandboxPlayers] = useState([]);
 const [chatActiveCid, setChatActiveCid] = useState(null);
 const [chatMessages, setChatMessages] = useState([]);
 const [chatDraft, setChatDraft] = useState("");
@@ -786,6 +787,7 @@ async function loadChatConversations() {
   if (!r?.ok) return [];
   const list = r.conversations || [];
   setChatConversations(list);
+  setChatSandboxPlayers(Array.isArray(r.sandbox_players) ? r.sandbox_players : []);
   if (!canUseTeamTab && !canUseDmTab && canUseSandboxTab && chatTab !== 'sandbox') {
     setChatTab('sandbox');
   }
@@ -5202,7 +5204,15 @@ function openYandexRoute(lat, lon) {
                       <div className="chatSectionTitle">Общий чат команды</div>
                     ) : null}
                     {chatTab === 'sandbox' ? (
-                      <div className="chatSectionTitle">{isAdmin ? 'Песочница' : 'Чат с модератором'}</div>
+                      <>
+                        <div className="chatSectionTitle">{isAdmin ? 'Песочница' : 'Чат с модератором'}</div>
+                        {isAdmin ? (
+                          <div className="small" style={{ opacity: 0.78, marginBottom: 8 }}>
+                            В песочнице: {chatSandboxPlayers.length}
+                            {chatSandboxPlayers.length ? ` — ${chatSandboxPlayers.map((p) => showName(p)).join(', ')}` : ''}
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
 
                     {chatTab === 'dm' && !chatActiveCid ? (
