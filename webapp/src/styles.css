@@ -4279,6 +4279,9 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawer .commentComposer__input{ background: #121a2a; border-color: rgba(255,255,255,.14); color: #eaf1ff; }
 .chatDrawerHead{ display:flex; gap: 25px; align-items:center; margin-bottom: 2px; }
 .chatTabs{ display:flex; gap:8px; }
+.chatTabSandbox{
+  margin-left:auto;
+}
 .chatTabs .btn{ position: relative; }
 .chatTabDot{
   position:absolute;
