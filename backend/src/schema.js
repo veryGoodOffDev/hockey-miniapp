@@ -793,38 +793,6 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
   await q(`CREATE INDEX IF NOT EXISTS idx_cmr_message ON chat_message_reactions(message_id);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_cmr_user ON chat_message_reactions(user_tg_id);`);
 
-
-  /** ===================== WEB PUSH SUBSCRIPTIONS ===================== */
-  await q(`
-    CREATE TABLE IF NOT EXISTS web_push_subscriptions (
-      id BIGSERIAL PRIMARY KEY,
-      user_tg_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
-      team_key TEXT NOT NULL DEFAULT 'main',
-      device_id TEXT NOT NULL DEFAULT '',
-      endpoint TEXT NOT NULL,
-      p256dh TEXT NOT NULL,
-      auth TEXT NOT NULL,
-      user_agent TEXT NOT NULL DEFAULT '',
-      last_unread_count INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(endpoint)
-    );
-  `);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS user_tg_id BIGINT;`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS team_key TEXT NOT NULL DEFAULT 'main';`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS device_id TEXT NOT NULL DEFAULT '';`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS endpoint TEXT;`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS p256dh TEXT;`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS auth TEXT;`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS last_unread_count INT NOT NULL DEFAULT 0;`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
-  await q(`ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
-  await q(`CREATE UNIQUE INDEX IF NOT EXISTS web_push_subscriptions_endpoint_uq ON web_push_subscriptions(endpoint);`);
-  await q(`CREATE INDEX IF NOT EXISTS web_push_subscriptions_user_idx ON web_push_subscriptions(user_tg_id);`);
-  await q(`CREATE INDEX IF NOT EXISTS web_push_subscriptions_team_idx ON web_push_subscriptions(team_key);`);
-
     /** ===================== JERSEY ORDERS (BATCHES) ===================== */
 
   await q(`
