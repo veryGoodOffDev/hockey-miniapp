@@ -194,7 +194,7 @@ useEffect(() => {
         const ok = confirm("Вы уверены, что игроку нужно ограничить доступ?");
         if (!ok) return d;
       }
-      return { ...d, disabled: !isActiveNow };
+      return { ...d, disabled: isActiveNow };
     });
   }
 
