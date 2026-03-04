@@ -125,6 +125,11 @@ function updateReminderRow(row, patch) {
   setReminders((prev) => prev.map((x) => (keyOfRem(x) === k ? { ...x, ...patch } : x)));
 }
 
+function toggleReminderExpanded(row) {
+  const k = keyOfRem(row);
+  setReminders((prev) => prev.map((x) => (keyOfRem(x) === k ? { ...x, expanded: !x.expanded } : x)));
+}
+
 
 
   // guests
@@ -405,6 +410,7 @@ async function loadRemindersForGame(gameId) {
       _key: x.id, // для React key
       local_at: isoToLocalDT(x.remind_at),
       __orig: { enabled: !!x.enabled, pin: !!x.pin, remind_at: x.remind_at },
+      expanded: false,
       saving: false,
     }));
 
@@ -434,6 +440,7 @@ function addReminderRow() {
       attempts: 0,
       last_error: null,
       __orig: { enabled: true, pin: true, remind_at: null },
+      expanded: true,
       saving: false,
     },
   ]);
@@ -1000,16 +1007,30 @@ async function setAttend(pOrId, nextStatus) {
         .guestFormGrid .full{ grid-column: 1 / -1; }
 
         .gsRemCard{
-          display:flex;
-          gap:10px;
-          flex-wrap:wrap;
-          align-items:center;
           border:1px solid var(--border);
           border-radius:12px;
           padding:9px 10px;
           background: color-mix(in srgb, var(--card-bg) 92%, var(--bg));
         }
-        .gsRemControls{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .gsRemHead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        .gsRemDt{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; }
+        .gsRemStatusIcon{ font-size:14px; line-height:1; }
+        .gsRemExpand{
+          margin-left:auto;
+          width:28px;
+          height:28px;
+          border-radius:8px;
+          border:1px solid var(--border);
+          background: transparent;
+          color:inherit;
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          cursor:pointer;
+          font-size:12px;
+        }
+        .gsRemExpand[aria-expanded="true"]{ background: color-mix(in srgb, var(--tg-text) 8%, transparent); }
+        .gsRemBody{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); display:grid; gap:8px; }
         .gsRemMeta{
           display:flex;
           flex-direction:column;
@@ -1019,7 +1040,7 @@ async function setAttend(pOrId, nextStatus) {
           opacity:.9;
           min-width: 170px;
         }
-        .gsRemActions{ display:flex; gap:6px; margin-left:auto; }
+        .gsRemActions{ display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap; }
         .gsSwitch{ display:inline-flex; align-items:center; gap:8px; user-select:none; cursor:pointer; }
         .gsSwitch input{ position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
         .gsSwitchTrack{
@@ -1053,7 +1074,8 @@ async function setAttend(pOrId, nextStatus) {
 
         @media (max-width: 520px){
           .guestFormGrid{ grid-template-columns:1fr; }
-          .gsRemActions{ width:100%; margin-left:0; justify-content:flex-end; }
+          .gsRemHead{ gap:8px; }
+          .gsRemExpand{ margin-left:0; }
         }
       `}</style>
 
@@ -1092,66 +1114,84 @@ async function setAttend(pOrId, nextStatus) {
 
             <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
               {reminders.map((r) => (
-                <div
-                  key={keyOfRem(r)}
-                  className="gsRemCard"
-                >
-                  <label className="gsSwitch" title="Включить напоминание">
-                    <input
-                      type="checkbox"
-                      checked={!!r.enabled}
-                      onChange={(e) => updateReminderRow(r, { enabled: e.target.checked })}
-                    />
-                    <span className="gsSwitchTrack" />
-                    <span className="gsSwitchText">Вкл</span>
-                  </label>
+                <div key={keyOfRem(r)} className="gsRemCard">
+                  <div className="gsRemHead">
+                    <label className="gsSwitch" title="Включить напоминание">
+                      <input
+                        type="checkbox"
+                        checked={!!r.enabled}
+                        onChange={(e) => updateReminderRow(r, { enabled: e.target.checked })}
+                      />
+                      <span className="gsSwitchTrack" />
+                      <span className="gsSwitchText">Вкл</span>
+                    </label>
 
-                  <input
-                    className="input"
-                    type="datetime-local"
-                    value={r.local_at || ""}
-                    onChange={(e) => updateReminderRow(r, { local_at: e.target.value })}
-                    style={{ minWidth: 220 }}
-                    disabled={!r.enabled}
-                  />
+                    <div className="gsRemDt">
+                      <span className="gsRemStatusIcon" aria-hidden="true">{r.sent_at ? "✅" : "⏰"}</span>
+                      <span>{r.local_at ? formatWhen(localDTToIso(r.local_at)) : "Дата не указана"}</span>
+                    </div>
 
-                  <label className="gsSwitch" title="Закрепить сообщение напоминания">
-                    <input
-                      type="checkbox"
-                      checked={r.pin !== false}
-                      onChange={(e) => updateReminderRow(r, { pin: e.target.checked })}
-                      disabled={!r.enabled}
-                    />
-                    <span className="gsSwitchTrack" />
-                    <span className="gsSwitchText">Закрепить</span>
-                  </label>
-
-                  <div className="gsRemMeta">
-                    {r.sent_at ? (
-                      <>✅ Отправлено: <b>{formatWhen(r.sent_at)}</b></>
-                    ) : (
-                      <>⏳ Не отправлено</>
-                    )}
-                    {r.last_error ? (
-                      <div style={{ marginTop: 4, opacity: 0.9 }}>⚠️ {String(r.last_error).slice(0, 140)}</div>
-                    ) : null}
-                  </div>
-
-                  <div className="gsRemActions">
-                    {r.id && r.sent_at ? (
-                      <button className="btn secondary" type="button" onClick={() => resetReminderSent(r)} disabled={r.saving || opBusy}>
-                        ↻ Сбросить
-                      </button>
-                    ) : null}
-
-                    <button className="btn" type="button" onClick={() => saveReminderRow(r)} disabled={r.saving || opBusy}>
-                      {r.saving ? "…" : "Сохранить"}
-                    </button>
-
-                    <button className="iconBtn" type="button" title="Удалить" onClick={() => deleteReminderRow(r)} disabled={r.saving || opBusy}>
-                      🗑️
+                    <button
+                      type="button"
+                      className="gsRemExpand"
+                      aria-expanded={!!r.expanded}
+                      aria-label={r.expanded ? "Свернуть детали напоминания" : "Развернуть детали напоминания"}
+                      onClick={() => toggleReminderExpanded(r)}
+                    >
+                      {r.expanded ? "▲" : "▼"}
                     </button>
                   </div>
+
+                  {r.expanded ? (
+                    <div className="gsRemBody">
+                      <input
+                        className="input"
+                        type="datetime-local"
+                        value={r.local_at || ""}
+                        onChange={(e) => updateReminderRow(r, { local_at: e.target.value })}
+                        style={{ minWidth: 220 }}
+                        disabled={!r.enabled}
+                      />
+
+                      <label className="gsSwitch" title="Закрепить сообщение напоминания">
+                        <input
+                          type="checkbox"
+                          checked={r.pin !== false}
+                          onChange={(e) => updateReminderRow(r, { pin: e.target.checked })}
+                          disabled={!r.enabled}
+                        />
+                        <span className="gsSwitchTrack" />
+                        <span className="gsSwitchText">Закрепить</span>
+                      </label>
+
+                      <div className="gsRemMeta">
+                        {r.sent_at ? (
+                          <>✅ Отправлено: <b>{formatWhen(r.sent_at)}</b></>
+                        ) : (
+                          <>⏳ Запланировано, ещё не отправлено</>
+                        )}
+                        {r.last_error ? (
+                          <div style={{ marginTop: 4, opacity: 0.9 }}>⚠️ {String(r.last_error).slice(0, 140)}</div>
+                        ) : null}
+                      </div>
+
+                      <div className="gsRemActions">
+                        {r.id && r.sent_at ? (
+                          <button className="btn secondary" type="button" onClick={() => resetReminderSent(r)} disabled={r.saving || opBusy}>
+                            ↻ Сбросить
+                          </button>
+                        ) : null}
+
+                        <button className="btn" type="button" onClick={() => saveReminderRow(r)} disabled={r.saving || opBusy}>
+                          {r.saving ? "…" : "Сохранить"}
+                        </button>
+
+                        <button className="iconBtn" type="button" title="Удалить" onClick={() => deleteReminderRow(r)} disabled={r.saving || opBusy}>
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
