@@ -227,6 +227,7 @@ const [chatVisible, setChatVisible] = useState(false);
 const [chatTab, setChatTab] = useState("team");
 const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
 const [chatConversations, setChatConversations] = useState([]);
+const [chatSandboxPlayers, setChatSandboxPlayers] = useState([]);
 const [chatActiveCid, setChatActiveCid] = useState(null);
 const [chatMessages, setChatMessages] = useState([]);
 const [chatDraft, setChatDraft] = useState("");
@@ -264,6 +265,10 @@ const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
 const [confirmOpen, setConfirmOpen] = useState(false);
+const isSandboxPlayer = !isAdmin && (!!me?.disabled || String(me?.player_kind || '').toLowerCase() === 'web');
+const canUseSandboxTab = isAdmin || isSandboxPlayer;
+const canUseTeamTab = !isSandboxPlayer;
+const canUseDmTab = !isSandboxPlayer;
 function openGameDetail(id, focus = null) {
   setTab("game");                 // ✅ важно для переходов из чата
   setSelectedGameId(id);
@@ -782,11 +787,24 @@ async function loadChatConversations() {
   if (!r?.ok) return [];
   const list = r.conversations || [];
   setChatConversations(list);
+  setChatSandboxPlayers(Array.isArray(r.sandbox_players) ? r.sandbox_players : []);
+  if (!canUseTeamTab && !canUseDmTab && canUseSandboxTab && chatTab !== 'sandbox') {
+    setChatTab('sandbox');
+  }
   if (chatTab === 'team') {
     const team = list.find((c) => c.kind === 'team');
     if (team?.id && String(chatActiveCid) !== String(team.id)) {
       setChatDmPeer(null);
       setChatActiveCid(team.id);
+      setChatMessages([]);
+      chatLastMessageIdRef.current = 0;
+    }
+  }
+  if (chatTab === 'sandbox') {
+    const sandbox = list.find((c) => c.kind === 'sandbox');
+    if (sandbox?.id && String(chatActiveCid) !== String(sandbox.id)) {
+      setChatDmPeer(null);
+      setChatActiveCid(sandbox.id);
       setChatMessages([]);
       chatLastMessageIdRef.current = 0;
     }
@@ -1547,6 +1565,15 @@ useEffect(() => {
       chatLastMessageIdRef.current = 0;
       loadChatMessages({ cid: team.id, reset: true }).catch(() => {});
     }
+  } else if (chatTab === 'sandbox') {
+    const sandbox = chatConversations.find((c) => c.kind === 'sandbox');
+    if (sandbox?.id && String(chatActiveCid) !== String(sandbox.id)) {
+      setChatDmPeer(null);
+      setChatActiveCid(sandbox.id);
+      setChatMessages([]);
+      chatLastMessageIdRef.current = 0;
+      loadChatMessages({ cid: sandbox.id, reset: true }).catch(() => {});
+    }
   } else if (chatTab === 'dm') {
     const activeIsDm = (chatConversations || []).some((c) => c.kind === 'dm' && String(c.id) === String(chatActiveCid));
     if (activeIsDm) return;
@@ -1556,6 +1583,12 @@ useEffect(() => {
     chatLastMessageIdRef.current = 0;
   }
 }, [chatTab, chatVisible, chatConversations]);
+useEffect(() => {
+  if (!chatVisible) return;
+  if (isSandboxPlayer && chatTab !== 'sandbox') {
+    setChatTab('sandbox');
+  }
+}, [chatVisible, isSandboxPlayer, chatTab]);
 useEffect(() => {
   if (chatTab !== 'dm' || !chatActiveCid) return;
   const conv = (chatConversations || []).find((c) => c.kind === 'dm' && String(c.id) === String(chatActiveCid));
@@ -5135,8 +5168,10 @@ function openYandexRoute(lat, lon) {
                       {(() => {
                         const teamUnread = Number((chatConversations || []).find((c) => c.kind === 'team')?.unread_count || 0);
                         const dmUnread = (chatConversations || []).reduce((sum, c) => (c.kind === 'dm' ? sum + Number(c?.unread_count || 0) : sum), 0);
+                        const sandboxUnread = Number((chatConversations || []).find((c) => c.kind === 'sandbox')?.unread_count || 0);
                         return (
                           <>
+                      {canUseTeamTab ? (
                       <button type="button" className={`btn ${chatTab === 'team' ? '' : 'secondary'}`} onClick={() => {
                         setChatTab('team');
                         setChatDmMenuOpen(false);
@@ -5144,10 +5179,22 @@ function openYandexRoute(lat, lon) {
                         Общий
                         {teamUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
                       </button>
+                      ) : null}
+                      {canUseSandboxTab ? (
+                      <button type="button" className={`btn ${chatTab === 'sandbox' ? '' : 'secondary'}`} onClick={() => {
+                        setChatTab('sandbox');
+                        setChatDmMenuOpen(false);
+                      }}>
+                        Песочница
+                        {sandboxUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
+                      </button>
+                      ) : null}
+                      {canUseDmTab ? (
                       <button type="button" className={`btn ${chatTab === 'dm' ? '' : 'secondary'}`} onClick={() => setChatTab('dm')}>
                         Личный
                         {dmUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
                       </button>
+                      ) : null}
                           </>
                         );
                       })()}
@@ -5155,6 +5202,17 @@ function openYandexRoute(lat, lon) {
 
                     {chatTab === 'team' ? (
                       <div className="chatSectionTitle">Общий чат команды</div>
+                    ) : null}
+                    {chatTab === 'sandbox' ? (
+                      <>
+                        <div className="chatSectionTitle">{isAdmin ? 'Песочница' : 'Чат с модератором'}</div>
+                        {isAdmin ? (
+                          <div className="small" style={{ opacity: 0.78, marginBottom: 8 }}>
+                            В песочнице: {chatSandboxPlayers.length}
+                            {chatSandboxPlayers.length ? ` — ${chatSandboxPlayers.map((p) => showName(p)).join(', ')}` : ''}
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
 
                     {chatTab === 'dm' && !chatActiveCid ? (
@@ -5279,9 +5337,12 @@ function openYandexRoute(lat, lon) {
 
                         return chatMessages.flatMap((m, idx, arr) => {
                         const mine = String(m.sender_tg_id) === String(me?.tg_id);
-                        const senderName = mine ? 'Вы' : showName(m.sender || {});
+                        const senderName = (chatTab === 'sandbox' && isSandboxPlayer)
+                          ? (mine ? 'Вы' : 'Модератор')
+                          : (mine ? 'Вы' : showName(m.sender || {}));
                         const senderPhoto = (m?.sender?.photo_url || '').trim();
                         const isDmActive = chatTab === 'dm' && !!chatActiveCid;
+                        const hideSandboxMeta = chatTab === 'sandbox' && isSandboxPlayer;
 
                         const GROUP_MS = 5 * 60 * 1000;
                         const prev = arr[idx - 1];
@@ -5296,8 +5357,8 @@ function openYandexRoute(lat, lon) {
                         };
                         const prevSame = canGroupWith(prev, m);
                         const nextSame = canGroupWith(m, next);
-                        const showAvatar = !mine && !isDmActive && !nextSame;
-                        const showHead = !prevSame && !isDmActive;
+                        const showAvatar = !hideSandboxMeta && !mine && !isDmActive && !nextSame;
+                        const showHead = !hideSandboxMeta && !prevSame && !isDmActive;
                         const reactions = Array.isArray(m.reactions) ? m.reactions : [];
                         const replyMsg = m.reply_to_message_id ? arr.find((x) => Number(x.id) === Number(m.reply_to_message_id)) : null;
                         const dmReadState = (chatTab === 'dm' && mine)
@@ -5321,7 +5382,7 @@ function openYandexRoute(lat, lon) {
                               <div className="chatMsgAvatar">
                                 <AvatarCircle tgId={m.sender_tg_id} url={senderPhoto} name={senderName} size={30} />
                               </div>
-                            ) : !mine && !isDmActive ? <div className="cmtAvatar ghost" /> : null}
+                            ) : !hideSandboxMeta && !mine && !isDmActive ? <div className="cmtAvatar ghost" /> : null}
                             <div className="cmtBubble"
                               style={{
                                 transform: swipeState.key === `chat:${m.id}` ? `translateX(${swipeState.dx}px)` : undefined,
@@ -5346,6 +5407,8 @@ function openYandexRoute(lat, lon) {
                               {m.edited_at ? <div className="small" style={{ opacity: 0.6 }}>изменено</div> : null}
                               <div className="chatMsgFoot">
                                 <div className="cmtActions chatMsgReactions">
+                                  {hideSandboxMeta ? null : (
+                                  <>
                                   {reactions.map((r) => {
                                     const hasMine = !!r.me;
                                     return (
@@ -5359,6 +5422,8 @@ function openYandexRoute(lat, lon) {
                                       </button>
                                     );
                                   })}
+                                  </>
+                                  )}
                                 </div>
                                 <div className="chatMsgMeta">
                                   <span className="cmtMetaOnly">{formatChatTimeOnly(m.created_at)}</span>

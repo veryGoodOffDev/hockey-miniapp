@@ -2202,6 +2202,31 @@ async function ensureTeamConversation() {
   return r.rows?.[0] || null;
 }
 
+async function ensureSandboxConversation() {
+  await q(
+    `INSERT INTO chat_conversations(kind)
+     VALUES ('sandbox')
+     ON CONFLICT DO NOTHING`
+  );
+  const r = await q(`SELECT id, kind, user_a, user_b FROM chat_conversations WHERE kind='sandbox' LIMIT 1`);
+  return r.rows?.[0] || null;
+}
+
+async function getPlayerSandboxState(tgId) {
+  const r = await q(
+    `SELECT tg_id, disabled, is_admin, player_kind
+     FROM players
+     WHERE tg_id=$1
+     LIMIT 1`,
+    [tgId]
+  );
+  const row = r.rows?.[0] || null;
+  if (!row) return { exists: false, isSandboxed: false, isAdmin: false };
+  const kind = String(row.player_kind || '').toLowerCase();
+  const isSandboxed = !row.is_admin && (Boolean(row.disabled) || kind === 'web');
+  return { exists: true, isSandboxed, isAdmin: Boolean(row.is_admin), row };
+}
+
 async function canAccessChatConversation(conv, user, isAdmin, req, res) {
   if (!conv) return { ok: false, status: 404, reason: 'conversation_not_found' };
 
@@ -2220,6 +2245,13 @@ async function canAccessChatConversation(conv, user, isAdmin, req, res) {
     const ok = await requireGroupMember(req, res, user);
     if (!ok) return { ok: false, handled: true };
     return { ok: true };
+  }
+
+  if (conv.kind === 'sandbox') {
+    if (isAdmin) return { ok: true };
+    const state = await getPlayerSandboxState(user.id);
+    if (state.isSandboxed) return { ok: true };
+    return { ok: false, status: 403, reason: 'sandbox_forbidden' };
   }
 
   return { ok: false, status: 400, reason: 'bad_conversation_kind' };
@@ -7633,18 +7665,23 @@ app.get('/api/chat/unread-total', async (req, res) => {
     await ensurePlayer(user);
 
     const is_admin = await isAdminId(user.id);
-    if (!is_admin) {
+    const myState = await getPlayerSandboxState(user.id);
+    if (!is_admin && !myState.isSandboxed) {
       if (!(await requireGroupMember(req, res, user))) return;
     }
 
     const teamConv = await ensureTeamConversation();
+    const sandboxConv = await ensureSandboxConversation();
     const teamId = Number(teamConv?.id || 0);
+    const sandboxId = Number(sandboxConv?.id || 0);
 
     const r = await q(
       `WITH convs AS (
         SELECT id FROM chat_conversations WHERE kind='dm' AND (user_a=$1 OR user_b=$1)
         UNION ALL
         SELECT $2::bigint WHERE $2 > 0
+        UNION ALL
+        SELECT $3::bigint WHERE $3 > 0 AND ($4::boolean OR $5::boolean)
       )
       SELECT COALESCE(SUM(cnt),0)::int AS total
       FROM (
@@ -7656,7 +7693,7 @@ app.get('/api/chat/unread-total', async (req, res) => {
           AND m.id > COALESCE(cr.last_read_id, 0)
         GROUP BY c.id
       ) z`,
-      [user.id, teamId]
+      [user.id, teamId, sandboxId, is_admin, myState.isSandboxed]
     );
 
     res.json({ ok: true, total: Number(r.rows?.[0]?.total || 0) });
@@ -7673,18 +7710,23 @@ app.get('/api/chat/conversations', async (req, res) => {
     await ensurePlayer(user);
 
     const is_admin = await isAdminId(user.id);
-    if (!is_admin) {
+    const myState = await getPlayerSandboxState(user.id);
+    if (!is_admin && !myState.isSandboxed) {
       if (!(await requireGroupMember(req, res, user))) return;
     }
 
     const teamConv = await ensureTeamConversation();
+    const sandboxConv = await ensureSandboxConversation();
     const teamId = Number(teamConv?.id || 0);
+    const sandboxId = Number(sandboxConv?.id || 0);
 
     const rr = await q(
       `WITH convs AS (
         SELECT id, kind, user_a, user_b FROM chat_conversations WHERE kind='dm' AND (user_a=$1 OR user_b=$1)
         UNION ALL
         SELECT id, kind, user_a, user_b FROM chat_conversations WHERE id=$2 AND kind='team'
+        UNION ALL
+        SELECT id, kind, user_a, user_b FROM chat_conversations WHERE id=$3 AND kind='sandbox' AND ($4::boolean OR $5::boolean)
       )
       SELECT
         c.id,
@@ -7725,7 +7767,7 @@ app.get('/api/chat/conversations', async (req, res) => {
           AND m.id > COALESCE(cr.last_read_id, 0)
       ) uc ON TRUE
       ORDER BY COALESCE(lm.id, 0) DESC, c.id DESC`,
-      [user.id, teamId]
+      [user.id, teamId, sandboxId, is_admin, myState.isSandboxed]
     );
 
     const peerIds = [];
@@ -7771,7 +7813,24 @@ app.get('/api/chat/conversations', async (req, res) => {
       };
     });
 
-    res.json({ ok: true, conversations });
+    let sandbox_players = undefined;
+    if (is_admin) {
+      const sr = await q(
+        `SELECT tg_id, display_name, first_name, username, photo_url, avatar_file_id, updated_at, disabled, player_kind
+         FROM players
+         WHERE is_admin IS DISTINCT FROM TRUE
+           AND (disabled IS TRUE OR LOWER(COALESCE(player_kind, ''))='web')
+         ORDER BY disabled DESC, updated_at DESC NULLS LAST, tg_id DESC`
+      );
+      const baseUrl = getPublicBaseUrl(req);
+      sandbox_players = (sr.rows || []).map((row) => ({
+        ...presentPlayer(row, baseUrl),
+        disabled: !!row.disabled,
+        player_kind: row.player_kind || null,
+      }));
+    }
+
+    res.json({ ok: true, conversations, sandbox_players });
   } catch (e) {
     console.error('GET /api/chat/conversations failed:', e);
     res.status(500).json({ ok: false, reason: 'server_error' });
@@ -7785,7 +7844,8 @@ app.post('/api/chat/dm/open', async (req, res) => {
     await ensurePlayer(user);
 
     const is_admin = await isAdminId(user.id);
-    if (!is_admin) {
+    const myState = await getPlayerSandboxState(user.id);
+    if (!is_admin && !myState.isSandboxed) {
       if (!(await requireGroupMember(req, res, user))) return;
     }
 
@@ -7794,8 +7854,15 @@ app.post('/api/chat/dm/open', async (req, res) => {
       return res.status(400).json({ ok: false, reason: 'bad_peer_tg_id' });
     }
 
-    const pr = await q(`SELECT tg_id FROM players WHERE tg_id=$1 AND disabled=FALSE`, [peer]);
+    const pr = await q(`SELECT tg_id, player_kind FROM players WHERE tg_id=$1 AND disabled=FALSE`, [peer]);
     if (!pr.rows?.[0]) return res.status(404).json({ ok: false, reason: 'peer_not_found' });
+    const peerKind = String(pr.rows[0].player_kind || '').toLowerCase();
+    if (peerKind === 'web') return res.status(403).json({ ok: false, reason: 'peer_not_found' });
+
+    const peerState = await getPlayerSandboxState(peer);
+    if (myState.isSandboxed && !peerState.isAdmin) {
+      return res.status(403).json({ ok: false, reason: 'sandbox_only_admin_dm' });
+    }
 
     const a = Math.min(Number(user.id), peer);
     const b = Math.max(Number(user.id), peer);

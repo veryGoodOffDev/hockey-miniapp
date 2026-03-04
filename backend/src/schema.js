@@ -735,19 +735,24 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
   await q(`
     CREATE TABLE IF NOT EXISTS chat_conversations (
       id BIGSERIAL PRIMARY KEY,
-      kind TEXT NOT NULL CHECK (kind IN ('team','dm')),
+      kind TEXT NOT NULL CHECK (kind IN ('team','dm','sandbox')),
       user_a BIGINT REFERENCES players(tg_id) ON DELETE CASCADE,
       user_b BIGINT REFERENCES players(tg_id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT chat_dm_users_chk CHECK (
-        (kind = 'team' AND user_a IS NULL AND user_b IS NULL)
+        (kind IN ('team','sandbox') AND user_a IS NULL AND user_b IS NULL)
         OR
         (kind = 'dm' AND user_a IS NOT NULL AND user_b IS NOT NULL AND user_a < user_b)
       )
     );
   `);
+  await q(`ALTER TABLE chat_conversations DROP CONSTRAINT IF EXISTS chat_conversations_kind_check;`);
+  await q(`ALTER TABLE chat_conversations ADD CONSTRAINT chat_conversations_kind_check CHECK (kind IN ('team','dm','sandbox'));`);
+  await q(`ALTER TABLE chat_conversations DROP CONSTRAINT IF EXISTS chat_dm_users_chk;`);
+  await q(`ALTER TABLE chat_conversations ADD CONSTRAINT chat_dm_users_chk CHECK (((kind IN ('team','sandbox')) AND user_a IS NULL AND user_b IS NULL) OR (kind='dm' AND user_a IS NOT NULL AND user_b IS NOT NULL AND user_a < user_b));`);
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS chat_conversations_dm_pair_uq ON chat_conversations(user_a, user_b) WHERE kind='dm';`);
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS chat_conversations_team_single_uq ON chat_conversations(kind) WHERE kind='team';`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS chat_conversations_sandbox_single_uq ON chat_conversations(kind) WHERE kind='sandbox';`);
 
   await q(`
     CREATE TABLE IF NOT EXISTS chat_messages (
