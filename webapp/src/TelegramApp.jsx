@@ -15,6 +15,7 @@ import bg6 from "./bg6.webp";
 import player from "./player.png";
 import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
+import usePullToRefresh from "./usePullToRefresh.js";
 const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 const JERSEY_COLOR_OPTS = [
@@ -216,8 +217,9 @@ const commentsBlockRef = useRef(null);
 const QUICK_REACTIONS = ["🔥", "😱", "👍", "❤️", "😂", "😮", "😢", "😡"];
 const PREMIUM_REACTIONS = ["🔥", "😱", "👍", "❤️", "😂", "😮", "😢", "😡", "👏", "🤔", "🎉", "🙏", "🤝", "💯", "🥶", "🥳"];
 const [reactPickFor, setReactPickFor] = useState(null);
-const [reactWhoLoading, setReactWhoLoading] = useState(false);
-const [reactWhoList, setReactWhoList] = useState([]);
+  const [reactWhoLoading, setReactWhoLoading] = useState(false);
+  const [reactWhoList, setReactWhoList] = useState([]);
+  const gamesPullRef = useRef(null);
 const [reactWhoCanView, setReactWhoCanView] = useState(true);
 const [reactPickerOpenFor, setReactPickerOpenFor] = useState(null);
 const [chatOpen, setChatOpen] = useState(false);
@@ -1346,6 +1348,14 @@ async function refreshAll(forceGameId) {
     setGamesError({ ok: false, error: "network_or_unknown" });
   }
 }
+const gameListPull = usePullToRefresh({
+  enabled: tab === "game" && gameView === "list",
+  containerRef: gamesPullRef,
+  threshold: 70,
+  onRefresh: async () => {
+    await refreshAll(selectedGameId);
+  },
+});
   async function loadGame(gameId) {
   const gid = gameId ?? selectedGameId;
   if (!gid) return null;
@@ -2911,7 +2921,7 @@ function openYandexRoute(lat, lon) {
   }
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
   return (
-    <div className="container appShell">
+    <div ref={gamesPullRef} className="container appShell">
     {!inTelegramWebApp && (
       <div className="webThemeDock" role="region" aria-label="Тема (веб)">
         <div className="webThemeDock__panel">
@@ -2960,9 +2970,20 @@ function openYandexRoute(lat, lon) {
           </div>
       {/* ====== GAMES ====== */}
       {tab === "game" && (
-        <div className="card">
+        <div className={`card gameListPullWrap ${gameView === "list" ? "isActive" : ""}`}>
           {gameView === "list" ? (
             <>
+              <div
+                className={`pullRefreshIndicator ${gameListPull.isRefreshing ? "isRefreshing" : ""} ${gameListPull.isReady ? "isReady" : ""}`}
+                style={{
+                  height: `${Math.round(gameListPull.pull)}px`,
+                  transform: `translateY(${Math.round(gameListPull.pull * 0.35)}px)`,
+                }}
+                aria-hidden="true"
+              >
+                <span>{gameListPull.isRefreshing ? "⟳" : "↓"}</span>
+                <span>{gameListPull.statusText}</span>
+              </div>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <h2 style={{ margin: 0 }}>Игры</h2>
                 {isAdmin ? (
