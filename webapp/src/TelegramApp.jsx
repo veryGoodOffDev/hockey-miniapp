@@ -1367,7 +1367,7 @@ async function refreshAll(forceGameId) {
   }
 }
 const gameListPull = usePullToRefresh({
-  enabled: tab === "game" && gameView === "list",
+  enabled: tab === "game" && gameView === "list" && !chatVisible,
   containerRef: gamesPullRef,
   threshold: 70,
   onRefresh: async () => {
@@ -1495,7 +1495,6 @@ useEffect(() => {
     };
   }
   document.body.style.overflow = 'hidden';
-  document.body.style.touchAction = 'none';
   document.documentElement.style.overflow = 'hidden';
   return () => {
     unlockBackgroundScroll();
