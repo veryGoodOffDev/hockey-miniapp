@@ -265,7 +265,7 @@ const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
 const [confirmOpen, setConfirmOpen] = useState(false);
-const isSandboxPlayer = !isAdmin && (!!me?.disabled || String(me?.player_kind || '').toLowerCase() === 'web');
+const isSandboxPlayer = !isAdmin && !!me?.disabled;
 const canUseSandboxTab = isAdmin || isSandboxPlayer;
 const canUseTeamTab = !isSandboxPlayer;
 const canUseDmTab = !isSandboxPlayer;

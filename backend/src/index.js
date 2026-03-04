@@ -2222,8 +2222,7 @@ async function getPlayerSandboxState(tgId) {
   );
   const row = r.rows?.[0] || null;
   if (!row) return { exists: false, isSandboxed: false, isAdmin: false };
-  const kind = String(row.player_kind || '').toLowerCase();
-  const isSandboxed = !row.is_admin && (Boolean(row.disabled) || kind === 'web');
+  const isSandboxed = !row.is_admin && Boolean(row.disabled);
   return { exists: true, isSandboxed, isAdmin: Boolean(row.is_admin), row };
 }
 
@@ -7819,7 +7818,7 @@ app.get('/api/chat/conversations', async (req, res) => {
         `SELECT tg_id, display_name, first_name, username, photo_url, avatar_file_id, updated_at, disabled, player_kind
          FROM players
          WHERE is_admin IS DISTINCT FROM TRUE
-           AND (disabled IS TRUE OR LOWER(COALESCE(player_kind, ''))='web')
+           AND disabled IS TRUE
          ORDER BY disabled DESC, updated_at DESC NULLS LAST, tg_id DESC`
       );
       const baseUrl = getPublicBaseUrl(req);
