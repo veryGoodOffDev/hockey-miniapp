@@ -3919,6 +3919,57 @@ html[data-theme="light"] .btn.outline.active{
 }
 .rowBetween{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
 
+.playerStatusControl{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.iosSwitch{
+  width: 56px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.iosSwitch.on{
+  background: #22c55e;
+  border-color: color-mix(in srgb, #22c55e 75%, #fff);
+}
+.iosSwitch.off{
+  background: #ef4444;
+  border-color: color-mix(in srgb, #ef4444 75%, #fff);
+}
+.iosSwitch:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-btn) 22%, transparent);
+}
+.iosSwitchKnob{
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  transition: transform .2s ease;
+}
+.iosSwitch.on .iosSwitchKnob{ transform: translateX(24px); }
+.iosSwitch.off .iosSwitchKnob{ transform: translateX(0); }
+
+.playerStatusText{
+  min-width: 38px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+.playerStatusText.on{ color: #22c55e; }
+.playerStatusText.off{ color: #ef4444; }
+
 /* AdminPanel: bottom sheet */
 .sheetBackdrop{
   position:fixed; inset:0;
