@@ -261,8 +261,11 @@ const chatMessagesRef = useRef(null);
 const chatComposerInputRef = useRef(null);
 const chatMessagesSnapshotRef = useRef([]);
 const chatScrollToBottomOnNextPaintRef = useRef(false);
+const chatPrevViewportHeightRef = useRef(0);
 const chatScrollLockRef = useRef(null);
+
 const [chatViewportHeight, setChatViewportHeight] = useState(0);
+const [chatViewportTop, setChatViewportTop] = useState(0);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
@@ -1543,19 +1546,49 @@ useEffect(() => {
 
 useEffect(() => {
   if (!chatVisible) return;
-  const updateViewportHeight = () => {
-    const vvHeight = window.visualViewport?.height;
-    const nextHeight = Math.round(vvHeight || window.innerHeight || 0);
-    if (nextHeight > 0) setChatViewportHeight(nextHeight);
+
+  const tg = window.Telegram?.WebApp;
+  const vv = window.visualViewport;
+
+  const updateViewport = () => {
+    const height = Math.round(
+      tg?.viewportStableHeight ||
+      tg?.viewportHeight ||
+      vv?.height ||
+      window.innerHeight ||
+      0
+    );
+
+    const prevHeight = chatPrevViewportHeightRef.current || 0;
+    chatPrevViewportHeightRef.current = height;
+
+    // клавиатура/ресайз: держим низ чата у последнего сообщения
+    if (prevHeight && height && height < prevHeight - 60) {
+      chatScrollToBottomOnNextPaintRef.current = true;
+    }
+
+    // iOS/Telegram: при фокусе инпута визуальный viewport может "уезжать" (offsetTop),
+    // из-за этого fixed-слои выглядят так, будто инпут улетел в шапку.
+    const top = Math.max(0, Math.round(vv?.offsetTop || 0));
+
+    if (height > 0) setChatViewportHeight(height);
+    setChatViewportTop(top);
   };
-  updateViewportHeight();
-  window.addEventListener("resize", updateViewportHeight);
-  window.visualViewport?.addEventListener("resize", updateViewportHeight);
-  window.visualViewport?.addEventListener("scroll", updateViewportHeight);
+
+  updateViewport();
+
+  window.addEventListener("resize", updateViewport);
+  vv?.addEventListener("resize", updateViewport);
+  vv?.addEventListener("scroll", updateViewport);
+
+  // Telegram Mini Apps: стабильная высота viewport и событие viewportChanged
+  tg?.onEvent?.("viewportChanged", updateViewport);
+
   return () => {
-    window.removeEventListener("resize", updateViewportHeight);
-    window.visualViewport?.removeEventListener("resize", updateViewportHeight);
-    window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+    window.removeEventListener("resize", updateViewport);
+    vv?.removeEventListener("resize", updateViewport);
+    vv?.removeEventListener("scroll", updateViewport);
+    tg?.offEvent?.("viewportChanged", updateViewport);
   };
 }, [chatVisible]);
 
@@ -5216,7 +5249,7 @@ function openYandexRoute(lat, lon) {
                     aria-modal="true"
                     onClick={(e) => e.stopPropagation()}
                     onTransitionEnd={onChatDrawerTransitionEnd}
-                    style={chatViewportHeight > 0 ? { height: `${chatViewportHeight}px` } : undefined}
+                    style={chatViewportHeight > 0 ? { height: `${chatViewportHeight}px`, top: `${chatViewportTop}px` } : undefined}
 
                     // ✅ добавь это:
                     onWheel={(e) => e.stopPropagation()}
