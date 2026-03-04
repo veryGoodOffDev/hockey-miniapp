@@ -187,6 +187,15 @@ useEffect(() => {
     notify("✅ Права обновлены");
   }
 
+  function togglePlayerAccess() {
+    const isActiveNow = !draft.disabled;
+    if (isActiveNow) {
+      const ok = confirm("Вы уверены, что игроку нужно ограничить доступ?");
+      if (!ok) return;
+    }
+    setDraft((d) => ({ ...d, disabled: !isActiveNow }));
+  }
+
   return (
     <Sheet title={`Игрок: ${showName(draft)}${showNum(draft)}`} onClose={onClose}>
       <div className="card">
@@ -271,9 +280,19 @@ useEffect(() => {
           <input type="checkbox" checked={!!draft.email_verified} onChange={(e) => setDraft((d) => ({ ...d, email_verified: e.target.checked }))} />
         </div>
 
-        <div className="row" style={{ alignItems: "center" }}>
-          <label style={{ margin: 0 }}>Отключить</label>
-          <input type="checkbox" checked={!!draft.disabled} onChange={(e) => setDraft((d) => ({ ...d, disabled: e.target.checked }))} />
+        <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
+          <label style={{ margin: 0 }}>Статус игрока</label>
+          <button
+            type="button"
+            className={`playerAccessToggle ${draft.disabled ? "off" : "on"}`}
+            onClick={togglePlayerAccess}
+            role="switch"
+            aria-checked={!draft.disabled}
+            aria-label={draft.disabled ? "Включить игрока" : "Отключить игрока"}
+          >
+            <span className="playerAccessToggleText">{draft.disabled ? "Выкл" : "Вкл"}</span>
+            <span className="playerAccessToggleKnob" />
+          </button>
         </div>
 
         <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
