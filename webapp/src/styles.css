@@ -3919,48 +3919,56 @@ html[data-theme="light"] .btn.outline.active{
 }
 .rowBetween{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
 
-.playerAccessToggle{
-  min-width: 94px;
-  height: 36px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 3px 5px;
+.playerStatusControl{
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.iosSwitch{
+  width: 56px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px;
+  position: relative;
   cursor: pointer;
   transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
-.playerAccessToggle.on{
-  background: color-mix(in srgb, #16a34a 84%, black);
-  border-color: color-mix(in srgb, #16a34a 78%, white);
+.iosSwitch.on{
+  background: #22c55e;
+  border-color: color-mix(in srgb, #22c55e 75%, #fff);
 }
-.playerAccessToggle.off{
-  background: color-mix(in srgb, #dc2626 84%, black);
-  border-color: color-mix(in srgb, #dc2626 78%, white);
+.iosSwitch.off{
+  background: #ef4444;
+  border-color: color-mix(in srgb, #ef4444 75%, #fff);
 }
-.playerAccessToggle:focus-visible{
+.iosSwitch:focus-visible{
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-btn) 22%, transparent);
 }
-.playerAccessToggleText{
-  color: #fff;
-  font-weight: 900;
-  font-size: 12px;
-  width: 34px;
-  text-align: center;
-  user-select: none;
-}
-.playerAccessToggleKnob{
+.iosSwitchKnob{
+  position: absolute;
+  top: 2px;
+  left: 2px;
   width: 26px;
   height: 26px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
   transition: transform .2s ease;
 }
-.playerAccessToggle.on .playerAccessToggleKnob{ transform: translateX(26px); }
-.playerAccessToggle.off .playerAccessToggleKnob{ transform: translateX(0); }
+.iosSwitch.on .iosSwitchKnob{ transform: translateX(24px); }
+.iosSwitch.off .iosSwitchKnob{ transform: translateX(0); }
+
+.playerStatusText{
+  min-width: 38px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+.playerStatusText.on{ color: #22c55e; }
+.playerStatusText.off{ color: #ef4444; }
 
 /* AdminPanel: bottom sheet */
 .sheetBackdrop{

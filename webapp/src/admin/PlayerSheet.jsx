@@ -188,12 +188,14 @@ useEffect(() => {
   }
 
   function togglePlayerAccess() {
-    const isActiveNow = !draft.disabled;
-    if (isActiveNow) {
-      const ok = confirm("Вы уверены, что игроку нужно ограничить доступ?");
-      if (!ok) return;
-    }
-    setDraft((d) => ({ ...d, disabled: !isActiveNow }));
+    setDraft((d) => {
+      const isActiveNow = !d.disabled;
+      if (isActiveNow) {
+        const ok = confirm("Вы уверены, что игроку нужно ограничить доступ?");
+        if (!ok) return d;
+      }
+      return { ...d, disabled: !isActiveNow };
+    });
   }
 
   return (
@@ -282,17 +284,19 @@ useEffect(() => {
 
         <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
           <label style={{ margin: 0 }}>Статус игрока</label>
-          <button
-            type="button"
-            className={`playerAccessToggle ${draft.disabled ? "off" : "on"}`}
-            onClick={togglePlayerAccess}
-            role="switch"
-            aria-checked={!draft.disabled}
-            aria-label={draft.disabled ? "Включить игрока" : "Отключить игрока"}
-          >
-            <span className="playerAccessToggleText">{draft.disabled ? "Выкл" : "Вкл"}</span>
-            <span className="playerAccessToggleKnob" />
-          </button>
+          <div className="playerStatusControl">
+            <button
+              type="button"
+              className={`iosSwitch ${draft.disabled ? "off" : "on"}`}
+              onClick={togglePlayerAccess}
+              role="switch"
+              aria-checked={!draft.disabled}
+              aria-label={draft.disabled ? "Включить игрока" : "Отключить игрока"}
+            >
+              <span className="iosSwitchKnob" />
+            </button>
+            <span className={`playerStatusText ${draft.disabled ? "off" : "on"}`}>{draft.disabled ? "Выкл" : "Вкл"}</span>
+          </div>
         </div>
 
         <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
