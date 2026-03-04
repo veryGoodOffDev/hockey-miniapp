@@ -12,6 +12,7 @@ import { InlineKeyboard } from "grammy";
 import { performance } from "node:perf_hooks";
 import { Resend } from "resend";
 import crypto from "crypto";
+import webpush from "web-push";
 
 const app = express();
 app.use(express.json());
@@ -39,6 +40,24 @@ const RESEND_FROM = process.env.RESEND_FROM || "";
 const RESEND_REPLY_TO = process.env.RESEND_REPLY_TO || "";
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+
+
+const PUSH_VAPID_SUBJECT = process.env.PUSH_VAPID_SUBJECT || "mailto:admin@example.com";
+const envPushPublicKey = process.env.PUSH_VAPID_PUBLIC_KEY || "";
+const envPushPrivateKey = process.env.PUSH_VAPID_PRIVATE_KEY || "";
+const generatedVapid = (!envPushPublicKey || !envPushPrivateKey) ? webpush.generateVAPIDKeys() : null;
+const PUSH_VAPID_PUBLIC_KEY = envPushPublicKey || generatedVapid?.publicKey || "";
+const PUSH_VAPID_PRIVATE_KEY = envPushPrivateKey || generatedVapid?.privateKey || "";
+const PUSH_TEAM_KEY = process.env.PUSH_TEAM_KEY || "main";
+
+if (PUSH_VAPID_PUBLIC_KEY && PUSH_VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(PUSH_VAPID_SUBJECT, PUSH_VAPID_PUBLIC_KEY, PUSH_VAPID_PRIVATE_KEY);
+  if (generatedVapid) {
+    console.log("[web-push] Generated ephemeral VAPID keys. Set PUSH_VAPID_PUBLIC_KEY / PUSH_VAPID_PRIVATE_KEY in env to persist subscriptions.");
+    console.log("[web-push] PUSH_VAPID_PUBLIC_KEY=", PUSH_VAPID_PUBLIC_KEY);
+    console.log("[web-push] PUSH_VAPID_PRIVATE_KEY=", PUSH_VAPID_PRIVATE_KEY);
+  }
+}
 
 
 const SMTP_HOST = process.env.SMTP_HOST || "";
@@ -110,6 +129,98 @@ function randomToken(bytes = 24) {
 function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
+
+
+function normalizePushSubscription(raw) {
+  const endpoint = String(raw?.endpoint || "").trim();
+  const p256dh = String(raw?.keys?.p256dh || "").trim();
+  const auth = String(raw?.keys?.auth || "").trim();
+  if (!endpoint || !p256dh || !auth) return null;
+  return { endpoint, expirationTime: raw?.expirationTime ?? null, keys: { p256dh, auth } };
+}
+
+function toUint8ArrayFromBase64Url(base64) {
+  const normalized = String(base64 || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4 || 4)) % 4);
+  const buf = Buffer.from(padded, "base64");
+  return Uint8Array.from(buf);
+}
+
+function isWebPushAvailable() {
+  return Boolean(PUSH_VAPID_PUBLIC_KEY && PUSH_VAPID_PRIVATE_KEY);
+}
+
+async function getChatUnreadTotalForUser(userId, { isAdmin = false, isSandboxed = false } = {}) {
+  const teamConv = await ensureTeamConversation();
+  const sandboxConv = await ensureSandboxConversation();
+  const teamId = Number(teamConv?.id || 0);
+  const sandboxId = Number(sandboxConv?.id || 0);
+
+  const r = await q(
+    `WITH convs AS (
+      SELECT id FROM chat_conversations WHERE kind='dm' AND (user_a=$1 OR user_b=$1)
+      UNION ALL
+      SELECT $2::bigint WHERE $2 > 0
+      UNION ALL
+      SELECT $3::bigint WHERE $3 > 0 AND ($4::boolean OR $5::boolean)
+    )
+    SELECT COALESCE(SUM(cnt),0)::int AS total
+    FROM (
+      SELECT COUNT(m.id)::int AS cnt
+      FROM convs c
+      JOIN chat_messages m ON m.conversation_id = c.id
+      LEFT JOIN chat_reads cr ON cr.conversation_id = c.id AND cr.tg_id = $1
+      WHERE m.sender_tg_id <> $1
+        AND m.id > COALESCE(cr.last_read_id, 0)
+      GROUP BY c.id
+    ) z`,
+    [userId, teamId, sandboxId, isAdmin, isSandboxed]
+  );
+
+  return Number(r.rows?.[0]?.total || 0);
+}
+
+async function sendWebPushToUser({ userId, title, body, url, unreadCount = 0, conversationId = null, senderId = null }) {
+  if (!isWebPushAvailable()) return { ok: false, reason: "vapid_not_configured" };
+
+  const sr = await q(
+    `SELECT id, endpoint, p256dh, auth FROM web_push_subscriptions WHERE user_tg_id=$1 AND team_key=$2`,
+    [userId, PUSH_TEAM_KEY]
+  );
+
+  const payload = JSON.stringify({
+    title,
+    body,
+    url,
+    unreadCount: Number(unreadCount || 0),
+    conversationId,
+    senderId,
+    ts: Date.now(),
+  });
+
+  let sent = 0;
+  for (const row of sr.rows || []) {
+    const subscription = {
+      endpoint: row.endpoint,
+      keys: { p256dh: row.p256dh, auth: row.auth },
+    };
+    try {
+      await webpush.sendNotification(subscription, payload, { TTL: 60 });
+      sent += 1;
+      await q(`UPDATE web_push_subscriptions SET updated_at=NOW(), last_unread_count=$2 WHERE id=$1`, [row.id, Number(unreadCount || 0)]);
+    } catch (e) {
+      const code = Number(e?.statusCode || 0);
+      if (code === 404 || code === 410) {
+        await q(`DELETE FROM web_push_subscriptions WHERE id=$1`, [row.id]);
+      } else {
+        console.log("[web-push] send failed", userId, code || "", e?.message || e);
+      }
+    }
+  }
+
+  return { ok: true, sent };
+}
+
 
 // async function sendEmail({ to, subject, html, text }) {
 //   if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN || !MAILGUN_FROM) {
@@ -7657,6 +7768,90 @@ app.get("/api/game-comments/:id/reactors", async (req, res) => {
 
 
 /* ------- chat ------------------ */
+
+app.get('/api/push/vapid-public-key', async (req, res) => {
+  if (!isWebPushAvailable()) return res.status(503).json({ ok: false, reason: 'push_not_configured' });
+  return res.json({ ok: true, publicKey: PUSH_VAPID_PUBLIC_KEY });
+});
+
+app.post('/api/push/subscribe', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+    await ensurePlayer(user);
+
+    if (!isWebPushAvailable()) {
+      return res.status(503).json({ ok: false, reason: 'push_not_configured' });
+    }
+
+    const sub = normalizePushSubscription(req.body?.subscription);
+    if (!sub) return res.status(400).json({ ok: false, reason: 'bad_subscription' });
+
+    const deviceId = String(req.body?.deviceId || '').trim().slice(0, 120);
+    const userAgent = String(req.header('user-agent') || '').slice(0, 400);
+
+    await q(
+      `INSERT INTO web_push_subscriptions(user_tg_id, team_key, device_id, endpoint, p256dh, auth, user_agent, updated_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,NOW())
+       ON CONFLICT (endpoint) DO UPDATE SET
+         user_tg_id=EXCLUDED.user_tg_id,
+         team_key=EXCLUDED.team_key,
+         device_id=EXCLUDED.device_id,
+         p256dh=EXCLUDED.p256dh,
+         auth=EXCLUDED.auth,
+         user_agent=EXCLUDED.user_agent,
+         updated_at=NOW()`,
+      [user.id, PUSH_TEAM_KEY, deviceId, sub.endpoint, sub.keys.p256dh, sub.keys.auth, userAgent]
+    );
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/push/subscribe failed:', e);
+    return res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/push/unsubscribe', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const endpoint = String(req.body?.endpoint || '').trim();
+    if (!endpoint) return res.status(400).json({ ok: false, reason: 'bad_endpoint' });
+
+    await q(`DELETE FROM web_push_subscriptions WHERE endpoint=$1 AND user_tg_id=$2`, [endpoint, user.id]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/push/unsubscribe failed:', e);
+    return res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
+app.post('/api/push/test', async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return;
+
+    const unreadCount = Number(req.body?.unreadCount || 0);
+    const url = String(req.body?.url || '/').trim() || '/';
+
+    const rr = await sendWebPushToUser({
+      userId: user.id,
+      title: 'Тестовое уведомление',
+      body: 'Web Push подключен',
+      url,
+      unreadCount,
+      conversationId: null,
+      senderId: null,
+    });
+
+    return res.json({ ok: true, result: rr });
+  } catch (e) {
+    console.error('POST /api/push/test failed:', e);
+    return res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+});
+
 app.get('/api/chat/unread-total', async (req, res) => {
   try {
     const user = req.webappUser || requireWebAppAuth(req, res);
@@ -8106,9 +8301,59 @@ app.post('/api/chat/messages', async (req, res) => {
       [cid, user.id, body, replyToMessageId]
     );
 
-    await touchChatRead(cid, user.id, ir.rows?.[0]?.id || null);
+    const insertedMessage = ir.rows?.[0] || null;
+    await touchChatRead(cid, user.id, insertedMessage?.id || null);
 
-    res.json({ ok: true, message: ir.rows?.[0] || null });
+    try {
+      const convKind = String(conv?.kind || '');
+      const recipients = new Set();
+      if (convKind === 'dm') {
+        const ua = Number(conv?.user_a || 0);
+        const ub = Number(conv?.user_b || 0);
+        if (ua > 0 && ua !== Number(user.id)) recipients.add(ua);
+        if (ub > 0 && ub !== Number(user.id)) recipients.add(ub);
+      } else {
+        const rr = await q(
+          `SELECT DISTINCT tg_id FROM chat_reads WHERE conversation_id=$1
+           UNION
+           SELECT DISTINCT sender_tg_id AS tg_id FROM chat_messages WHERE conversation_id=$1`,
+          [cid]
+        );
+        for (const row of rr.rows || []) {
+          const rid = Number(row.tg_id || 0);
+          if (rid > 0 && rid !== Number(user.id)) recipients.add(rid);
+        }
+      }
+
+      const base = PUBLIC_WEBAPP_URL || `${req.protocol}://${req.get('host')}`;
+      const targetUrl = `${base}/?chat=1&cid=${cid}`;
+      const textPreview = body.length > 90 ? `${body.slice(0, 87)}...` : body;
+
+      for (const recipientId of recipients) {
+        const flags = await Promise.all([
+          isAdminId(recipientId),
+          getPlayerSandboxState(recipientId),
+        ]);
+        const unreadCount = await getChatUnreadTotalForUser(recipientId, {
+          isAdmin: Boolean(flags[0]),
+          isSandboxed: Boolean(flags?.[1]?.isSandboxed),
+        });
+
+        await sendWebPushToUser({
+          userId: recipientId,
+          title: convKind === 'dm' ? 'Новое личное сообщение' : 'Новое сообщение в чате',
+          body: textPreview,
+          url: targetUrl,
+          unreadCount,
+          conversationId: cid,
+          senderId: user.id,
+        });
+      }
+    } catch (pushErr) {
+      console.error('chat push trigger failed:', pushErr);
+    }
+
+    res.json({ ok: true, message: insertedMessage });
   } catch (e) {
     console.error('POST /api/chat/messages failed:', e);
     res.status(500).json({ ok: false, reason: 'server_error' });
