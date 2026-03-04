@@ -2795,12 +2795,25 @@ html[data-theme="light"] .btn.outline.active{
 .commentComposer__send{
   width:42px;
   height:42px;
-  border-radius: 14px;
+  border-radius: 999px;
   border:1px solid var(--border);
   background: color-mix(in srgb, var(--tg-text) 10%, transparent);
   cursor:pointer;
   font-weight: 900;
   line-height: 1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  transform: scale(.8);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+.commentComposer__send.isVisible{
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
 }
 
 .commentComposer__send:disabled{
@@ -4258,10 +4271,11 @@ html[data-theme="light"] .btn.outline.active{
   pointer-events: auto;
 }
 .chatDrawer{
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
-  bottom: 0;
+  bottom: auto;
+  height: 100dvh;
   width: min(700px, 100vw);
   background: linear-gradient(180deg, #0b111c 0%, #0c1524 100%);
   color: #eaf1ff;

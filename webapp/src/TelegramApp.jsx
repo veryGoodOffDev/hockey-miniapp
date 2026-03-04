@@ -258,9 +258,11 @@ const chatLastMessageIdRef = useRef(0);
 const chatLoadInFlightRef = useRef(false);
 const chatCloseTimerRef = useRef(null);
 const chatMessagesRef = useRef(null);
+const chatComposerInputRef = useRef(null);
 const chatMessagesSnapshotRef = useRef([]);
 const chatScrollToBottomOnNextPaintRef = useRef(false);
 const chatScrollLockRef = useRef(null);
+const [chatViewportHeight, setChatViewportHeight] = useState(0);
 const [detailFocus, setDetailFocus] = useState(null); // null | "comments"
 const commentsCardRef = useRef(null);
 const initStartedRef = useRef(false);
@@ -754,6 +756,13 @@ function unlockBackgroundScroll() {
   }
 
   chatScrollLockRef.current = null;
+}
+
+function resizeChatComposerInput(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  const nextHeight = Math.min(el.scrollHeight, 140);
+  el.style.height = `${Math.max(nextHeight, 38)}px`;
 }
 
 function chatPeerSearchValue(p) {
@@ -1531,6 +1540,28 @@ useEffect(() => {
 useEffect(() => {
   chatMessagesSnapshotRef.current = chatMessages || [];
 }, [chatMessages]);
+
+useEffect(() => {
+  if (!chatVisible) return;
+  const updateViewportHeight = () => {
+    const vvHeight = window.visualViewport?.height;
+    const nextHeight = Math.round(vvHeight || window.innerHeight || 0);
+    if (nextHeight > 0) setChatViewportHeight(nextHeight);
+  };
+  updateViewportHeight();
+  window.addEventListener("resize", updateViewportHeight);
+  window.visualViewport?.addEventListener("resize", updateViewportHeight);
+  window.visualViewport?.addEventListener("scroll", updateViewportHeight);
+  return () => {
+    window.removeEventListener("resize", updateViewportHeight);
+    window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+    window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+  };
+}, [chatVisible]);
+
+useEffect(() => {
+  resizeChatComposerInput(chatComposerInputRef.current);
+}, [chatDraft, chatActiveCid, chatTab, chatVisible]);
 
 useEffect(() => {
   if (!chatVisible) {
@@ -3680,7 +3711,7 @@ function openYandexRoute(lat, lon) {
                                         maxLength={800}
                                       />
                                       <button
-                                        className="commentComposer__send"
+                                        className={`commentComposer__send ${String(commentDraft || "").trim() ? 'isVisible' : ''}`}
                                         disabled={commentBusy || !String(commentDraft || "").trim()}
                                         onClick={submitComment}
                                         type="button"
@@ -5185,6 +5216,7 @@ function openYandexRoute(lat, lon) {
                     aria-modal="true"
                     onClick={(e) => e.stopPropagation()}
                     onTransitionEnd={onChatDrawerTransitionEnd}
+                    style={chatViewportHeight > 0 ? { height: `${chatViewportHeight}px` } : undefined}
 
                     // ✅ добавь это:
                     onWheel={(e) => e.stopPropagation()}
@@ -5500,17 +5532,24 @@ function openYandexRoute(lat, lon) {
                     ) : null}
                     <div className="commentComposer chatComposer" style={{ marginTop: 10 }}>
                       <textarea
+                        ref={chatComposerInputRef}
                         className="commentComposer__input"
                         value={chatDraft}
-                        onChange={(e) => setChatDraft(e.target.value)}
+                        onChange={(e) => {
+                          setChatDraft(e.target.value);
+                          resizeChatComposerInput(e.target);
+                        }}
+                        rows={1}
                         placeholder={chatTab === 'dm' && !chatActiveCid ? 'Сначала выберите контакт…' : 'Сообщение...'}
                         disabled={chatTab === 'dm' && !chatActiveCid}
                       />
                       <button
                         type="button"
-                        className="commentComposer__send"
+                        className={`commentComposer__send ${String(chatDraft || '').trim() ? 'isVisible' : ''}`}
                         disabled={chatBusy || !String(chatDraft || '').trim() || (chatTab === 'dm' && !chatActiveCid)}
                         onClick={sendChatMessage}
+                        aria-hidden={!String(chatDraft || '').trim()}
+                        tabIndex={String(chatDraft || '').trim() ? 0 : -1}
                       >
                         ➤
                       </button>
