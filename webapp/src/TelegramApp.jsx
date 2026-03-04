@@ -740,9 +740,19 @@ function onChatDrawerTransitionEnd(e) {
 function unlockBackgroundScroll() {
   const prev = chatScrollLockRef.current;
   if (!prev) return;
+
   document.body.style.overflow = prev.bodyOverflow;
   document.body.style.touchAction = prev.bodyTouchAction;
   document.documentElement.style.overflow = prev.htmlOverflow;
+
+  // ✅ восстановление appShell
+  const shell = gamesPullRef.current;
+  if (shell) {
+    shell.style.overflow = prev.shellOverflow ?? "";
+    shell.style.touchAction = prev.shellTouchAction ?? "";
+    shell.style.overscrollBehaviorY = prev.shellOverscrollY ?? "";
+  }
+
   chatScrollLockRef.current = null;
 }
 
@@ -1487,19 +1497,37 @@ useEffect(() => {
     unlockBackgroundScroll();
     return;
   }
+
+  const shell = gamesPullRef.current;
+
   if (!chatScrollLockRef.current) {
     chatScrollLockRef.current = {
       bodyOverflow: document.body.style.overflow,
       bodyTouchAction: document.body.style.touchAction,
       htmlOverflow: document.documentElement.style.overflow,
+
+      // ✅ добавили
+      shellOverflow: shell?.style?.overflow,
+      shellTouchAction: shell?.style?.touchAction,
+      shellOverscrollY: shell?.style?.overscrollBehaviorY,
     };
   }
-  document.body.style.overflow = 'hidden';
-  document.documentElement.style.overflow = 'hidden';
-  return () => {
-    unlockBackgroundScroll();
-  };
+
+  // старое
+  document.body.style.overflow = "hidden";
+  document.documentElement.style.overflow = "hidden";
+
+  // ✅ новое: лочим реальный скролл-контейнер приложения
+  if (shell) {
+    shell.style.overflow = "hidden";
+    shell.style.touchAction = "none";
+    shell.style.overscrollBehaviorY = "none";
+  }
+
+  return () => unlockBackgroundScroll();
 }, [chatVisible]);
+
+
 useEffect(() => {
   chatMessagesSnapshotRef.current = chatMessages || [];
 }, [chatMessages]);
@@ -5157,6 +5185,13 @@ function openYandexRoute(lat, lon) {
                     aria-modal="true"
                     onClick={(e) => e.stopPropagation()}
                     onTransitionEnd={onChatDrawerTransitionEnd}
+
+                    // ✅ добавь это:
+                    onWheel={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onTouchMove={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerMove={(e) => e.stopPropagation()}
                   >
                     <div className="chatDrawerHead">
                       <button type="button" className="btn secondary" onClick={closeChatDrawer}>✕</button>
@@ -5223,8 +5258,11 @@ function openYandexRoute(lat, lon) {
                     {chatTab === 'dm' && !chatActiveCid ? (
                       <>
                         <div className="chatSectionTitle">Контакты</div>
-                        <div className="chatDrawerBody">
-                        <input
+                          <div
+                            className="chatDrawerBody"
+                            style={{ overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch" }}
+                          >                
+                          <input
                           className="chatPeerInput"
                           placeholder="Поиск игрока по имени или @username"
                           value={chatPeerQuery}
@@ -5318,7 +5356,11 @@ function openYandexRoute(lat, lon) {
                     ) : null}
 
                     {(chatTab === 'dm' && !chatActiveCid) ? null : (
-                    <div className="chatMessages" ref={chatMessagesRef}>
+                    <div
+                      className="chatMessages"
+                      ref={chatMessagesRef}
+                      style={{ overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch" }}
+                    >
                       {(() => {
                         const activeConversation = (chatConversations || []).find((c) => String(c.id) === String(chatActiveCid)) || null;
                         const peerLastReadId = Number(activeConversation?.peer_last_read_id || 0);
