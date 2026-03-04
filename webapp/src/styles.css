@@ -3919,6 +3919,49 @@ html[data-theme="light"] .btn.outline.active{
 }
 .rowBetween{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
 
+.playerAccessToggle{
+  min-width: 94px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 3px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.playerAccessToggle.on{
+  background: color-mix(in srgb, #16a34a 84%, black);
+  border-color: color-mix(in srgb, #16a34a 78%, white);
+}
+.playerAccessToggle.off{
+  background: color-mix(in srgb, #dc2626 84%, black);
+  border-color: color-mix(in srgb, #dc2626 78%, white);
+}
+.playerAccessToggle:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-btn) 22%, transparent);
+}
+.playerAccessToggleText{
+  color: #fff;
+  font-weight: 900;
+  font-size: 12px;
+  width: 34px;
+  text-align: center;
+  user-select: none;
+}
+.playerAccessToggleKnob{
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  transition: transform .2s ease;
+}
+.playerAccessToggle.on .playerAccessToggleKnob{ transform: translateX(26px); }
+.playerAccessToggle.off .playerAccessToggleKnob{ transform: translateX(0); }
+
 /* AdminPanel: bottom sheet */
 .sheetBackdrop{
   position:fixed; inset:0;
