@@ -5187,14 +5187,19 @@ function openYandexRoute(lat, lon) {
                       </button>
                       ) : null}
                       {canUseSandboxTab ? (
-                        className={`btn ${chatTab === 'sandbox' ? '' : 'secondary'} chatTabSandbox`}
-                        onClick={() => {
-                        setChatTab('sandbox');
-                        setChatDmMenuOpen(false);
-                      }}>
-                        Песочница
-                        {sandboxUnread > 0 ? <span className="chatTabDot" aria-label="Есть непрочитанные" /> : null}
-                      </button>
+                        <button
+                          type="button"
+                          className={`btn ${chatTab === 'sandbox' ? '' : 'secondary'} chatTabSandbox`}
+                          onClick={() => {
+                            setChatTab('sandbox');
+                            setChatDmMenuOpen(false);
+                          }}
+                        >
+                          Песочница
+                          {sandboxUnread > 0 ? (
+                            <span className="chatTabDot" aria-label="Есть непрочитанные" />
+                          ) : null}
+                        </button>
                       ) : null}
                           </>
                         );
