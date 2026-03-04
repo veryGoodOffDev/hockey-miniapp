@@ -7855,8 +7855,8 @@ app.post('/api/chat/dm/open', async (req, res) => {
 
     const pr = await q(`SELECT tg_id, player_kind FROM players WHERE tg_id=$1 AND disabled=FALSE`, [peer]);
     if (!pr.rows?.[0]) return res.status(404).json({ ok: false, reason: 'peer_not_found' });
-    const peerKind = String(pr.rows[0].player_kind || '').toLowerCase();
-    if (peerKind === 'web') return res.status(403).json({ ok: false, reason: 'peer_not_found' });
+    // const peerKind = String(pr.rows[0].player_kind || '').toLowerCase();
+    // if (peerKind === 'web') return res.status(403).json({ ok: false, reason: 'peer_not_found' });
 
     const peerState = await getPlayerSandboxState(peer);
     if (myState.isSandboxed && !peerState.isAdmin) {
