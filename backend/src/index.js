@@ -657,7 +657,34 @@ async function requireAdminAsync(req, res, user) {
   return true;
 }
 
+// function requireWebAppAuth(req, res) {
+//   const authHeader = String(req.header("authorization") || "");
+//   if (authHeader.toLowerCase().startsWith("bearer ")) {
+//     const token = authHeader.slice(7).trim();
+//     const payload = verifyToken(token);
+//     if (!payload?.uid) {
+//       res.status(401).json({ ok: false, reason: "invalid_token" });
+//       return null;
+//     }
+//     return { id: payload.uid, is_email_auth: true };
+//   }
+
+//   const initData = req.header("x-telegram-init-data");
+//   const v = verifyTelegramWebApp(initData, process.env.BOT_TOKEN);
+//   if (!v.ok) {
+//     res.status(401).json({ ok: false, reason: v.reason });
+//     return null;
+//   }
+//   return v.user;
+// }
+
 function requireWebAppAuth(req, res) {
+  const initData = req.header("x-telegram-init-data");
+  if (initData) {
+    const v = verifyTelegramWebApp(initData, process.env.BOT_TOKEN);
+    if (v.ok) return v.user;
+  }
+
   const authHeader = String(req.header("authorization") || "");
   if (authHeader.toLowerCase().startsWith("bearer ")) {
     const token = authHeader.slice(7).trim();
@@ -669,13 +696,14 @@ function requireWebAppAuth(req, res) {
     return { id: payload.uid, is_email_auth: true };
   }
 
-  const initData = req.header("x-telegram-init-data");
-  const v = verifyTelegramWebApp(initData, process.env.BOT_TOKEN);
-  if (!v.ok) {
+  if (initData) {
+    const v = verifyTelegramWebApp(initData, process.env.BOT_TOKEN);
     res.status(401).json({ ok: false, reason: v.reason });
     return null;
   }
-  return v.user;
+
+  res.status(401).json({ ok: false, reason: "no_init_data" });
+  return null;
 }
 
 async function requireGroupMember(req, res, user) {
