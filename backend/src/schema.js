@@ -97,12 +97,13 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_message_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_chat_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_last_count INT;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
 
   // быстрый поиск "кому пора отправить"
   await q(`
     CREATE INDEX IF NOT EXISTS idx_games_postgame_due
     ON games (starts_at) INCLUDE (id)
-    WHERE status IS DISTINCT FROM 'cancelled' AND postgame_sent_at IS NULL;
+    WHERE status IS DISTINCT FROM 'cancelled' AND postgame_enabled = TRUE AND postgame_sent_at IS NULL;
   `);
 
 
