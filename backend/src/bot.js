@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard, session } from "grammy";
 import { q } from "./db.js";
+import { buildReminderKeyboard, getReminderRsvpStats } from "./rsvpInline.js";
 
 function adminIds() {
   return (process.env.ADMIN_IDS || "")
@@ -56,6 +57,24 @@ export function createBot() {
       DO UPDATE SET bot_menu_msg_id=EXCLUDED.bot_menu_msg_id, updated_at=NOW()
       `,
       [uid, mid]
+    );
+  }
+
+
+  async function ensureVotingPlayer(from) {
+    if (!from?.id) return;
+    await q(
+      `
+      INSERT INTO players(tg_id, first_name, last_name, username, player_kind, is_guest, updated_at)
+      VALUES ($1, $2, $3, $4, 'tg', FALSE, NOW())
+      ON CONFLICT (tg_id)
+      DO UPDATE SET
+        first_name=EXCLUDED.first_name,
+        last_name=EXCLUDED.last_name,
+        username=EXCLUDED.username,
+        updated_at=NOW()
+      `,
+      [from.id, from.first_name || "", from.last_name || "", from.username || ""]
     );
   }
 
@@ -438,7 +457,7 @@ bot.command("pm", async (ctx) => {
   });
 
 
-  bot.callbackQuery("m:to_owner", async (ctx) => {
+bot.callbackQuery("m:to_owner", async (ctx) => {
   if (ctx.chat?.type !== "private") return;
   await ctx.answerCallbackQuery();
   ctx.session.mode = "await_owner_msg";
@@ -451,6 +470,75 @@ bot.command("pm", async (ctx) => {
     kb: cancelKb("m:home"),
   });
 });
+
+  bot.callbackQuery(/^rv:(i|o|n):(\d+)$/, async (ctx) => {
+    const action = String(ctx.match?.[1] || "");
+    const gameId = Number(ctx.match?.[2]);
+
+    if (!Number.isFinite(gameId)) {
+      await ctx.answerCallbackQuery({ text: "Некорректная игра", show_alert: true }).catch(() => {});
+      return;
+    }
+
+    if (action === "n") {
+      const stats = await getReminderRsvpStats(q, gameId);
+      await ctx.answerCallbackQuery({
+        text: `IN: ${stats.inCount} · OUT: ${stats.outCount} · Не отметились: ${stats.pendingCount}`,
+      }).catch(() => {});
+      return;
+    }
+
+    if (!ctx.from?.id) {
+      await ctx.answerCallbackQuery({ text: "Не удалось определить игрока", show_alert: true }).catch(() => {});
+      return;
+    }
+
+    const nextStatus = action === "i" ? "yes" : "no";
+    const voteLabel = action === "i" ? "IN" : "OUT";
+
+    const gameRes = await q(`SELECT id, status FROM games WHERE id=$1`, [gameId]);
+    const game = gameRes.rows?.[0];
+    if (!game || game.status === "cancelled") {
+      await ctx.answerCallbackQuery({ text: "Игра недоступна для голосования", show_alert: true }).catch(() => {});
+      return;
+    }
+
+    await ensureVotingPlayer(ctx.from);
+
+    const prevRes = await q(`SELECT status FROM rsvps WHERE game_id=$1 AND tg_id=$2`, [gameId, ctx.from.id]);
+    const prevStatus = prevRes.rows?.[0]?.status || null;
+
+    if (prevStatus === nextStatus) {
+      await ctx.answerCallbackQuery({ text: `Ты уже проголосовал за ${voteLabel}` }).catch(() => {});
+      return;
+    }
+
+    await q(
+      `INSERT INTO rsvps(game_id, tg_id, status)
+       VALUES($1, $2, $3)
+       ON CONFLICT(game_id, tg_id)
+       DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+      [gameId, ctx.from.id, nextStatus]
+    );
+
+    const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
+    const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(gameId))}`;
+    const stats = await getReminderRsvpStats(q, gameId);
+    const kb = buildReminderKeyboard({ gameId, deepLink, stats });
+
+    const chatId = ctx.callbackQuery?.message?.chat?.id;
+    const messageId = ctx.callbackQuery?.message?.message_id;
+    if (chatId && messageId) {
+      await ctx.api.editMessageReplyMarkup(chatId, messageId, { reply_markup: kb }).catch(() => {});
+    }
+
+    const changed = prevStatus && prevStatus !== nextStatus;
+    await ctx.answerCallbackQuery({
+      text: changed
+        ? `Голос изменён. Оставлен голос за ${voteLabel}`
+        : `Голос учтён: ${voteLabel}`,
+    }).catch(() => {});
+  });
 
   // ---------------- message handlers ----------------
 // ===== relay: user -> owner, owner -> user (must be BEFORE other message handlers)
