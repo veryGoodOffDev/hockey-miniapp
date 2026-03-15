@@ -4593,6 +4593,7 @@ app.post("/api/games", async (req, res) => {
   if (!(await requireAdminAsync(req, res, user))) return;
 
  const { starts_at, location, video_url, geo_lat, geo_lon, info_text, notice_text } = req.body || {};
+  const postgame_enabled = req.body?.postgame_enabled === undefined ? true : !!req.body.postgame_enabled;
 
 
   const d = new Date(starts_at);
@@ -4624,10 +4625,10 @@ if (noticeVal && noticeVal.length > 240) {
 
 
 const ir = await q(
-  `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text)
-   VALUES($1,$2,'scheduled',$3,$4,$5,$6,$7)
-   RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text`,
-  [d.toISOString(), String(location || "").trim(), vu, lat, lon, infoVal, noticeVal]
+  `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled)
+   VALUES($1,$2,'scheduled',$3,$4,$5,$6,$7,$8)
+   RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled`,
+  [d.toISOString(), String(location || "").trim(), vu, lat, lon, infoVal, noticeVal, postgame_enabled]
 );
 
  
@@ -5575,6 +5576,7 @@ app.post("/api/admin/games/:id/postgame/sendNow", async (req, res) => {
   const g = gr.rows?.[0];
   if (!g) return res.status(404).json({ ok: false, reason: "game_not_found" });
   if (g.status === "cancelled") return res.status(400).json({ ok: false, reason: "game_cancelled" });
+  if (g.postgame_enabled === false) return res.status(400).json({ ok: false, reason: "postgame_disabled" });
 
   if (!force && g.postgame_message_id) {
     const s = await syncPostgameCounter(gameId);
@@ -5787,17 +5789,28 @@ app.patch("/api/admin/games/:id/reminder", async (req, res) => {
 
   const b = req.body || {};
 
-  const enabled = !!b.reminder_enabled;
-  const pin = b.reminder_pin === undefined ? true : !!b.reminder_pin;
+  const currentRes = await q(`SELECT * FROM games WHERE id=$1`, [gameId]);
+  const currentGame = currentRes.rows?.[0];
+  if (!currentGame) return res.status(404).json({ ok: false, reason: "game_not_found" });
+
+  const enabled = b.reminder_enabled === undefined ? !!currentGame.reminder_enabled : !!b.reminder_enabled;
+  const pin = b.reminder_pin === undefined ? (currentGame.reminder_pin !== false) : !!b.reminder_pin;
+  const postgameEnabled = b.postgame_enabled === undefined
+    ? (currentGame.postgame_enabled !== false)
+    : !!b.postgame_enabled;
 
   // reminder_at можно прислать как ISO строку
-  let reminderAt = null;
-  if (b.reminder_at) {
+  let reminderAt = currentGame.reminder_at || null;
+  if (b.reminder_at !== undefined) {
+    if (!b.reminder_at) {
+      reminderAt = null;
+    } else {
     const d = new Date(String(b.reminder_at));
     if (!Number.isFinite(d.getTime())) {
       return res.status(400).json({ ok: false, reason: "bad_reminder_at" });
     }
     reminderAt = d.toISOString();
+    }
   }
 
   if (enabled && !reminderAt) {
@@ -5814,12 +5827,13 @@ app.patch("/api/admin/games/:id/reminder", async (req, res) => {
       reminder_enabled=$2,
       reminder_at=$3,
       reminder_pin=$4,
-      reminder_sent_at = CASE WHEN $5::bool THEN NULL ELSE reminder_sent_at END,
-      reminder_message_id = CASE WHEN $5::bool THEN NULL ELSE reminder_message_id END,
+      postgame_enabled=$5,
+      reminder_sent_at = CASE WHEN $6::bool THEN NULL ELSE reminder_sent_at END,
+      reminder_message_id = CASE WHEN $6::bool THEN NULL ELSE reminder_message_id END,
       updated_at=NOW()
     WHERE id=$1
     `,
-    [gameId, enabled, reminderAt, pin, resetSent]
+    [gameId, enabled, reminderAt, pin, postgameEnabled, resetSent]
   );
 
   const gr = await q(`SELECT * FROM games WHERE id=$1`, [gameId]);
@@ -5880,6 +5894,7 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       FROM games g
       WHERE g.status IS DISTINCT FROM 'cancelled'
         AND g.starts_at IS NOT NULL
+        AND g.postgame_enabled = TRUE
         AND g.postgame_message_id IS NULL
         AND (g.starts_at + interval '3 hours') <= NOW()
       ORDER BY g.starts_at ASC
@@ -6205,6 +6220,7 @@ app.post("/api/internal/postgame/run", async (req, res) => {
       FROM games
       WHERE status IS DISTINCT FROM 'cancelled'
         AND starts_at <= NOW() - INTERVAL '2 hours'
+        AND postgame_enabled = TRUE
         AND postgame_sent_at IS NULL
         AND starts_at >= NOW() - INTERVAL '14 days'
       ORDER BY starts_at DESC

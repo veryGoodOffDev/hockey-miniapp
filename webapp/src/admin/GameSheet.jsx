@@ -93,10 +93,12 @@ export default function GameSheet({
   const [infoText, setInfoText] = useState("");
   const [infoSaving, setInfoSaving] = useState(false);
 
-  // reminder
+// reminder
 // reminders (list)
 const [reminders, setReminders] = useState([]);
 const [remLoading, setRemLoading] = useState(false);
+const [postgameEnabled, setPostgameEnabled] = useState(true);
+const [postgameSaving, setPostgameSaving] = useState(false);
 
 function isoToLocalDT(iso) {
   if (!iso) return "";
@@ -252,10 +254,11 @@ function askConfirm(message) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, game?.id]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!isOpen || !game) return;
     setNoticeText(game.notice_text || "");
     setInfoText(game.info_text || "");
+    setPostgameEnabled(game.postgame_enabled !== false);
   }, [isOpen, game?.id, game?.notice_text, game?.info_text]);
 
   useEffect(() => {
@@ -396,6 +399,28 @@ async function saveInfoBlocks() {
     notify("✅ Информация сохранена");
   } finally {
     setInfoSaving(false);
+  }
+}
+
+async function savePostgameSettings() {
+  if (!gameDraft?.id) return;
+
+  setPostgameSaving(true);
+  try {
+    const ok = await runOp("save postgame settings", async () => {
+      const r = await apiPatch(`/api/admin/games/${gameDraft.id}/reminder`, {
+        postgame_enabled: !!postgameEnabled,
+      });
+      if (!r?.ok) throw new Error(r?.reason || r?.error || "postgame_save_failed");
+    });
+
+    if (!ok) return;
+
+    await onReload?.(gameDraft.id);
+    await onChanged?.({ label: "✅ Послеигровое сообщение сохранено — обновляю приложение…", gameId: gameDraft.id });
+    notify("✅ Послеигровое сообщение сохранено");
+  } finally {
+    setPostgameSaving(false);
   }
 }
 
@@ -1194,6 +1219,39 @@ async function setAttend(pOrId, nextStatus) {
                   ) : null}
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="rowBetween" style={{ gap: 10 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>💬 Послеигровое сообщение</h3>
+                <div className="small" style={{ marginTop: 4, opacity: 0.85 }}>
+                  Отправка сообщения после завершения этой игры.
+                </div>
+              </div>
+
+              <label className="gsSwitch" title="Включить послеигровое сообщение">
+                <input
+                  type="checkbox"
+                  checked={!!postgameEnabled}
+                  onChange={(e) => setPostgameEnabled(e.target.checked)}
+                  disabled={opBusy || postgameSaving}
+                />
+                <span className="gsSwitchTrack" />
+                <span className="gsSwitchText">Вкл</span>
+              </label>
+            </div>
+
+            <div className="gsRemActions" style={{ marginTop: 10 }}>
+              <button
+                className="btn"
+                type="button"
+                onClick={savePostgameSettings}
+                disabled={opBusy || postgameSaving}
+              >
+                {postgameSaving ? "…" : "Сохранить"}
+              </button>
             </div>
           </div>
 
