@@ -8,6 +8,7 @@ import { createBot } from "./bot.js";
 import { verifyTelegramWebApp } from "./tgAuth.js";
 import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
+import { buildReminderKeyboard, getReminderRsvpStats } from "./rsvpInline.js";
 import { InlineKeyboard } from "grammy";
 import { performance } from "node:perf_hooks";
 import { Resend } from "resend";
@@ -1421,7 +1422,8 @@ async function sendRsvpReminder(chatId) {
 
   const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
   const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(game.id))}`;
-  const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
+  const stats = await getReminderRsvpStats(q, game.id);
+  const kb = buildReminderKeyboard({ gameId: game.id, deepLink, stats });
 
   const sent = await bot.api.sendMessage(chatId, text, {
     reply_markup: kb,
@@ -5925,7 +5927,8 @@ app.post("/api/internal/reminders/run", async (req, res) => {
 Открыть мини-приложение для отметок:`;
 
       const deepLink = `https://t.me/${botUsername}?startapp=${encodeURIComponent(String(row.game_id))}`;
-      const kb = new InlineKeyboard().url("Открыть мини-приложение", deepLink);
+      const stats = await getReminderRsvpStats(q, row.game_id);
+      const kb = buildReminderKeyboard({ gameId: row.game_id, deepLink, stats });
 
       let sent;
       try {
