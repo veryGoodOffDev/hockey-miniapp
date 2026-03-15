@@ -5115,7 +5115,44 @@ app.delete("/api/admin/players/:tg_id", async (req, res) => {
     return res.status(400).json({ ok: false, reason: "delete_not_allowed" });
   }
 
+  // До удаления собираем затронутые игры, чтобы после каскадного удаления RSVP
+  // сразу синхронизировать составы и опубликованное teams-сообщение.
+  const affectedR = await q(
+    `
+    SELECT DISTINCT game_id
+    FROM (
+      SELECT r.game_id
+      FROM rsvps r
+      WHERE r.tg_id = $1
+
+      UNION
+
+      SELECT t.game_id
+      FROM teams t
+      WHERE EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(t.team_a, '[]'::jsonb)) AS p
+        WHERE COALESCE(p->>'tg_id', '') = $1::text
+      )
+         OR EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(t.team_b, '[]'::jsonb)) AS p
+        WHERE COALESCE(p->>'tg_id', '') = $1::text
+      )
+    ) x
+    `,
+    [tgId]
+  );
+  const affectedGameIds = (affectedR.rows || [])
+    .map((x) => Number(x.game_id))
+    .filter((x) => Number.isFinite(x) && x > 0);
+
   await q(`DELETE FROM players WHERE tg_id=$1`, [tgId]);
+
+  for (const gid of affectedGameIds) {
+    await syncTeamsAfterRsvpChange(gid, tgId);
+  }
+
   res.json({ ok: true });
 });
 
