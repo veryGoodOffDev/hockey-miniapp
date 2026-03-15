@@ -4815,6 +4815,10 @@ app.post("/api/admin/guests", async (req, res) => {
        ON CONFLICT(game_id, tg_id) DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
       [gameId, guestId, status]
     );
+
+    // если составы уже сгенерированы — сразу подтягиваем нового гостя в команду
+    // и обновляем опубликованное сообщение с составами (best-effort)
+    await syncTeamsAfterRsvpChange(gameId, guestId);
   }
 
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [guestId]);
