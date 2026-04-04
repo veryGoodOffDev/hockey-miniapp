@@ -254,10 +254,24 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { files: 5, fileSize: 10 * 1024 * 1024 }, // 5 файлов по 10MB
 });
-const allowed = (process.env.ALLOWED_ORIGINS || "")
-  .split(",")
-  .map((s) => s.trim())
+function normalizeOrigin(value) {
+  try {
+    const u = new URL(String(value || "").trim());
+    return u.origin;
+  } catch {
+    return "";
+  }
+}
+
+const allowed = [
+  ...(process.env.ALLOWED_ORIGINS || "").split(","),
+  process.env.WEB_APP_URL || "",
+  process.env.PUBLIC_WEBAPP_URL || "",
+]
+  .map((s) => normalizeOrigin(s))
   .filter(Boolean);
+
+const allowedSet = new Set(allowed);
 
 app.use(
   cors({
@@ -265,7 +279,7 @@ app.use(
       if (!origin || origin === "null") return cb(null, true); // <-- добавил "null"
       if (allowed.length === 0) return cb(null, true);
       if (allowed.includes("*")) return cb(null, true);
-      if (allowed.includes(origin)) return cb(null, true);
+      if (allowedSet.has(origin)) return cb(null, true);
       return cb(null, false); // <-- лучше так, чем Error(…) => иногда превращается в 500
     },
     allowedHeaders: ["Content-Type", "x-telegram-init-data", "Authorization"],
