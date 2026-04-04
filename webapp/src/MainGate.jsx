@@ -95,6 +95,16 @@ export default function MainGate({ onAuthed }) {
     );
   }
 
+  if (state.reason === "network_error") {
+    return (
+      <div className="card">
+        <h2>Не удалось подключиться к серверу</h2>
+        <div className="small">Проверьте интернет, адрес API (VITE_API_BASE) и CORS на backend.</div>
+        <button className="btn" onClick={checkMe}>Повторить</button>
+      </div>
+    );
+  }
+
   return (
     <div className="card">
       <h2>Не удалось войти</h2>
