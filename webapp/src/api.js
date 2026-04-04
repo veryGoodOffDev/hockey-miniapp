@@ -36,16 +36,25 @@ async function request(path, { method = "GET", body, signal } = {}) {
 
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
 
-    // Если решишь делать cookie-сессии (вместо bearer) — оставляй включённым.
-    // Если у тебя API на другом домене — потребуется CORS с credentials.
-    credentials: "omit",
-  });
+      // Если решишь делать cookie-сессии (вместо bearer) — оставляй включённым.
+      // Если у тебя API на другом домене — потребуется CORS с credentials.
+      credentials: "omit",
+    });
+  } catch (e) {
+    throw makeError("network_error", {
+      ok: false,
+      reason: "network_error",
+      detail: e?.message || "fetch_failed",
+    });
+  }
 
   // 204 No Content
   const text = await res.text();
@@ -79,13 +88,22 @@ export async function apiUpload(path, formData, { signal } = {}) {
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   // Важно: Content-Type для formData НЕ ставим — браузер сам проставит boundary
-  const r = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    body: formData,
-    headers,
-    signal,
-    credentials: "omit",
-  });
+  let r;
+  try {
+    r = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      body: formData,
+      headers,
+      signal,
+      credentials: "omit",
+    });
+  } catch (e) {
+    throw makeError("network_error", {
+      ok: false,
+      reason: "network_error",
+      detail: e?.message || "fetch_failed",
+    });
+  }
 
   const text = await r.text();
   let data = null;

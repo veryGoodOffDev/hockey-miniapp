@@ -210,7 +210,12 @@ export default function AuthLanding({
       setCooldown(30);
       setMsg("Код отправлен на почту. Введите 6 цифр из письма.");
     } catch (e) {
-      setMsg("Не удалось отправить код. Проверьте почту и попробуйте ещё раз.");
+      const reason = e?.data?.reason || "";
+      if (reason === "network_error") {
+        setMsg("Нет связи с сервером. Проверьте интернет/VPN и повторите.");
+      } else {
+        setMsg("Не удалось отправить код. Проверьте почту и попробуйте ещё раз.");
+      }
     } finally {
       setBusy(false);
     }
