@@ -3,6 +3,27 @@ import { getInitData } from "./tg.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
+function apiBaseCandidates() {
+  const out = [];
+  const push = (v) => {
+    const x = String(v || "").replace(/\/+$/, "");
+    if (!out.includes(x)) out.push(x);
+  };
+
+  push(API_BASE);
+
+  // Частая прод-ошибка: указали https://host:8443, но публично доступен только 443.
+  // В таком случае даём шанс автоматически откатиться на стандартный https-порт.
+  if (/^https:\/\/[^/]+:8443$/i.test(API_BASE)) {
+    push(API_BASE.replace(/:8443$/i, ""));
+  }
+
+  // Последний fallback — тот же origin, где загружен фронт.
+  push("");
+
+  return out;
+}
+
 // На будущее: токен для входа вне Telegram (Email OTP / Google)
 // Если пока токена нет — просто вернёт пусто.
 export function getAuthToken() {
@@ -37,22 +58,27 @@ async function request(path, { method = "GET", body, signal } = {}) {
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
   let res;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal,
+  let netErr = null;
+  for (const base of apiBaseCandidates()) {
+    try {
+      res = await fetch(`${base}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal,
+        credentials: "omit",
+      });
+      break;
+    } catch (e) {
+      netErr = e;
+    }
+  }
 
-      // Если решишь делать cookie-сессии (вместо bearer) — оставляй включённым.
-      // Если у тебя API на другом домене — потребуется CORS с credentials.
-      credentials: "omit",
-    });
-  } catch (e) {
+  if (!res) {
     throw makeError("network_error", {
       ok: false,
       reason: "network_error",
-      detail: e?.message || "fetch_failed",
+      detail: netErr?.message || "fetch_failed",
     });
   }
 
@@ -89,19 +115,27 @@ export async function apiUpload(path, formData, { signal } = {}) {
 
   // Важно: Content-Type для formData НЕ ставим — браузер сам проставит boundary
   let r;
-  try {
-    r = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      body: formData,
-      headers,
-      signal,
-      credentials: "omit",
-    });
-  } catch (e) {
+  let netErr = null;
+  for (const base of apiBaseCandidates()) {
+    try {
+      r = await fetch(`${base}${path}`, {
+        method: "POST",
+        body: formData,
+        headers,
+        signal,
+        credentials: "omit",
+      });
+      break;
+    } catch (e) {
+      netErr = e;
+    }
+  }
+
+  if (!r) {
     throw makeError("network_error", {
       ok: false,
       reason: "network_error",
-      detail: e?.message || "fetch_failed",
+      detail: netErr?.message || "fetch_failed",
     });
   }
 
