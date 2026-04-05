@@ -545,7 +545,7 @@ function renderTeamsTwoColsHtml(teamAPlayers, teamBPlayers) {
   while (right.length < rows) right.push("");
 
   // Чем меньше MAX_TOTAL — тем меньше шанс переноса на мобилках с крупным шрифтом
-  const MAX_TOTAL = 42; // попробуй 42..46 по вкусу
+  const MAX_TOTAL = 38; // попробуй 42..46 по вкусу
   const GAP = 2;        // пробелы между колонками
   const MIN_LEFT = 14;
   const MAX_LEFT = 20;  // ограничиваем левую колонку
