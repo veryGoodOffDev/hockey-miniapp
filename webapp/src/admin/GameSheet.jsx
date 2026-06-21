@@ -136,6 +136,7 @@ function toggleReminderExpanded(row) {
 
   // guests
   const [guestsState, setGuestsState] = useState({ loading: false, list: [] });
+  const [guestPoolState, setGuestPoolState] = useState({ loading: false, list: [] });
   const [guestFormOpen, setGuestFormOpen] = useState(false);
   const [guestEditingId, setGuestEditingId] = useState(null);
   const [guestDraft, setGuestDraft] = useState({ ...GUEST_DEFAULT });
@@ -234,6 +235,7 @@ function askConfirm(message) {
 
     setVideoOpen(false);
     setGuestsState({ loading: false, list: [] });
+    setGuestPoolState({ loading: false, list: [] });
     setGuestFormOpen(false);
     setGuestEditingId(null);
     setGuestDraft({ ...GUEST_DEFAULT, email: "" });
@@ -249,6 +251,7 @@ function askConfirm(message) {
 
     // загрузки
     loadGuestsForGame(game.id);
+    loadGuestPool();
     loadAttendanceForGame(game.id);
     loadRemindersForGame(game.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -715,6 +718,33 @@ async function setAttend(pOrId, nextStatus) {
     }
   }
 
+  async function loadGuestPool() {
+    setGuestPoolState({ loading: true, list: [] });
+    try {
+      const r = await apiGet("/api/admin/players");
+      const list = (r.players || [])
+        .filter((p) => p.player_kind === "guest" && !p.disabled)
+        .sort((a, b) => showName(a).localeCompare(showName(b), "ru"));
+      setGuestPoolState({ loading: false, list });
+    } catch (e) {
+      console.error("loadGuestPool failed", e);
+      setGuestPoolState({ loading: false, list: [] });
+    }
+  }
+
+  async function setGuestForGame(tgId, status = "yes") {
+    if (!gameDraft?.id || !tgId) return;
+
+    await runOp("set guest rsvp", async () => {
+      await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id: tgId, status });
+      await loadGuestsForGame(gameDraft.id);
+      await loadGuestPool();
+      await loadAttendanceForGame(gameDraft.id);
+      await onReload?.();
+      await onChanged?.({ label: "✅ Гость отмечен на игру — обновляю приложение…", gameId: gameDraft.id });
+    });
+  }
+
   function openAddGuest() {
     if (!gameDraft) return;
     setGuestEditingId(null);
@@ -777,6 +807,7 @@ async function setAttend(pOrId, nextStatus) {
       setGuestDraft({ ...GUEST_DEFAULT, email: "" });
 
       await loadGuestsForGame(gameDraft.id);
+      await loadGuestPool();
       await loadAttendanceForGame(gameDraft.id);
       await onReload?.();
       await onChanged?.({ label: "✅ Гости обновлены — обновляю приложение…", gameId: gameDraft.id });
@@ -794,6 +825,7 @@ async function setAttend(pOrId, nextStatus) {
 
       if (gameDraft) {
         await loadGuestsForGame(gameDraft.id);
+        await loadGuestPool();
         await loadAttendanceForGame(gameDraft.id);
       }
       await onReload?.();
@@ -835,6 +867,7 @@ async function setAttend(pOrId, nextStatus) {
 
       if (gameDraft?.id) {
         await loadGuestsForGame(gameDraft.id);
+        await loadGuestPool();
         await loadAttendanceForGame(gameDraft.id);
       }
       await onReload?.();
@@ -1434,7 +1467,7 @@ async function setAttend(pOrId, nextStatus) {
           <div className="rowBetween">
             <h2 style={{ margin: 0 }}>Гости</h2>
             <div className="row" style={{ gap: 8 }}>
-              <button className="btn secondary" onClick={() => loadGuestsForGame(gameDraft.id)}>
+              <button className="btn secondary" onClick={() => { loadGuestsForGame(gameDraft.id); loadGuestPool(); }}>
                 Обновить
               </button>
               <button className="btn" onClick={openAddGuest}>
@@ -1572,6 +1605,46 @@ async function setAttend(pOrId, nextStatus) {
                       >
                         ❓
                       </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+
+          <div className="card" style={{ marginTop: 10 }}>
+            <div className="rowBetween">
+              <div>
+                <div style={{ fontWeight: 900 }}>Сохранённые гости</div>
+                <div className="small" style={{ opacity: 0.8 }}>Выберите уже созданного гостя и отметьте его на эту игру.</div>
+              </div>
+              <button className="btn secondary" type="button" onClick={loadGuestPool}>Обновить список</button>
+            </div>
+
+            {guestPoolState.loading ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю список гостей…</div>
+            ) : guestPoolState.list.length === 0 ? (
+              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Сохранённых гостей пока нет. Создайте гостя кнопкой «+ Добавить».</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {guestPoolState.list.map((g) => {
+                  const current = (guestsState.list || []).find((x) => String(x.tg_id) === String(g.tg_id));
+                  const st = current?.status || "";
+                  return (
+                    <div key={g.tg_id} className="listItem">
+                      <div className="rowBetween">
+                        <div>
+                          <div style={{ fontWeight: 900 }}>{showName(g)}{showNum(g)}</div>
+                          <div className="small" style={{ opacity: 0.8 }}>{posLabel((g.position || "F").toUpperCase())}{st ? ` · сейчас: ${st}` : " · не выбран на игру"}</div>
+                        </div>
+                        <button className="iconBtn" title="Изменить карточку гостя" onClick={() => openEditGuest({ ...g, status: st || "yes" })}>✏️</button>
+                      </div>
+                      <div className="segRow segRow--icons" style={{ marginTop: 8 }}>
+                        <button className={`segBtn segIcon ${st === "yes" ? "on" : ""}`} type="button" onClick={() => setGuestForGame(g.tg_id, "yes")} title="Будет">✅</button>
+                        <button className={`segBtn segIcon ${st === "no" ? "on" : ""}`} type="button" onClick={() => setGuestForGame(g.tg_id, "no")} title="Не будет">❌</button>
+                        <button className={`segBtn segIcon ${st === "maybe" ? "on" : ""}`} type="button" onClick={() => setGuestForGame(g.tg_id, "maybe")} title="Под вопросом">❓</button>
                       </div>
                     </div>
                   );

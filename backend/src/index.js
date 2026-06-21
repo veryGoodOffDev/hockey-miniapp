@@ -6363,6 +6363,7 @@ app.get("/api/stats/attendance", async (req, res) => {
         ${useDays ? `AND g.starts_at >= NOW() - make_interval(days => $3::int)` : ""}
 
         AND p.disabled IS DISTINCT FROM TRUE
+        AND COALESCE(p.player_kind, 'tg') <> 'guest'
 
       GROUP BY p.tg_id, name, p.position, p.jersey_number, p.is_guest, p.player_kind
       ORDER BY yes DESC, maybe DESC, total DESC, name ASC;
