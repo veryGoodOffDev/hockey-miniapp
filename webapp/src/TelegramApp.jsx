@@ -1720,15 +1720,27 @@ function clipText(s, max = 70) {
   initStartedRef.current = true;
   const applyTheme = () => {
     if (!tg) return;
-    const scheme = tg.colorScheme || "light";
-    document.documentElement.dataset.tg = scheme;
-    document.documentElement.dataset.theme = scheme;
-    const p = tg.themeParams || {};
-    for (const [k, v] of Object.entries(p)) {
-      if (typeof v === "string" && v) {
-        document.documentElement.style.setProperty(`--tg-${k}`, v);
-      }
+    const forcedThemeParams = {
+      bg_color: "#0b1220",
+      text_color: "#e5e7eb",
+      hint_color: "#94a3b8",
+      link_color: "#60a5fa",
+      button_color: "#3b82f6",
+      button_text_color: "#ffffff",
+      secondary_bg_color: "#0f1a2d",
+      section_bg_color: "#0f1a2d",
+    };
+
+    document.documentElement.dataset.tg = "dark";
+    document.documentElement.dataset.theme = "dark";
+
+    for (const [k, v] of Object.entries(forcedThemeParams)) {
+      document.documentElement.style.setProperty(`--tg-theme-${k.split("_").join("-")}`, v);
     }
+
+    tg.setHeaderColor?.(forcedThemeParams.bg_color);
+    tg.setBackgroundColor?.(forcedThemeParams.bg_color);
+    tg.setBottomBarColor?.(forcedThemeParams.secondary_bg_color);
   };
   const readStartParam = () => {
     const rawA = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || "").trim();
