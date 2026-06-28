@@ -1197,6 +1197,58 @@ function postgameStartParam(gameId) {
   return `game_${gameId}_comments`;
 }
 
+
+function defaultAutoNoAtIso(startsAt) {
+  const d = new Date(startsAt);
+  if (!Number.isFinite(d.getTime())) return null;
+  // Project timezone is Europe/Moscow (UTC+3, no DST): previous local day at 22:00.
+  const msk = new Date(d.getTime() + 3 * 3600 * 1000);
+  const utc = Date.UTC(msk.getUTCFullYear(), msk.getUTCMonth(), msk.getUTCDate() - 1, 19, 0, 0);
+  return new Date(utc).toISOString();
+}
+
+function clamp01(n) {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+async function runAutoNoRsvps(limit = 20) {
+  const gr = await q(
+    `SELECT id FROM games
+     WHERE status IS DISTINCT FROM 'cancelled'
+       AND auto_no_at IS NOT NULL
+       AND auto_no_at <= NOW()
+       AND starts_at >= NOW() - INTERVAL '6 hours'
+     ORDER BY auto_no_at ASC
+     LIMIT $1`,
+    [limit]
+  );
+
+  let games_checked = 0;
+  let players_marked = 0;
+  const game_ids = [];
+
+  for (const g of gr.rows || []) {
+    games_checked += 1;
+    game_ids.push(g.id);
+    const rr = await q(
+      `INSERT INTO rsvps(game_id, tg_id, status, auto_no)
+       SELECT $1, p.tg_id, 'no', TRUE
+       FROM players p
+       LEFT JOIN rsvps r ON r.game_id=$1 AND r.tg_id=p.tg_id
+       WHERE p.disabled=FALSE
+         AND p.player_kind IN ('tg','manual','web')
+         AND r.tg_id IS NULL
+       ON CONFLICT(game_id, tg_id) DO NOTHING
+       RETURNING tg_id`,
+      [g.id]
+    );
+    players_marked += rr.rowCount || 0;
+  }
+
+  return { ok: true, games_checked, players_marked, game_ids };
+}
+
 function buildDiscussDeepLink(gameId) {
   const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
   return `https://t.me/${botUsername}?startapp=${encodeURIComponent(postgameStartParam(gameId))}`;
@@ -4169,6 +4221,7 @@ app.get("/api/games", async (req, res) => {
       COALESCE(c.no_count,0)    AS no_count,
       COALESCE(cc.comments_count,0) AS comments_count,
       my.status AS my_status,
+      COALESCE(my.auto_no, FALSE) AS my_auto_no,
       ${sqlPlayerName("bp")} AS best_player_name
       FROM page p
       CROSS JOIN total t
@@ -4201,7 +4254,7 @@ const talisman_holder = holderR.rows[0] || null;
 
   
   const total = r.rows[0]?.total ?? 0;
-  const games = r.rows.map(({ total, ...rest }) => rest);
+  const games = r.rows.map(({ total, ...rest }) => ({ ...rest, autoNoAt: rest.auto_no_at, gameStartAt: rest.starts_at, autoNo: rest.my_auto_no }));
 
  res.json({ ok: true, games, total, limit, offset, scope, talisman_holder });
 });
@@ -4257,6 +4310,7 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
     ? q(
         `SELECT
           COALESCE(r.status, 'maybe') AS status,
+          COALESCE(r.auto_no, FALSE) AS auto_no,
           p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
           p.position AS profile_position,
           r.pos_override,
@@ -4289,6 +4343,7 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
     : q(
         `SELECT
           COALESCE(r.status, 'maybe') AS status,
+          COALESCE(r.auto_no, FALSE) AS auto_no,
           p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
           p.position AS profile_position,
           r.pos_override,
@@ -4371,8 +4426,8 @@ try {
 // отдаём расширенный game
 res.json({
   ok: true,
-  game,
-  rsvps: rr.rows,
+  game: { ...game, autoNoAt: game.auto_no_at, gameStartAt: game.starts_at },
+  rsvps: rr.rows.map((row) => ({ ...row, autoNo: row.auto_no })),
   teams,
   vote_open,
   my_vote,
@@ -4435,7 +4490,7 @@ app.post("/api/rsvp", async (req, res) => {
       `INSERT INTO rsvps(game_id, tg_id, status, pos_override)
        VALUES($1,$2,$3,$4)
        ON CONFLICT(game_id, tg_id)
-       DO UPDATE SET status=EXCLUDED.status, pos_override=EXCLUDED.pos_override, updated_at=NOW()`,
+       DO UPDATE SET status=EXCLUDED.status, pos_override=EXCLUDED.pos_override, auto_no=FALSE, updated_at=NOW()`,
       [gid, user.id, status, finalPos]
     );
   } else {
@@ -4443,7 +4498,7 @@ app.post("/api/rsvp", async (req, res) => {
       `INSERT INTO rsvps(game_id, tg_id, status)
        VALUES($1,$2,$3)
        ON CONFLICT(game_id, tg_id)
-       DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+       DO UPDATE SET status=EXCLUDED.status, auto_no=FALSE, updated_at=NOW()`,
       [gid, user.id, status]
     );
   }
@@ -4613,7 +4668,7 @@ app.post("/api/games", async (req, res) => {
   if (!(await requireAdminAsync(req, res, user))) return;
 
  const { starts_at, location, video_url, geo_lat, geo_lon, info_text, notice_text } = req.body || {};
-  const postgame_enabled = req.body?.postgame_enabled === undefined ? true : !!req.body.postgame_enabled;
+  const postgame_enabled = req.body?.postgame_enabled === undefined ? false : !!req.body.postgame_enabled;
 
 
   const d = new Date(starts_at);
@@ -4645,10 +4700,10 @@ if (noticeVal && noticeVal.length > 240) {
 
 
 const ir = await q(
-  `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled)
-   VALUES($1,$2,'scheduled',$3,$4,$5,$6,$7,$8)
-   RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled`,
-  [d.toISOString(), String(location || "").trim(), vu, lat, lon, infoVal, noticeVal, postgame_enabled]
+  `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled, auto_no_at)
+   VALUES($1,$2,'scheduled',$3,$4,$5,$6,$7,$8,$9)
+   RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled, auto_no_at`,
+  [d.toISOString(), String(location || "").trim(), vu, lat, lon, infoVal, noticeVal, postgame_enabled, defaultAutoNoAtIso(d)]
 );
 
  
@@ -4680,10 +4735,23 @@ app.patch("/api/games/:id", async (req, res) => {
     if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_starts_at" });
     sets.push(`starts_at=$${i++}`);
     vals.push(d.toISOString());
+    if (b.auto_no_at === undefined) {
+      sets.push(`auto_no_at=$${i++}`);
+      vals.push(defaultAutoNoAtIso(d));
+    }
   }
   if (b.location !== undefined) {
     sets.push(`location=$${i++}`);
     vals.push(String(b.location || "").trim());
+  }
+  if (b.auto_no_at !== undefined) {
+    if (!b.auto_no_at) {
+      sets.push(`auto_no_at=$${i++}`); vals.push(null);
+    } else {
+      const d = new Date(b.auto_no_at);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ ok: false, reason: "bad_auto_no_at" });
+      sets.push(`auto_no_at=$${i++}`); vals.push(d.toISOString());
+    }
   }
   if (b.status) {
     sets.push(`status=$${i++}`);
@@ -4830,7 +4898,7 @@ app.post("/api/admin/guests", async (req, res) => {
     await q(
       `INSERT INTO rsvps(game_id, tg_id, status)
        VALUES($1,$2,$3)
-       ON CONFLICT(game_id, tg_id) DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+       ON CONFLICT(game_id, tg_id) DO UPDATE SET status=EXCLUDED.status, auto_no=FALSE, updated_at=NOW()`,
       [gameId, guestId, status]
     );
 
@@ -4889,7 +4957,7 @@ app.post("/api/admin/rsvp", async (req, res) => {
       `INSERT INTO rsvps(game_id, tg_id, status, pos_override)
        VALUES($1,$2,$3,$4)
        ON CONFLICT(game_id, tg_id)
-       DO UPDATE SET status=EXCLUDED.status, pos_override=EXCLUDED.pos_override, updated_at=NOW()`,
+       DO UPDATE SET status=EXCLUDED.status, pos_override=EXCLUDED.pos_override, auto_no=FALSE, updated_at=NOW()`,
       [gid, tgId, status, finalPos]
     );
   } else {
@@ -4897,7 +4965,7 @@ app.post("/api/admin/rsvp", async (req, res) => {
       `INSERT INTO rsvps(game_id, tg_id, status)
        VALUES($1,$2,$3)
        ON CONFLICT(game_id, tg_id)
-       DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+       DO UPDATE SET status=EXCLUDED.status, auto_no=FALSE, updated_at=NOW()`,
       [gid, tgId, status]
     );
   }
@@ -5901,6 +5969,12 @@ app.patch("/api/admin/games/:id/reminder", async (req, res) => {
   res.json({ ok: true, game: gr.rows?.[0] ?? null });
 });
 
+app.post("/api/internal/auto-no/run", async (req, res) => {
+  if (!checkInternalToken(req)) return res.status(401).json({ ok: false, reason: "bad_token" });
+  try { return res.json(await runAutoNoRsvps(100)); }
+  catch (e) { console.error("auto-no.run failed:", e); return res.status(500).json({ ok:false, reason:"internal_error" }); }
+});
+
 app.post("/api/internal/reminders/run", async (req, res) => {
   if (!checkInternalToken(req)) {
     return res.status(401).json({ ok: false, reason: "bad_token" });
@@ -5915,9 +5989,11 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       return res.json({ ok: true, checked: 0, sent: 0, reason: "already_running" });
     }
 
+    const autoNoResult = await runAutoNoRsvps(100);
+
     const chatIdRaw = await getSetting("notify_chat_id", null);
     if (!chatIdRaw) {
-      return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set" });
+      return res.json({ ok: true, checked: 0, sent: 0, reason: "notify_chat_id_not_set", auto_no: autoNoResult });
     }
 
     const chat_id = Number(chatIdRaw);
@@ -5969,7 +6045,7 @@ app.post("/api/internal/reminders/run", async (req, res) => {
     const postgame_checked = postDue.length;
 
     if (!checked && !postgame_checked) {
-      return res.json({ ok: true, checked: 0, sent: 0, postgame_checked: 0, postgame_sent: 0 });
+      return res.json({ ok: true, checked: 0, sent: 0, postgame_checked: 0, postgame_sent: 0, auto_no: autoNoResult });
     }
 
     const botUsername = process.env.BOT_USERNAME || "HockeyLineupBot";
@@ -6072,6 +6148,7 @@ app.post("/api/internal/reminders/run", async (req, res) => {
       postgame_checked,
       postgame_sent,
       postgame_game_ids,
+      auto_no: autoNoResult,
     });
   } catch (e) {
     console.error("reminders.run failed:", e);
@@ -6418,12 +6495,12 @@ app.post("/api/rsvp/bulk", async (req, res) => {
   }
 
   const rr = await q(
-    `INSERT INTO rsvps(game_id, tg_id, status)
-     SELECT g.id, $1, $2
+    `INSERT INTO rsvps(game_id, tg_id, status, auto_no)
+     SELECT g.id, $1, $2, FALSE
      FROM games g
      WHERE g.status='scheduled' AND g.starts_at >= NOW()
      ON CONFLICT(game_id, tg_id)
-     DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()
+     DO UPDATE SET status=EXCLUDED.status, auto_no=FALSE, updated_at=NOW()
      RETURNING game_id`,
     [user.id, status]
   );
@@ -6565,7 +6642,7 @@ app.post("/api/public/rsvp", async (req, res) => {
         `INSERT INTO rsvps(game_id, tg_id, status)
          VALUES($1,$2,$3)
          ON CONFLICT(game_id, tg_id)
-         DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+         DO UPDATE SET status=EXCLUDED.status, auto_no=FALSE, updated_at=NOW()`,
         [row.game_id, row.tg_id, status]
       );
     }
