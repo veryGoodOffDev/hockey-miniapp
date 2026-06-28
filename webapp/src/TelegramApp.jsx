@@ -2527,7 +2527,18 @@ function mergeUniqueById(primary = [], extra = []) {
     const row = (rsvps || []).find((r) => String(r.tg_id) === String(me.tg_id));
     return row?.status || null;
   }, [rsvps, me]);
-  const statusLabel = (s) => ({ yes: "Буду", maybe: "Под вопросом", no: "Не буду" }[s] || s);
+  const statusLabel = (s) => ({ yes: "Буду", maybe: "Не отметился", no: "Не буду" }[s] || s);
+  const autoNoProgress = (g) => {
+    const created = g?.created_at ? new Date(g.created_at).getTime() : NaN;
+    const deadline = g?.auto_no_at ? new Date(g.auto_no_at).getTime() : NaN;
+    const now = Date.now();
+    if (!Number.isFinite(created) || !Number.isFinite(deadline) || deadline <= created) return 0;
+    return Math.max(0, Math.min(1, (now - created) / (deadline - created)));
+  };
+  const formatAutoNoDeadline = (g) => {
+    if (!g?.auto_no_at) return "дедлайна";
+    return new Intl.DateTimeFormat("ru-RU", { weekday: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(g.auto_no_at));
+  };
   const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
   function displayName(r) {
     const dn = (r?.display_name || "").trim();
@@ -3280,6 +3291,7 @@ function openYandexRoute(lat, lon) {
                     const lockRsvp = isFinished && !isAdmin; // блокируем RSVP через 2 часа после начала
                       const when = formatWhen(g.starts_at);
                       const status = g.my_status || "maybe";
+                      const noAutoFill = status === "maybe" ? autoNoProgress(g) : 0;
                       const tone = cardToneByMyStatus(status);
                       const isNext = !showPast && nextUpcomingId != null && g.id === nextUpcomingId;
                     
@@ -3421,7 +3433,8 @@ function openYandexRoute(lat, lon) {
                             
                             <button
                               disabled={opBusy || lockRsvp}
-                              className={`rsvpBtn out ${status === "no" ? "active" : ""}`}
+                              className={`rsvpBtn out ${status === "no" ? "active" : ""} ${status === "maybe" ? "autoNoFill" : ""}`}
+                              style={status === "maybe" ? { "--auto-no-p": noAutoFill } : undefined}
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (lockRsvp) return;
@@ -3439,9 +3452,13 @@ function openYandexRoute(lat, lon) {
                                 );
                               }}
                             >
-                              👎 OUT
+                              <span>👎 OUT</span>
+                              {status === "maybe" ? <span className="rsvpBtn__hint">авто</span> : null}
                             </button>
                           </div>
+                          {status === "maybe" && g.auto_no_at ? (
+                            <div className="small autoNoHint">Если не отметиться до {formatAutoNoDeadline(g)}, статус станет «Не играю» автоматически.</div>
+                          ) : null}
                               {g.notice_text ? (
                                 <div className="gameNoticeInline" onClick={(e) => e.stopPropagation()}>
                                   <span className="gameNoticeInline__icon" aria-hidden="true">ℹ️</span>
@@ -3687,7 +3704,11 @@ function openYandexRoute(lat, lon) {
                           <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
                             ✅ Буду
                           </button>
-                          <button className={btnClass("no")} onClick={() => rsvp("no")}>
+                          <button
+                            className={`${btnClass("no")} ${myRsvp === "maybe" ? "autoNoFill" : ""}`}
+                            style={myRsvp === "maybe" ? { "--auto-no-p": autoNoProgress(game) } : undefined}
+                            onClick={() => rsvp("no")}
+                          >
                             ❌ Не буду
                           </button>
                           <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
@@ -3695,6 +3716,9 @@ function openYandexRoute(lat, lon) {
                           </button>
                         </div>
                       )}
+                      {myRsvp === "maybe" && game?.auto_no_at ? (
+                        <div className="small autoNoHint">Если не отметиться до {formatAutoNoDeadline(game)}, статус станет «Не играю» автоматически.</div>
+                      ) : null}
                       <hr />
                       <div className="small">Отметки:</div>
                       <div style={{ marginTop: 10 }}>
@@ -4911,6 +4935,7 @@ function openYandexRoute(lat, lon) {
                   <div className="small" style={{ opacity: 0.8 }}>
                     {r.position ? `Позиция: ${r.position}` : ""}
                     {r.is_guest ? " · 👤 гость" : ""}
+                      {r.auto_no ? " · авто" : ""}
                   </div>
                 </div>
                 <div className="row">
@@ -4942,6 +4967,7 @@ function openYandexRoute(lat, lon) {
                   <div className="small" style={{ opacity: 0.8 }}>
                     {r.position ? `Позиция: ${r.position}` : ""}
                     {r.is_guest ? " · 👤 гость" : ""}
+                      {r.auto_no ? " · авто" : ""}
                   </div>
                 </div>
                 <div className="row">
@@ -5913,6 +5939,7 @@ function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, 
                       {showName(r)}
                       {n && ` № ${n}`}
                       {r.is_guest ? " · 👤 гость" : ""}
+                      {r.auto_no ? " · авто" : ""}
                     </span>
                     {isAdmin && r.skill != null && <span className="pillMeta">skill {r.skill}</span>}
                   </div>

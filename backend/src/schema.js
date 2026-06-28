@@ -40,6 +40,13 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_message_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS reminder_pin BOOLEAN NOT NULL DEFAULT TRUE;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS pinned_comment_id BIGINT;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS auto_no_at TIMESTAMPTZ;`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_games_auto_no_due ON games(auto_no_at) WHERE status IS DISTINCT FROM 'cancelled' AND auto_no_at IS NOT NULL;`);
+  await q(`
+    UPDATE games
+    SET auto_no_at = (((starts_at AT TIME ZONE 'Europe/Moscow')::date - 1 + TIME '22:00') AT TIME ZONE 'Europe/Moscow')
+    WHERE auto_no_at IS NULL;
+  `);
 
     /** ===================== GAME REMINDERS (MULTI) ===================== */
 
@@ -97,7 +104,8 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_message_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_chat_id BIGINT;`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_last_count INT;`);
-  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
+  await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS postgame_enabled BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE games ALTER COLUMN postgame_enabled SET DEFAULT FALSE;`);
 
   // быстрый поиск "кому пора отправить"
   await q(`
@@ -250,6 +258,7 @@ export async function ensureSchema(q) {
   
     //  позиция на конкретную игру (оверрайд профиля)
   await q(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS pos_override TEXT;`);
+  await q(`ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS auto_no BOOLEAN NOT NULL DEFAULT FALSE;`);
 
   //  check-constraint (idempotent)
   await q(`

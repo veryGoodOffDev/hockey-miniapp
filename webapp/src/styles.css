@@ -4500,3 +4500,35 @@ html[data-theme="light"] .btn.outline.active{
 .chatDrawerFooterSpacer{
   height: 0;
 }
+
+.rsvpBtn.autoNoFill,
+.btn.autoNoFill,
+.btn.secondary.autoNoFill{
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.rsvpBtn.autoNoFill::before,
+.btn.autoNoFill::before,
+.btn.secondary.autoNoFill::before{
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(100% * var(--auto-no-p, 0));
+  background: linear-gradient(90deg, rgba(255,77,79,.42), rgba(255,138,128,.24));
+  z-index: -1;
+  transition: width .4s ease;
+}
+
+.rsvpBtn__hint{
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+}
+
+.autoNoHint{
+  margin: -6px 12px 12px;
+  opacity: .82;
+}
