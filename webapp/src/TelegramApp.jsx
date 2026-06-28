@@ -3716,9 +3716,6 @@ function openYandexRoute(lat, lon) {
                           </button>
                         </div>
                       )}
-                      {myRsvp === "maybe" && game?.auto_no_at ? (
-                        <div className="small autoNoHint">Если не отметиться, перед игрой статус станет «Не играю» автоматически.</div>
-                      ) : null}
                       <hr />
                       <div className="small">Отметки:</div>
                       <div style={{ marginTop: 10 }}>
