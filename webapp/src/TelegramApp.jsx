@@ -3457,7 +3457,7 @@ function openYandexRoute(lat, lon) {
                             </button>
                           </div>
                           {status === "maybe" && g.auto_no_at ? (
-                            <div className="small autoNoHint">Если не отметиться до {formatAutoNoDeadline(g)}, статус станет «Не играю» автоматически.</div>
+                            <div className="small autoNoHint">Если не отметиться, перед игрой статус станет «Не играю» автоматически.</div>
                           ) : null}
                               {g.notice_text ? (
                                 <div className="gameNoticeInline" onClick={(e) => e.stopPropagation()}>
@@ -3717,7 +3717,7 @@ function openYandexRoute(lat, lon) {
                         </div>
                       )}
                       {myRsvp === "maybe" && game?.auto_no_at ? (
-                        <div className="small autoNoHint">Если не отметиться до {formatAutoNoDeadline(game)}, статус станет «Не играю» автоматически.</div>
+                        <div className="small autoNoHint">Если не отметиться, перед игрой статус станет «Не играю» автоматически.</div>
                       ) : null}
                       <hr />
                       <div className="small">Отметки:</div>
