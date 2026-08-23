@@ -3,7 +3,7 @@ import nodemailer from "nodemailer";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import { initDb, q } from "./db.js";
+import { initDb, q, withTransaction } from "./db.js";
 import { createBot } from "./bot.js";
 import { verifyTelegramWebApp } from "./tgAuth.js";
 import { makeTeams } from "./teamMaker.js";
@@ -2980,6 +2980,93 @@ app.post("/api/auth/email/start", async (req, res) => {
     console.error("POST /api/auth/email/start failed:", e?.stack || e);
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
+});
+
+/** ====== AIR HOCKEY ====== */
+const AIR_HOCKEY_DAILY_LIMIT = 10;
+const AIR_HOCKEY_REWARDS = Object.freeze({ easy: 6, normal: 12, hard: 20, pro: 32 });
+const AIR_HOCKEY_SHOP = Object.freeze({ easy: 120, premium_1: 180, premium_3: 420 });
+const AIR_HOCKEY_TZ = process.env.TEAM_TZ || "Europe/Moscow";
+
+async function gameProfileFor(userId, query = q, lock = false) {
+  await query(`INSERT INTO user_game_profiles(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING`, [userId]);
+  const r = await query(
+    `UPDATE user_game_profiles SET
+       games_today=CASE WHEN games_date <> (NOW() AT TIME ZONE $2)::date THEN 0 ELSE games_today END,
+       games_date=(NOW() AT TIME ZONE $2)::date, updated_at=NOW()
+     WHERE user_id=$1 RETURNING *`, [userId, AIR_HOCKEY_TZ]
+  );
+  if (lock) return (await query(`SELECT * FROM user_game_profiles WHERE user_id=$1 FOR UPDATE`, [userId])).rows[0];
+  return r.rows[0];
+}
+
+function publicGameProfile(g, premium) {
+  return {
+    sheepCoins: g.sheep_coins, gamesPlayedToday: g.games_today,
+    gamesLeftToday: Math.max(0, AIR_HOCKEY_DAILY_LIMIT - g.games_today), dailyLimit: AIR_HOCKEY_DAILY_LIMIT,
+    easyUnlocked: g.air_hockey_easy_unlocked, premiumUntil: premium?.joke_premium_until || null,
+    premiumLifetime: premium?.joke_premium === true,
+    stats: { wins: g.wins, losses: g.losses, totalGames: g.total_games },
+  };
+}
+
+app.get("/api/game/profile", async (req, res) => {
+  try {
+    const user = req.webappUser || requireWebAppAuth(req, res); if (!user) return;
+    await ensurePlayer(user);
+    const [g, p] = await Promise.all([gameProfileFor(user.id), q(`SELECT joke_premium, joke_premium_until FROM players WHERE tg_id=$1`, [user.id])]);
+    return res.json({ ok: true, ...publicGameProfile(g, p.rows[0]) });
+  } catch (e) { console.error("game profile", e); return res.status(500).json({ ok:false, reason:"server_error" }); }
+});
+
+app.post("/api/game/air-hockey/start", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res); if (!user) return;
+  const difficulty = String(req.body?.difficulty || "");
+  if (!(difficulty in AIR_HOCKEY_REWARDS)) return res.status(400).json({ ok:false, reason:"bad_difficulty" });
+  try {
+    const out = await withTransaction(async (tx) => {
+      const g = await gameProfileFor(user.id, tx, true);
+      if (difficulty === "easy" && !g.air_hockey_easy_unlocked) return { error:"easy_locked", status:403 };
+      if (g.games_today >= AIR_HOCKEY_DAILY_LIMIT) return { error:"daily_limit", status:429 };
+      const id = crypto.randomUUID();
+      await tx(`UPDATE user_game_profiles SET games_today=games_today+1, updated_at=NOW() WHERE user_id=$1`, [user.id]);
+      await tx(`INSERT INTO air_hockey_sessions(id,user_id,difficulty) VALUES($1,$2,$3)`, [id,user.id,difficulty]);
+      return { gameId:id, difficulty, gamesLeft:AIR_HOCKEY_DAILY_LIMIT-g.games_today-1 };
+    });
+    if (out.error) return res.status(out.status).json({ ok:false, reason:out.error });
+    return res.json({ ok:true, ...out });
+  } catch(e) { console.error("air hockey start",e); return res.status(500).json({ok:false,reason:"server_error"}); }
+});
+
+app.post("/api/game/air-hockey/:id/finish", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res); if (!user) return;
+  const result = req.body?.result, ps = Number(req.body?.playerScore), bs = Number(req.body?.botScore);
+  if (!['win','loss'].includes(result) || !Number.isInteger(ps) || !Number.isInteger(bs) || ps < 0 || bs < 0 ||
+      (result === 'win' ? ps !== 7 || bs >= 7 : bs !== 7 || ps >= 7)) return res.status(400).json({ok:false,reason:'invalid_result'});
+  try {
+    const out = await withTransaction(async (tx) => {
+      const sr = await tx(`SELECT * FROM air_hockey_sessions WHERE id=$1 AND user_id=$2 FOR UPDATE`,[req.params.id,user.id]);
+      const s=sr.rows[0]; if(!s) return {error:'game_not_found',status:404};
+      if(s.status !== 'started') return {error:'already_finished',status:409};
+      const reward=result==='win'?AIR_HOCKEY_REWARDS[s.difficulty]:0;
+      await tx(`UPDATE air_hockey_sessions SET status='finished',result=$2,player_score=$3,bot_score=$4,reward=$5,finished_at=NOW() WHERE id=$1`,[s.id,result,ps,bs,reward]);
+      await tx(`UPDATE user_game_profiles SET sheep_coins=sheep_coins+$2,wins=wins+($3='win')::int,losses=losses+($3='loss')::int,total_games=total_games+1,total_sheep_coins_earned=total_sheep_coins_earned+$2,wins_easy=wins_easy+($3='win' AND $4='easy')::int,wins_normal=wins_normal+($3='win' AND $4='normal')::int,wins_hard=wins_hard+($3='win' AND $4='hard')::int,wins_pro=wins_pro+($3='win' AND $4='pro')::int,updated_at=NOW() WHERE user_id=$1 RETURNING *`,[user.id,reward,result,s.difficulty]);
+      if(reward) await tx(`INSERT INTO sheep_coin_transactions(user_id,amount,type,source,game_id) VALUES($1,$2,'air_hockey_win',$3,$4)`,[user.id,reward,s.difficulty,s.id]);
+      return { reward, game: await gameProfileFor(user.id,tx) };
+    });
+    if(out.error) return res.status(out.status).json({ok:false,reason:out.error});
+    return res.json({ok:true,reward:out.reward,sheepCoins:out.game.sheep_coins});
+  } catch(e){console.error("air hockey finish",e);return res.status(500).json({ok:false,reason:'server_error'});}
+});
+
+app.post("/api/game/shop/unlock-easy", async (req,res) => {
+  const user=req.webappUser||requireWebAppAuth(req,res); if(!user)return;
+  try { const out=await withTransaction(async tx=>{const g=await gameProfileFor(user.id,tx,true);if(g.air_hockey_easy_unlocked)return {error:'already_unlocked',status:409};if(g.sheep_coins<AIR_HOCKEY_SHOP.easy)return {error:'insufficient_coins',status:402};const r=await tx(`UPDATE user_game_profiles SET sheep_coins=sheep_coins-$2,air_hockey_easy_unlocked=TRUE,updated_at=NOW() WHERE user_id=$1 RETURNING sheep_coins`,[user.id,AIR_HOCKEY_SHOP.easy]);await tx(`INSERT INTO sheep_coin_transactions(user_id,amount,type,source) VALUES($1,$2,'unlock_air_hockey_easy','shop')`,[user.id,-AIR_HOCKEY_SHOP.easy]);return {sheepCoins:r.rows[0].sheep_coins};});if(out.error)return res.status(out.status).json({ok:false,reason:out.error});return res.json({ok:true,easyUnlocked:true,...out});} catch(e){console.error("unlock easy",e);return res.status(500).json({ok:false,reason:'server_error'});}
+});
+
+app.post("/api/game/shop/premium", async (req,res) => {
+  const user=req.webappUser||requireWebAppAuth(req,res);if(!user)return;const days=Number(req.body?.days);if(![1,3].includes(days))return res.status(400).json({ok:false,reason:'bad_duration'});const cost=days===1?AIR_HOCKEY_SHOP.premium_1:AIR_HOCKEY_SHOP.premium_3;
+  try{const out=await withTransaction(async tx=>{const g=await gameProfileFor(user.id,tx,true);if(g.sheep_coins<cost)return {error:'insufficient_coins',status:402};const gr=await tx(`UPDATE user_game_profiles SET sheep_coins=sheep_coins-$2,updated_at=NOW() WHERE user_id=$1 RETURNING sheep_coins`,[user.id,cost]);const pr=await tx(`UPDATE players SET joke_premium_until=GREATEST(COALESCE(joke_premium_until,NOW()),NOW())+($2*INTERVAL '1 day'),updated_at=NOW() WHERE tg_id=$1 RETURNING joke_premium_until`,[user.id,days]);await tx(`INSERT INTO sheep_coin_transactions(user_id,amount,type,source) VALUES($1,$2,$3,'shop')`,[user.id,-cost,`premium_${days}_day`]);return {sheepCoins:gr.rows[0].sheep_coins,premiumUntil:pr.rows[0].joke_premium_until};});if(out.error)return res.status(out.status).json({ok:false,reason:out.error});return res.json({ok:true,...out});}catch(e){console.error("premium shop",e);return res.status(500).json({ok:false,reason:'server_error'});}
 });
 
 /** ====== ME ====== */
