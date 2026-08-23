@@ -16,6 +16,7 @@ import player from "./player.png";
 import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
 import usePullToRefresh from "./usePullToRefresh.js";
+import AirHockey, { SheepCoin } from "./AirHockey.jsx";
 const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 const JERSEY_COLOR_OPTS = [
@@ -148,6 +149,14 @@ useEffect(() => {
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
   // profile sub-tabs
   const [profileView, setProfileView] = useState("me"); // me | support | about
+  const [airHockeyOpen, setAirHockeyOpen] = useState(false);
+  const [airHockeyBalance, setAirHockeyBalance] = useState(null);
+  const refreshAirHockeyBalance = useCallback(() => {
+    apiGet("/api/game/profile").then((r) => setAirHockeyBalance(r.sheepCoins)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (tab === "profile") refreshAirHockeyBalance();
+  }, [tab, refreshAirHockeyBalance]);
     // ===== jersey order (profile) =====
   const jerseyCardRef = useRef(null);
   const EMPTY_JERSEY_REQ = {
@@ -3069,6 +3078,7 @@ function openYandexRoute(lat, lon) {
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
   return (
     <div ref={gamesPullRef} className="container appShell">
+    {airHockeyOpen ? <AirHockey onClose={() => { setAirHockeyOpen(false); refreshAirHockeyBalance(); }} onProfileChange={refreshAirHockeyBalance} /> : null}
     {!inTelegramWebApp && (
       <div className="webThemeDock" role="region" aria-label="Тема (веб)">
         <div className="webThemeDock__panel">
@@ -4123,6 +4133,10 @@ function openYandexRoute(lat, lon) {
             <div className="card">
               <h2>Мой профиль</h2>
               <div className="small">Заполни один раз — дальше просто отмечайся.</div>
+              <button className="airProfileCard" onClick={() => setAirHockeyOpen(true)}>
+                <span><strong>🏒 Играть в хоккей</strong><small>Зарабатывай Sheep Coins и получай награды</small></span>
+                <span className="airProfileBalance"><SheepCoin value={airHockeyBalance ?? 0}/><b>›</b></span>
+              </button>
               <div style={{ marginTop: 10 }}>
                 <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
                 <input

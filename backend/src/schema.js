@@ -877,4 +877,39 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
   await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
   await q(`ALTER TABLE jersey_requests ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;`);
 
+  /** ===================== AIR HOCKEY ECONOMY ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS user_game_profiles (
+      user_id BIGINT PRIMARY KEY REFERENCES players(tg_id) ON DELETE CASCADE,
+      sheep_coins INT NOT NULL DEFAULT 0 CHECK (sheep_coins >= 0),
+      air_hockey_easy_unlocked BOOLEAN NOT NULL DEFAULT FALSE,
+      games_today INT NOT NULL DEFAULT 0 CHECK (games_today >= 0),
+      games_date DATE NOT NULL DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date,
+      wins INT NOT NULL DEFAULT 0, losses INT NOT NULL DEFAULT 0,
+      wins_easy INT NOT NULL DEFAULT 0, wins_normal INT NOT NULL DEFAULT 0,
+      wins_hard INT NOT NULL DEFAULT 0, wins_pro INT NOT NULL DEFAULT 0,
+      total_games INT NOT NULL DEFAULT 0,
+      total_sheep_coins_earned INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await q(`
+    CREATE TABLE IF NOT EXISTS air_hockey_sessions (
+      id UUID PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      difficulty TEXT NOT NULL CHECK (difficulty IN ('easy','normal','hard','pro')),
+      status TEXT NOT NULL DEFAULT 'started' CHECK (status IN ('started','finished')),
+      result TEXT CHECK (result IN ('win','loss')), player_score INT, bot_score INT,
+      reward INT NOT NULL DEFAULT 0, started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), finished_at TIMESTAMPTZ
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_air_hockey_sessions_user ON air_hockey_sessions(user_id, started_at DESC);`);
+  await q(`
+    CREATE TABLE IF NOT EXISTS sheep_coin_transactions (
+      id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES players(tg_id) ON DELETE CASCADE,
+      amount INT NOT NULL, type TEXT NOT NULL, source TEXT NOT NULL,
+      game_id UUID REFERENCES air_hockey_sessions(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sheep_coin_game_reward ON sheep_coin_transactions(game_id) WHERE game_id IS NOT NULL AND type='air_hockey_win';`);
+
 }
