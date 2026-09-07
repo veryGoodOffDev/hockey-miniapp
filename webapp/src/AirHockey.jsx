@@ -20,8 +20,24 @@ function Rink({ running, difficulty, onScore }) {
   const canvasRef=useRef(null), stateRef=useRef(null), frameRef=useRef(0), pointerRef=useRef(false);
   useEffect(()=>{
     const canvas=canvasRef.current, ctx=canvas.getContext("2d");
-    const resize=()=>{const r=canvas.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);canvas.width=r.width*d;canvas.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);stateRef.current=null;};
-    resize(); const ro=new ResizeObserver(resize);ro.observe(canvas);return()=>ro.disconnect();
+    const resize=()=>{
+      const r=canvas.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);
+      canvas.width=Math.max(1,Math.round(r.width*d));
+      canvas.height=Math.max(1,Math.round(r.height*d));
+      ctx.setTransform(d,0,0,d,0,0);
+      ctx.fillStyle="#eaf7ff";
+      ctx.fillRect(0,0,r.width,r.height);
+      stateRef.current=null;
+    };
+    resize();
+
+    // ResizeObserver is missing in some Telegram Android WebViews. Throwing here
+    // prevents React from starting the animation effect and leaves a dark canvas.
+    if(typeof window.ResizeObserver === "function"){
+      const ro=new window.ResizeObserver(resize);ro.observe(canvas);return()=>ro.disconnect();
+    }
+    window.addEventListener("resize",resize);
+    return()=>window.removeEventListener("resize",resize);
   },[]);
   useEffect(()=>{
     if(!running){cancelAnimationFrame(frameRef.current);return;}
