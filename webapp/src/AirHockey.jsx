@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiGet, apiPost } from "./api.js";
 
 export const AIR_HOCKEY_REWARDS = Object.freeze({ easy: 6, normal: 12, hard: 20, pro: 32 });
@@ -48,18 +49,27 @@ function Rink({ running, difficulty, onScore }) {
 
 export default function AirHockey({ onClose, onProfileChange }) {
   const [profile,setProfile]=useState(null),[difficulty,setDifficulty]=useState("normal"),[game,setGame]=useState(null),[score,setScore]=useState([0,0]),[result,setResult]=useState(null),[shop,setShop]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  useEffect(()=>{
+    const root=document.getElementById("root"),previousOverflow=document.body.style.overflow;
+    document.body.style.overflow="hidden";
+    root?.setAttribute("aria-hidden","true");
+    return()=>{
+      document.body.style.overflow=previousOverflow;
+      root?.removeAttribute("aria-hidden");
+    };
+  },[]);
   const load=useCallback(async()=>{try{setProfile(await apiGet("/api/game/profile"));}catch{setMessage("Не удалось загрузить игровой профиль");}},[]);useEffect(()=>{load();},[load]);
   const start=async()=>{setBusy(true);setMessage("");try{const r=await apiPost("/api/game/air-hockey/start",{difficulty});setGame(r);setScore([0,0]);setResult(null);setProfile(p=>({...p,gamesLeftToday:r.gamesLeft,gamesPlayedToday:p.dailyLimit-r.gamesLeft}));}catch(e){setMessage(e.data?.reason==='daily_limit'?"Матчи на сегодня закончились":"Не удалось начать матч");}finally{setBusy(false);}};
   const finish=useCallback(async(next)=>{const win=next[0]===7;try{const r=await apiPost(`/api/game/air-hockey/${game.gameId}/finish`,{result:win?'win':'loss',playerScore:next[0],botScore:next[1]});setResult({win,reward:r.reward,balance:r.sheepCoins});setProfile(p=>({...p,sheepCoins:r.sheepCoins}));onProfileChange?.();}catch{setMessage("Не удалось сохранить результат");}setGame(null);},[game,onProfileChange]);
   const scored=useCallback(who=>setScore(old=>{const n=who==='player'?[old[0]+1,old[1]]:[old[0],old[1]+1];if(n[0]===7||n[1]===7)setTimeout(()=>finish(n),0);return n;}),[finish]);
   const buy=async item=>{if(item.id==='easy'&&!confirm("Открыть лёгкий уровень?\n\nСтоимость: 120 Sheep Coins\nУровень останется доступен навсегда."))return;setBusy(true);setMessage("");try{const r=item.id==='easy'?await apiPost('/api/game/shop/unlock-easy'):await apiPost('/api/game/shop/premium',{days:item.days});setProfile(p=>({...p,...r}));onProfileChange?.();}catch(e){setMessage(e.data?.reason==='insufficient_coins'?"Недостаточно Sheep Coins":"Покупка не выполнена");}finally{setBusy(false);}};
   const premium=profile?.premiumLifetime?"навсегда":profile?.premiumUntil?`до ${new Date(profile.premiumUntil).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:"нет";
-  return <div className="airScreen"><header><button className="btn secondary" onClick={onClose}>← Назад</button><h2>Air Hockey</h2><button className="btn secondary" onClick={()=>setShop(true)}>Магазин</button></header>
+  return createPortal(<div className="airScreen" role="dialog" aria-modal="true" aria-label="Air Hockey"><header><button className="btn secondary" onClick={onClose}>← Назад</button><h2>Air Hockey</h2><button className="btn secondary" onClick={()=>setShop(true)}>Магазин</button></header>
     <div className="airStats"><SheepCoin value={profile?.sheepCoins??0}/><span>Матчей: <b>{profile?.gamesLeftToday??'—'} / {profile?.dailyLimit??10}</b></span><span>Premium: <b>{premium}</b></span></div>
     <div className="airScore"><span>Ты</span><b>{score[0]} : {score[1]}</b><span>Бот</span></div>
     {!game&&!result&&<><div className="airDifficulty">{DIFFICULTIES.map(d=><button key={d.id} className={difficulty===d.id?'active':''} onClick={()=>d.id==='easy'&&!profile?.easyUnlocked?setShop(true):setDifficulty(d.id)}>{d.id==='easy'&&!profile?.easyUnlocked?'🔒 ':''}{d.name}<small>{d.id==='easy'&&!profile?.easyUnlocked?'открыть за 120 SC':`Победа +${AIR_HOCKEY_REWARDS[d.id]} SC`}</small></button>)}</div><button className="btn airStart" disabled={busy||!profile?.gamesLeftToday} onClick={start}>Начать матч</button>{profile?.gamesLeftToday===0&&<p className="airNotice">Матчи на сегодня закончились<br/>Новые игры будут доступны после ежедневного обновления</p>}</>}
     {result&&<div className="airResult"><h2>{result.win?'🏆 Победа':'Матч окончен'}</h2><strong>{score[0]} : {score[1]}</strong><p>{result.win?`+${result.reward} Sheep Coins`:'Награда: 0 SC'}</p><p>Баланс: {result.balance} SC</p><button className="btn" onClick={()=>setResult(null)}>Играть ещё</button><button className="btn secondary" onClick={onClose}>В профиль</button></div>}
     <Rink running={!!game} difficulty={difficulty} onScore={scored}/>{message&&<div className="airNotice">{message}</div>}
     {shop&&<div className="airModal" onClick={()=>setShop(false)}><div className="airShop" onClick={e=>e.stopPropagation()}><h2>Магазин Sheep Coins</h2>{SHOP_ITEMS.map(i=><div className="airShopItem" key={i.id}><div><b>{i.title}</b><SheepCoin value={i.cost}/></div><button className="btn" disabled={busy||(i.id==='easy'&&profile?.easyUnlocked)} onClick={()=>buy(i)}>{i.id==='easy'&&profile?.easyUnlocked?'Открыто':`Купить за ${i.cost} SC`}</button></div>)}<button className="btn secondary" onClick={()=>setShop(false)}>Закрыть</button></div></div>}
-  </div>;
+  </div>,document.body);
 }
