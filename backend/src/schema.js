@@ -1,4 +1,18 @@
 export async function ensureSchema(q) {
+  /** ===================== ADMIN SSL AUDIT ===================== */
+  await q(`
+    CREATE TABLE IF NOT EXISTS admin_ssl_operations (
+      id BIGSERIAL PRIMARY KEY,
+      type TEXT NOT NULL CHECK (type IN ('ssl_check', 'ssl_renew')),
+      status TEXT NOT NULL CHECK (status IN ('started', 'success', 'failed')),
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ,
+      error_message TEXT,
+      admin_tg_id BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_admin_ssl_operations_started_at ON admin_ssl_operations(started_at DESC);`);
+
   /** ===================== GAMES ===================== */
   await q(`
     CREATE TABLE IF NOT EXISTS games (
