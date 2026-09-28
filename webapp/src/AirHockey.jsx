@@ -19,7 +19,10 @@ export function SheepCoin({ value, compact=false }) { return <span className="sh
 function Rink({ running, difficulty, onScore }) {
   const canvasRef=useRef(null), stateRef=useRef(null), frameRef=useRef(0), pointerRef=useRef(false);
   useEffect(()=>{
-    const canvas=canvasRef.current, ctx=canvas.getContext("2d");
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+    const ctx=canvas.getContext("2d");
+    if(!ctx)return;
     const resize=()=>{
       const r=canvas.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);
       canvas.width=Math.max(1,Math.round(r.width*d));
@@ -40,9 +43,22 @@ function Rink({ running, difficulty, onScore }) {
     return()=>window.removeEventListener("resize",resize);
   },[]);
   useEffect(()=>{
-    if(!running){cancelAnimationFrame(frameRef.current);return;}
+    cancelAnimationFrame(frameRef.current);
+    frameRef.current=0;
+    if(!running)return;
+
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+    const ctx=canvas.getContext("2d");
+    if(!ctx)return;
+
+    let active=true;
     let last=performance.now();
-    const tick=(now)=>{const W=canvasRef.current.clientWidth,H=canvasRef.current.clientHeight,dt=Math.min((now-last)/1000,.025);last=now;
+    const draw=(s,W,H,left,right)=>{
+      const {p,u,b}=s;
+      ctx.clearRect(0,0,W,H);ctx.fillStyle="#eaf7ff";ctx.fillRect(0,0,W,H);ctx.strokeStyle="#2381c4";ctx.lineWidth=4;ctx.strokeRect(2,2,W-4,H-4);ctx.lineWidth=2;ctx.strokeStyle="#e5484d";ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();ctx.beginPath();ctx.arc(W/2,H/2,48,0,Math.PI*2);ctx.stroke();ctx.strokeStyle="#3478d4";for(const y of [H*.31,H*.69]){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}ctx.lineWidth=5;ctx.strokeStyle="#d44";for(const y of [2,H-2]){ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();}for(const [m,c] of [[u,"#2684ff"],[b,"#ed4b55"]]){ctx.fillStyle=c;ctx.beginPath();ctx.arc(m.x,m.y,m.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.stroke();}ctx.fillStyle="#17212b";ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    };
+    const tick=(now)=>{if(!active)return;const W=canvas.clientWidth,H=canvas.clientHeight,dt=Math.min((now-last)/1000,.025);last=now;
       let s=stateRef.current;if(!s){s={p:{x:W/2,y:H/2,vx:85,vy:145,r:10},u:{x:W/2,y:H-58,px:W/2,py:H-58,vx:0,vy:0,r:22},b:{x:W/2,y:58,vx:0,vy:0,r:22},corner:0};stateRef.current=s;}
       const p=s.p,u=s.u,b=s.b, goal=W*.32, left=(W-goal)/2,right=(W+goal)/2;
       const cfg={normal:[250,.20,.13],hard:[330,.12,.08],pro:[410,.07,.045],easy:[185,.30,.2]}[difficulty];
@@ -56,8 +72,11 @@ function Rink({ running, difficulty, onScore }) {
       if(p.y < -p.r){onScore("player");stateRef.current=null;} else if(p.y>H+p.r){onScore("bot");stateRef.current=null;}
       const corner=(p.x<42||p.x>W-42)&&(p.y<55||p.y>H-55);s.corner=corner?s.corner+dt:0;if(s.corner>.12){const dx=W/2-p.x,dy=H/2-p.y,l=Math.hypot(dx,dy);p.vx=dx/l*Math.max(MIN_PUCK_SPEED,Math.hypot(p.vx,p.vy));p.vy=dy/l*Math.max(MIN_PUCK_SPEED,Math.hypot(p.vx,p.vy));s.corner=0;}
       let speed=Math.hypot(p.vx,p.vy);if(speed<MIN_PUCK_SPEED){const nx=speed?p.vx/speed:0,ny=speed?p.vy/speed:1;p.vx=nx*MIN_PUCK_SPEED;p.vy=ny*MIN_PUCK_SPEED;}else if(speed>MAX_PUCK_SPEED){p.vx=p.vx/speed*MAX_PUCK_SPEED;p.vy=p.vy/speed*MAX_PUCK_SPEED;}
-      ctx.clearRect(0,0,W,H);ctx.fillStyle="#eaf7ff";ctx.fillRect(0,0,W,H);ctx.strokeStyle="#2381c4";ctx.lineWidth=4;ctx.strokeRect(2,2,W-4,H-4);ctx.lineWidth=2;ctx.strokeStyle="#e5484d";ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();ctx.beginPath();ctx.arc(W/2,H/2,48,0,Math.PI*2);ctx.stroke();ctx.strokeStyle="#3478d4";for(const y of [H*.31,H*.69]){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}ctx.lineWidth=5;ctx.strokeStyle="#d44";for(const y of [2,H-2]){ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();}for(const [m,c] of [[u,"#2684ff"],[b,"#ed4b55"]]){ctx.fillStyle=c;ctx.beginPath();ctx.arc(m.x,m.y,m.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.stroke();}ctx.fillStyle="#17212b";ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
-      frameRef.current=requestAnimationFrame(tick);};frameRef.current=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frameRef.current);
+      draw(s,W,H,left,right);
+      frameRef.current=requestAnimationFrame(tick);
+    };
+    frameRef.current=requestAnimationFrame(tick);
+    return()=>{active=false;cancelAnimationFrame(frameRef.current);frameRef.current=0;};
   },[running,difficulty,onScore]);
   const move=(e)=>{if(!running||!pointerRef.current)return;const c=canvasRef.current,r=c.getBoundingClientRect(),s=stateRef.current;if(!s)return;const now=performance.now(),x=Math.max(22,Math.min(r.width-22,e.clientX-r.left)),y=Math.max(r.height/2+22,Math.min(r.height-22,e.clientY-r.top)),dt=Math.max((now-(s.u.t||now))/1000,.008);s.u.vx=(x-s.u.x)/dt;s.u.vy=(y-s.u.y)/dt;s.u.x=x;s.u.y=y;s.u.t=now;};
   return <canvas ref={canvasRef} className="airRink" onPointerDown={e=>{pointerRef.current=true;e.currentTarget.setPointerCapture(e.pointerId);move(e);}} onPointerMove={move} onPointerUp={()=>pointerRef.current=false} />;
