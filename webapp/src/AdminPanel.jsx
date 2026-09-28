@@ -413,7 +413,7 @@ function MapPickModal({ open, initial, onClose, onPick }) {
 
 
 export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
-  const [section, setSection] = useState("games"); // games | players | applications | reminders | jersey | engagement
+  const [section, setSection] = useState("games"); // games | players | applications | reminders | jersey | engagement | ssl
 
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
@@ -510,6 +510,10 @@ const [engData, setEngData] = useState({ team_size: 0, by_day: {}, users_by_day:
 const [engSelectedDay, setEngSelectedDay] = useState(mskToday.key);
 
 const [videoNotifySilent, setVideoNotifySilent] = useState(false);
+const [sslStatus, setSslStatus] = useState(null);
+const [sslLoading, setSslLoading] = useState(false);
+const [sslRenewing, setSslRenewing] = useState(false);
+const [sslMessage, setSslMessage] = useState({ tone: "", text: "" });
 
 
 function openPlayerSheet(p) {
@@ -1575,6 +1579,60 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
     setEngSelectedDay(mskToday.key);
   }, [engMonth, engYear, mskToday.key]);
 
+  async function loadSslStatus({ quiet = false } = {}) {
+    setSslLoading(true);
+    if (!quiet) setSslMessage({ tone: "", text: "" });
+    try {
+      const status = await apiGet("/api/admin/ssl");
+      setSslStatus(status);
+      return status;
+    } catch (error) {
+      setSslMessage({ tone: "error", text: error?.data?.message || "Не удалось проверить сертификат" });
+      return null;
+    } finally {
+      setSslLoading(false);
+    }
+  }
+
+  async function renewSslCertificate() {
+    const confirmed = await tgConfirm({
+      title: "Обновить SSL-сертификат?",
+      message: "Будет запущено принудительное обновление и безопасная перезагрузка nginx.",
+      okText: "Обновить",
+    });
+    if (!confirmed) return;
+    setSslRenewing(true);
+    setSslMessage({ tone: "info", text: "Обновление сертификата..." });
+    try {
+      const result = await apiPost("/api/admin/ssl/renew", {});
+      if (result?.certificate) setSslStatus(result.certificate);
+      await loadSslStatus({ quiet: true });
+      setSslMessage({ tone: "success", text: "✓ Сертификат обновлён" });
+    } catch (error) {
+      setSslMessage({ tone: "error", text: error?.data?.message || "Не удалось обновить сертификат" });
+    } finally {
+      setSslRenewing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (section === "ssl" && !sslStatus) loadSslStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+
+  const sslTone = !sslStatus?.valid || sslStatus?.daysLeft <= 0
+    ? "critical"
+    : sslStatus.daysLeft <= 7 ? "danger" : sslStatus.daysLeft <= 30 ? "warning" : "healthy";
+
+  function sslDate(value, withTime = false) {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+    return withTime
+      ? date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+      : date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  }
+
   /** ===================== UI ===================== */
   return (
     <div className="card">
@@ -1622,7 +1680,54 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         <button className={`segBtn ${section === "engagement" ? "active" : ""}`} onClick={() => setSection("engagement")}>
           Вовлеченность
         </button>
+        <button className={`segBtn ${section === "ssl" ? "active" : ""}`} onClick={() => setSection("ssl")}>
+          SSL
+        </button>
       </div>
+
+      {section === "ssl" && (
+        <section className={`card sslCard sslCard--${sslTone}`} aria-busy={sslLoading || sslRenewing}>
+          <div className="sslCard__heading">
+            <div>
+              <h2>🔐 SSL-сертификат</h2>
+              <div className="sslCard__domain">api.apihockeyteamru.ru</div>
+            </div>
+            {sslLoading ? <span className="sslCard__spinner" aria-label="Проверка" /> : null}
+          </div>
+
+          {sslStatus ? (
+            <>
+              <div className="sslStatusLine">
+                <span className={`sslDot sslDot--${sslTone}`} />
+                <strong>{sslStatus.valid ? "Активен" : "Срок действия истёк"}</strong>
+              </div>
+              <div className="sslGrid">
+                <div><span>Действует до</span><strong>{sslDate(sslStatus.expiresAt)}</strong></div>
+                <div><span>Осталось</span><strong>{sslStatus.daysLeft > 0 ? `${sslStatus.daysLeft} дн.` : "Истёк"}</strong></div>
+                <div><span>Issuer</span><strong>{sslStatus.issuer || "—"}</strong></div>
+                <div><span>Автопродление</span><strong className={sslStatus.autoRenew ? "sslGood" : "sslBad"}>● {sslStatus.autoRenew ? "Включено" : "Не настроено"}</strong></div>
+              </div>
+              {sslStatus.externalCertificateMatches === false ? (
+                <div className="sslAlert">⚠ Nginx отдаёт другой сертификат</div>
+              ) : null}
+              {sslStatus.externalCheckAvailable === false ? (
+                <div className="sslNote">Внешний TLS endpoint временно недоступен. Показаны данные локального сертификата.</div>
+              ) : null}
+              <div className="sslLastCheck">Последняя проверка: {sslDate(sslStatus.lastCheckAt, true)}</div>
+            </>
+          ) : !sslLoading ? <div className="sslNote">Данные сертификата пока недоступны.</div> : null}
+
+          {sslMessage.text ? <div className={`sslMessage sslMessage--${sslMessage.tone}`}>{sslMessage.text}</div> : null}
+          <div className="adminActionRow sslActions">
+            <button className="btn secondary" onClick={() => loadSslStatus()} disabled={sslLoading || sslRenewing}>
+              {sslLoading ? "Проверяем..." : "Проверить"}
+            </button>
+            <button className="btn" onClick={renewSslCertificate} disabled={sslLoading || sslRenewing}>
+              {sslRenewing ? "Обновление сертификата..." : "Обновить сейчас"}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* ====== REMINDERS ====== */}
       {section === "reminders" && (

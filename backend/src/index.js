@@ -13,6 +13,7 @@ import { InlineKeyboard } from "grammy";
 import { performance } from "node:perf_hooks";
 import { Resend } from "resend";
 import crypto from "crypto";
+import { sslService, SslOperationError } from "./sslService.js";
 
 const app = express();
 app.use(express.json());
@@ -9073,6 +9074,76 @@ app.get("/api/admin/jersey/batches/:id/export", async (req, res) => {
   } catch (e) {
     console.error("GET /api/admin/jersey/batches/:id/export failed:", e);
     return res.status(500).json({ ok: false, reason: "server_error" });
+  }
+});
+
+/** ====== SSL CERTIFICATE (admin) ====== */
+async function beginSslOperation(type, adminId) {
+  const result = await q(
+    `INSERT INTO admin_ssl_operations(type, status, admin_tg_id) VALUES($1, 'started', $2) RETURNING id`,
+    [type, adminId]
+  );
+  return result.rows[0].id;
+}
+
+async function finishSslOperation(id, status, errorMessage = null) {
+  try {
+    await q(
+      `UPDATE admin_ssl_operations SET status=$2, finished_at=NOW(), error_message=$3 WHERE id=$1`,
+      [id, status, errorMessage]
+    );
+  } catch (error) {
+    console.error("[ssl] audit update failed:", error?.message || error);
+  }
+}
+
+function sslErrorResponse(res, error) {
+  const known = error instanceof SslOperationError;
+  return res.status(known ? 503 : 500).json({
+    success: false,
+    error: known ? error.code : "ssl_operation_failed",
+    message: known ? error.message : "Не удалось выполнить операцию с SSL-сертификатом",
+  });
+}
+
+app.get("/api/admin/ssl", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+
+  const operationId = await beginSslOperation("ssl_check", user.id);
+  try {
+    const status = await sslService.getStatus();
+    await finishSslOperation(operationId, "success");
+    return res.json(status);
+  } catch (error) {
+    console.error("GET /api/admin/ssl failed:", error?.message || error, error?.cause?.stderr || "");
+    await finishSslOperation(operationId, "failed", error?.code || "ssl_operation_failed");
+    return sslErrorResponse(res, error);
+  }
+});
+
+let sslRenewInProgress = false;
+app.post("/api/admin/ssl/renew", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+  if (sslRenewInProgress) {
+    return res.status(409).json({ success: false, error: "renew_in_progress", message: "Обновление сертификата уже выполняется" });
+  }
+
+  const operationId = await beginSslOperation("ssl_renew", user.id);
+  sslRenewInProgress = true;
+  try {
+    const status = await sslService.renew();
+    await finishSslOperation(operationId, "success");
+    return res.json({ success: true, message: "Сертификат успешно обновлён", certificate: status });
+  } catch (error) {
+    console.error("POST /api/admin/ssl/renew failed:", error?.message || error, error?.cause?.stderr || "");
+    await finishSslOperation(operationId, "failed", error?.code || "ssl_operation_failed");
+    return sslErrorResponse(res, error);
+  } finally {
+    sslRenewInProgress = false;
   }
 });
 
