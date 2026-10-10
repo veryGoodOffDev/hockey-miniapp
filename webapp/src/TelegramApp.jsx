@@ -2981,7 +2981,7 @@ function openYandexRoute(lat, lon) {
     });
   }, [playersDir, playerQ]);
   // === RENDER ===
-  if (loading) return <HockeyLoader text="Загружаем..." />;
+  if (loading) return <HockeyLoader fullScreen text="Загружаем..." />;
   if (!inTelegramWebApp && !hasWebAuth) {
     return (
       <div className="container">

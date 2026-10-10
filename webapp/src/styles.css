@@ -2173,6 +2173,15 @@ html[data-theme="light"] .btn.outline.active{
   place-items:center;
 }
 
+.hkLoaderScreen{
+  position:fixed;
+  inset:0;
+  z-index:1000;
+  box-sizing:border-box;
+  background:var(--tg-bg);
+  padding:0;
+}
+
 /* центральный круг с логотипом */
 .hkMedal{
   position:relative;

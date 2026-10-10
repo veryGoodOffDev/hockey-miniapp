@@ -1,8 +1,9 @@
 import logo from "./logoo.jpg";
+import { createPortal } from "react-dom";
 
-export default function HockeyLoader({ text = "Загрузка..." }) {
-  return (
-    <div className="hkLoader2">
+export default function HockeyLoader({ text = "Загрузка...", fullScreen = true }) {
+  const content = (
+    <div className={`hkLoader2${fullScreen ? " hkLoaderScreen" : ""}`} role="status" aria-live="polite">
       <div className="hkOrbitStage" aria-label="Loading">
         {/* центральный медальон */}
         <div className="hkMedal">
@@ -35,6 +36,7 @@ export default function HockeyLoader({ text = "Загрузка..." }) {
       </div>
     </div>
   );
+  return fullScreen ? createPortal(content, document.body) : content;
 }
 
 // import { useEffect, useState } from "react";
