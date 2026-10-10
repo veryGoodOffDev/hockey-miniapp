@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { celebrateRsvp } from "./rsvpFeedback.js";
 
 function getTokenFromUrl() {
   const sp = new URLSearchParams(window.location.search);
@@ -61,7 +62,8 @@ export default function PublicRsvpPage({ apiGet, apiPost }) {
     return () => { alive = false; };
   }, [apiGet, token]);
 
-  async function vote(status) {
+  async function vote(status, event) {
+    const origin = event?.currentTarget?.getBoundingClientRect();
     if (!token || busy) return;
     setBusy(true);
     setErr("");
@@ -71,6 +73,7 @@ export default function PublicRsvpPage({ apiGet, apiPost }) {
         setErr(`Ошибка: ${r?.reason || r?.error || "unknown"}`);
         return;
       }
+      celebrateRsvp(status, origin);
       setDone(true);
     } catch {
       setErr("Не удалось отправить отметку.");
@@ -123,7 +126,7 @@ export default function PublicRsvpPage({ apiGet, apiPost }) {
 
       <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
         <button
-          onClick={() => vote("yes")}
+          onClick={e => vote("yes", e)}
           disabled={busy || done}
           style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(0,0,0,.12)", fontWeight: 800 }}
         >
@@ -131,7 +134,7 @@ export default function PublicRsvpPage({ apiGet, apiPost }) {
         </button>
 
         <button
-          onClick={() => vote("no")}
+          onClick={e => vote("no", e)}
           disabled={busy || done}
           style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(0,0,0,.12)", fontWeight: 800 }}
         >

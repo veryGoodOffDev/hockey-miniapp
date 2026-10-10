@@ -9,6 +9,7 @@ import { verifyTelegramWebApp } from "./tgAuth.js";
 import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
 import { buildReminderKeyboard } from "./rsvpInline.js";
+import { createSupportRsvpWorker } from "./supportRsvp.js";
 import { InlineKeyboard } from "grammy";
 import { performance } from "node:perf_hooks";
 import { Resend } from "resend";
@@ -585,14 +586,20 @@ async function supportTgCall(method, payload) {
     throw new Error("SUPPORT_BOT_TOKEN / SUPPORT_CHAT_ID not set");
   }
 
-  const url = `https://api.telegram.org/bot${SUPPORT_TOKEN}/${method}`;
+  const url = `https://api.telegram.org/bot${encodeURIComponent(SUPPORT_TOKEN)}/${method}`;
   const res = await fetch(url, {
     method: "POST",
     headers: payload instanceof FormData ? undefined : { "content-type": "application/json" },
     body: payload instanceof FormData ? payload : JSON.stringify(payload),
+    signal: AbortSignal.timeout(15000),
   });
   const data = await res.json();
-  if (!data.ok) throw new Error(`Support bot ${method} failed: ${data.description || "unknown"}`);
+  if (!data.ok) {
+    const error = new Error(`Support bot ${method} failed`);
+    error.error_code = data.error_code; error.description = data.description;
+    error.retry_after = data.parameters?.retry_after;
+    throw error;
+  }
   return data.result;
 }
 
@@ -6554,6 +6561,29 @@ app.get("/api/stats/attendance", async (req, res) => {
 });
 
 
+app.get("/api/admin/rsvp/history", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res);
+  if (!user || !(await requireAdminAsync(req, res, user))) return;
+  const gameId = req.query.game_id ? Number(req.query.game_id) : null;
+  const playerId = req.query.tg_id ? String(req.query.tg_id) : null;
+  const after = Number(req.query.after || 0);
+  const limit = Number(req.query.limit || 200);
+  if ((gameId != null && (!Number.isSafeInteger(gameId) || gameId <= 0)) ||
+      (playerId != null && !/^-?\d{1,18}$/.test(playerId)) ||
+      !Number.isSafeInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1 || limit > 500) {
+    return res.status(400).json({ ok: false, reason: "bad_params" });
+  }
+  try {
+    const result = await q(`SELECT h.*,p.display_name,p.first_name,p.last_name,p.username,g.starts_at
+      FROM rsvp_history h LEFT JOIN players p ON p.tg_id=h.tg_id JOIN games g ON g.id=h.game_id
+      WHERE ($1::int IS NULL OR h.game_id=$1) AND ($2::bigint IS NULL OR h.tg_id=$2) AND h.id>$3
+      ORDER BY h.id LIMIT $4`, [gameId, playerId, after, limit]);
+    res.json({ ok: true, events: result.rows, nextCursor: result.rows.at(-1)?.id || after });
+  } catch {
+    res.status(500).json({ ok: false, reason: "history_unavailable" });
+  }
+});
+
 app.post("/api/rsvp/bulk", async (req, res) => {
   const user = req.webappUser || requireWebAppAuth(req, res);
   if (!user) return;
@@ -9154,3 +9184,13 @@ console.log(`[BOOT] hockey-backend starting... ${new Date().toISOString()} commi
 console.log('куку все ок играем в хоккей')
 
 app.listen(port, () => console.log("Backend listening on", port));
+
+// RSVP delivery is independent of HTTP requests: retries and message IDs are
+// persisted, so Telegram downtime never prevents a player saving their mark.
+if (!isSmoke && SUPPORT_TOKEN && SUPPORT_CHAT_ID && process.env.SUPPORT_RSVP_ENABLED !== "0") {
+  const supportRsvpWorker = createSupportRsvpWorker({
+    withTransaction, call: supportTgCall, chatId: SUPPORT_CHAT_ID,
+    isAdmin: isAdminId, timeZone: process.env.TZ_NAME || "Europe/Moscow",
+  });
+  supportRsvpWorker.start();
+}

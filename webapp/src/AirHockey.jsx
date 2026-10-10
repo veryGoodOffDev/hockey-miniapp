@@ -16,10 +16,12 @@ const SHOP_ITEMS = [
 
 export function SheepCoin({ value, compact=false }) { return <span className="sheepCoin"><i>SC</i>{value != null && <b>{value}{compact ? "" : " SC"}</b>}</span>; }
 
-function Rink({ running, difficulty, onScore }) {
+function Rink({ running, difficulty, onScore, malletRadius }) {
   const canvasRef = useRef(null), stateRef = useRef(null), frameRef = useRef(0);
   const pointerRef = useRef(null), scoreRef = useRef(onScore);
   scoreRef.current = onScore;
+  const radiusRef = useRef(malletRadius);
+  radiusRef.current = malletRadius;
   const reducedMotion = useRef(false);
   useEffect(() => {
     const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -63,7 +65,7 @@ function Rink({ running, difficulty, onScore }) {
     let active = true, last = performance.now();
     const reset = (W, H, serve = 1) => ({
       p: { x: W / 2, y: H / 2, vx: (Math.random() - .5) * 130, vy: serve * 160, r: 10 },
-      u: { x: W / 2, y: H - 58, vx: 0, vy: 0, r: 22 },
+      u: { x: W / 2, y: H - 58, vx: 0, vy: 0, r: radiusRef.current },
       b: { x: W / 2, y: 58, vx: 0, vy: 0, r: 22 },
       goal: null,
     });
@@ -151,6 +153,9 @@ function Rink({ running, difficulty, onScore }) {
       const W = canvas.clientWidth, H = canvas.clientHeight;
       const dt = Math.min(Math.max((now - last) / 1000, 0), .033); last = now;
       let s = stateRef.current ||= reset(W, H);
+      s.u.r = Math.min(radiusRef.current, W / 2 - 2, H / 4 - 2);
+      s.u.x = Math.max(s.u.r, Math.min(W - s.u.r, s.u.x));
+      s.u.y = Math.max(H / 2 + s.u.r, Math.min(H - s.u.r, s.u.y));
       if (running && s.goal) {
         s.goal.elapsed += dt;
         if (s.goal.elapsed >= .9) {
@@ -181,8 +186,8 @@ function Rink({ running, difficulty, onScore }) {
     if (!running || pointerRef.current !== e.pointerId) return;
     const c = canvasRef.current, r = c.getBoundingClientRect(), s = stateRef.current;
     if (!s || s.goal) return;
-    const now = performance.now(), x = Math.max(22, Math.min(r.width - 22, e.clientX - r.left));
-    const y = Math.max(r.height / 2 + 22, Math.min(r.height - 22, e.clientY - r.top));
+    const now = performance.now(), x = Math.max(s.u.r, Math.min(r.width - s.u.r, e.clientX - r.left));
+    const y = Math.max(r.height / 2 + s.u.r, Math.min(r.height - s.u.r, e.clientY - r.top));
     const dt = Math.max((now - (s.u.t || now)) / 1000, .008);
     const vx = (x - s.u.x) / dt, vy = (y - s.u.y) / dt, speed = Math.hypot(vx, vy);
     const scale = Math.min(1, MAX_PUCK_SPEED / (speed || 1));
@@ -199,6 +204,13 @@ function Rink({ running, difficulty, onScore }) {
 }
 
 export default function AirHockey({ onClose, onProfileChange }) {
+  const [malletRadius, setMalletRadius] = useState(() => {
+    try { const saved = Number(localStorage.getItem("airHockeyMalletRadius")); return saved >= 24 && saved <= 42 ? saved : 32; } catch { return 32; }
+  });
+  const changeMalletSize = (e) => {
+    const radius = Number(e.target.value); setMalletRadius(radius);
+    try { localStorage.setItem("airHockeyMalletRadius", String(radius)); } catch {}
+  };
   const [profile,setProfile]=useState(null),[difficulty,setDifficulty]=useState("normal"),[game,setGame]=useState(null),[score,setScore]=useState([0,0]),[result,setResult]=useState(null),[shop,setShop]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
   useEffect(()=>{
     const root=document.getElementById("root"),previousOverflow=document.body.style.overflow;
@@ -217,10 +229,11 @@ export default function AirHockey({ onClose, onProfileChange }) {
   const premium=profile?.premiumLifetime?"навсегда":profile?.premiumUntil?`до ${new Date(profile.premiumUntil).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:"нет";
   return createPortal(<div className="airScreen" role="dialog" aria-modal="true" aria-label="Air Hockey"><header><button className="btn secondary" onClick={onClose}>← Назад</button><h2>Air Hockey</h2><button className="btn secondary" onClick={()=>setShop(true)}>Магазин</button></header>
     <div className="airStats"><SheepCoin value={profile?.sheepCoins??0}/><span>Матчей: <b>{profile?.gamesLeftToday??'—'} / {profile?.dailyLimit??10}</b></span><span>Premium: <b>{premium}</b></span></div>
+    <label className="airMalletSetting">Размер клюшки <input aria-label="Размер клюшки" type="range" min="24" max="42" step="1" value={malletRadius} onChange={changeMalletSize}/><output>{malletRadius * 2} px</output></label>
     <div className="airScore"><span>Ты</span><b>{score[0]} : {score[1]}</b><span>Бот</span></div>
     {!game&&!result&&<><div className="airDifficulty">{DIFFICULTIES.map(d=><button key={d.id} className={difficulty===d.id?'active':''} onClick={()=>d.id==='easy'&&!profile?.easyUnlocked?setShop(true):setDifficulty(d.id)}>{d.id==='easy'&&!profile?.easyUnlocked?'🔒 ':''}{d.name}<small>{d.id==='easy'&&!profile?.easyUnlocked?'открыть за 120 SC':`Победа +${AIR_HOCKEY_REWARDS[d.id]} SC`}</small></button>)}</div><button className="btn airStart" disabled={busy||!profile?.gamesLeftToday} onClick={start}>Начать матч</button>{profile?.gamesLeftToday===0&&<p className="airNotice">Матчи на сегодня закончились<br/>Новые игры будут доступны после ежедневного обновления</p>}</>}
     {result&&<div className="airResult"><h2>{result.win?'🏆 Победа':'Матч окончен'}</h2><strong>{score[0]} : {score[1]}</strong><p>{result.win?`+${result.reward} Sheep Coins`:'Награда: 0 SC'}</p><p>Баланс: {result.balance} SC</p><button className="btn" onClick={()=>setResult(null)}>Играть ещё</button><button className="btn secondary" onClick={onClose}>В профиль</button></div>}
-    <Rink running={!!game && score[0] < 7 && score[1] < 7} difficulty={difficulty} onScore={scored}/>{message&&<div className="airNotice">{message}</div>}
+    <Rink running={!!game && score[0] < 7 && score[1] < 7} difficulty={difficulty} onScore={scored} malletRadius={malletRadius}/>{message&&<div className="airNotice">{message}</div>}
     {shop&&<div className="airModal" onClick={()=>setShop(false)}><div className="airShop" onClick={e=>e.stopPropagation()}><h2>Магазин Sheep Coins</h2>{SHOP_ITEMS.map(i=><div className="airShopItem" key={i.id}><div><b>{i.title}</b><SheepCoin value={i.cost}/></div><button className="btn" disabled={busy||(i.id==='easy'&&profile?.easyUnlocked)} onClick={()=>buy(i)}>{i.id==='easy'&&profile?.easyUnlocked?'Открыто':`Купить за ${i.cost} SC`}</button></div>)}<button className="btn secondary" onClick={()=>setShop(false)}>Закрыть</button></div></div>}
   </div>,document.body);
 }

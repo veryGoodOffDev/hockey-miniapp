@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import EmojiPicker, { Emoji } from "emoji-picker-react";
 import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
 import HockeyLoader from "./HockeyLoader.jsx";
+import { celebrateRsvp } from "./rsvpFeedback.js";
 import { JerseyBadge } from "./JerseyBadge.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import GameSheet from "./admin/GameSheet.jsx"; 
@@ -1989,12 +1990,14 @@ useEffect(() => {
     setRemAt("");
   }
 }, [game?.id]);
-async function rsvp(status) {
+async function rsvp(status, event) {
   if (!selectedGameId) return;
+  const origin = event?.currentTarget?.getBoundingClientRect();
   await runOp(
     "Сохраняю отметку…",
     async () => {
       await apiPost("/api/rsvp", { game_id: selectedGameId, status });
+      celebrateRsvp(status, origin);
     },
     {
       successText: "✅ Отметка сохранена",
@@ -3253,13 +3256,15 @@ function openYandexRoute(lat, lon) {
                       <button
                         className="bulkRsvpBtn in"
                         disabled={opBusy}
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          const origin = e.currentTarget.getBoundingClientRect();
                           if (!confirm("Поставить ✅ Буду на все будущие игры?")) return;
                       
                           await runOp(
                             "Ставлю ✅ на все будущие…",
                             async () => {
                               await apiPost("/api/rsvp/bulk", { status: "yes" });
+                              celebrateRsvp("yes", origin);
                             },
                             {
                               successText: "✅ Применено",
@@ -3275,13 +3280,15 @@ function openYandexRoute(lat, lon) {
                       <button
                         className="bulkRsvpBtn out"
                         disabled={opBusy}
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          const origin = e.currentTarget.getBoundingClientRect();
                           if (!confirm("Поставить ❌ Не буду на все будущие игры?")) return;
                       
                           await runOp(
                             "Ставлю ❌ на все будущие…",
                             async () => {
                               await apiPost("/api/rsvp/bulk", { status: "no" });
+                              celebrateRsvp("no", origin);
                             },
                             {
                               successText: "✅ Применено",
@@ -3423,12 +3430,14 @@ function openYandexRoute(lat, lon) {
                               className={`rsvpBtn in ${status === "yes" ? "active" : ""}`}
                               onClick={async (e) => {
                                 e.stopPropagation();
+                                const origin = e.currentTarget.getBoundingClientRect();
                                 if (lockRsvp) return;
                             
                                 await runOp(
                                   "Сохраняю IN…",
                                   async () => {
                                     await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
+                                    celebrateRsvp("yes", origin);
                                   },
                                   {
                                     successText: "✅ IN сохранён",
@@ -3447,12 +3456,14 @@ function openYandexRoute(lat, lon) {
                               style={status === "maybe" ? { "--auto-no-p": noAutoFill } : undefined}
                               onClick={async (e) => {
                                 e.stopPropagation();
+                                const origin = e.currentTarget.getBoundingClientRect();
                                 if (lockRsvp) return;
                             
                                 await runOp(
                                   "Сохраняю OUT…",
                                   async () => {
                                     await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
+                                    celebrateRsvp("no", origin);
                                   },
                                   {
                                     successText: "✅ OUT сохранён",
@@ -3711,13 +3722,13 @@ function openYandexRoute(lat, lon) {
                         </div>
                       ) : (
                         <div className="row">
-                          <button className={btnClass("yes")} onClick={() => rsvp("yes")}>
+                          <button className={btnClass("yes")} onClick={(e) => rsvp("yes", e)}>
                             ✅ Буду
                           </button>
                           <button
                             className={`${btnClass("no")} ${myRsvp === "maybe" ? "autoNoFill" : ""}`}
                             style={myRsvp === "maybe" ? { "--auto-no-p": autoNoProgress(game) } : undefined}
-                            onClick={() => rsvp("no")}
+                            onClick={(e) => rsvp("no", e)}
                           >
                             ❌ Не буду
                           </button>

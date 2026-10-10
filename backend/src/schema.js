@@ -1,3 +1,5 @@
+import { ensureRsvpAuditSchema } from "./rsvpAuditSchema.js";
+
 export async function ensureSchema(q) {
   /** ===================== ADMIN SSL AUDIT ===================== */
   await q(`
@@ -323,6 +325,18 @@ await q(`CREATE INDEX IF NOT EXISTS idx_best_votes_game_candidate ON best_player
   /** ===================== SETTINGS ===================== */
   await q(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
 
+  await q(`
+    CREATE TABLE IF NOT EXISTS jersey_batches (
+      id BIGSERIAL PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status IN ('open','closed')) DEFAULT 'open',
+      title TEXT NOT NULL DEFAULT '',
+      opened_by BIGINT,
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ,
+      announced_at TIMESTAMPTZ
+    );
+  `);
+
   /** ===================== JERSEY ORDERS ===================== */
 await q(`
   CREATE TABLE IF NOT EXISTS jersey_orders (
@@ -438,18 +452,6 @@ await q(`ALTER TABLE jersey_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
   await q(`CREATE INDEX IF NOT EXISTS idx_team_applications_status ON team_applications(status);`);
 
     /** ===================== JERSEY (BATCHES + REQUESTS) ===================== */
-
-  await q(`
-    CREATE TABLE IF NOT EXISTS jersey_batches (
-      id BIGSERIAL PRIMARY KEY,
-      status TEXT NOT NULL CHECK (status IN ('open','closed')) DEFAULT 'open',
-      title TEXT NOT NULL DEFAULT '',
-      opened_by BIGINT,
-      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      closed_at TIMESTAMPTZ,
-      announced_at TIMESTAMPTZ
-    );
-  `);
 
   // если таблица уже есть, но колонок не было
   await q(`ALTER TABLE jersey_batches ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';`);
@@ -925,5 +927,7 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
     );
   `);
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sheep_coin_game_reward ON sheep_coin_transactions(game_id) WHERE game_id IS NOT NULL AND type='air_hockey_win';`);
+
+  await ensureRsvpAuditSchema(q);
 
 }
