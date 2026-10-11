@@ -2616,11 +2616,11 @@ function mergeUniqueById(primary = [], extra = []) {
         .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)),
     [games]
   );
-  const nextUpcomingId = useMemo(() => {
-  // upcomingGames уже отсортирован ASC и отфильтрован от прошедших
-  const next = (upcomingGames || []).find((g) => g.status === "scheduled");
-  return next?.id ?? null;
-}, [upcomingGames]);
+  // Today's finished game stays in the list until midnight, but loses the nearest highlight.
+  // Recalculate on render so the label follows the same clock as uiStatus.
+  const nextUpcomingId = upcomingGames.find(
+    (g) => g.status === "scheduled" && !gameFlags(g.starts_at).isFinished
+  )?.id ?? null;
 const teamsStaleInfo = useMemo(() => {
   if (!teams?.ok) return { stale: false, current: 0, inTeams: 0, removed: 0, added: 0 };
   // кто сейчас "Буду" (ровно те, кого логично держать в составах)
