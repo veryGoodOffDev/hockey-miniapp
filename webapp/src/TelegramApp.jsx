@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EmojiPicker, { Emoji } from "emoji-picker-react";
 import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
+import GameCard from "./GameCard.jsx";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { celebrateRsvp } from "./rsvpFeedback.js";
 import { JerseyBadge } from "./JerseyBadge.jsx";
@@ -3250,7 +3251,7 @@ function openYandexRoute(lat, lon) {
                   {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
                 </div>
                 ) : (
-                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                <div className="games-list">
                   {!showPast && (
                     <div className="bulkRsvpRow" style={{ marginTop: 10 }}>
                       <button
@@ -3309,7 +3310,6 @@ function openYandexRoute(lat, lon) {
                       const when = formatWhen(g.starts_at);
                       const status = g.my_status || "maybe";
                       const noAutoFill = status === "maybe" ? autoNoProgress(g) : 0;
-                      const tone = cardToneByMyStatus(status);
                       const isNext = !showPast && nextUpcomingId != null && g.id === nextUpcomingId;
                     
                       const bgUrl = GAME_BGS[idx % GAME_BGS.length];
@@ -3324,194 +3324,7 @@ function openYandexRoute(lat, lon) {
                       const progress = Math.min(1, yes / Math.max(1, target));
                     
                       return (
-                        <div
-                          key={g.id}
-                          className={`card gameCard scrollEnter ${tone} status-${status} ${isNext ? "isNext" : ""} ${past ? "isPast" : ""}`}
-                          style={{
-                            "--enter-delay": `${Math.min(idx, 10) * 70}ms`,
-                            cursor: "pointer",
-                            opacity: past ? 0.85 : 1,
-                            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.65)), url(${bgUrl})`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center",
-                            backgroundRepeat: "no-repeat",
-                          }}
-                          data-scroll-enter="1"
-                          onClick={() => openGameDetail(g.id)}
-                            // onClick={() => {
-                            //   const id = g.id;
-                            //   setSelectedGameId(id);
-                            //   setGameView("detail");
-                            //   // Сброс "хвостов" прежней деталки (чтобы не мигало старым)
-                            //   setGame(null);
-                            //   setRsvps([]);
-                            //   setTeams(null);
-                            //   setDetailLoading(true);
-                            //  Promise.all([refreshGameOnly(id)])
-                            //       .then(() => refreshCommentsOnly(id))
-                            //       .catch(console.error)
-                            //       .finally(() => setDetailLoading(false));
-                            // }}
-                        >
-                          {/* TOP BAR */}
-                          <div className="gameCard__topbar">
-                            <div className="gameCard__title">{uiStatus(g)}</div>
-                            
-                            {/* BEST PLAYER */}
-                           {/*  {past && g.best_player_name ? (
-                              <div className="gameCard__awardLine">
-                                <img className="talismanIcon" src={talismanIcon} alt="" />
-                                <b>Best player:</b>&nbsp;{g.best_player_name}
-                              </div>
-                            ) : null}
-                            {!past && isNext && talismanHolder?.name ? (
-                              <div className="gameCard__awardLine">
-                                <img className="talismanIcon" src={talismanIcon} alt="" />
-                                <b>Талисман у:</b>&nbsp;{talismanHolder.name}
-                              </div>
-                            ) : null}*/}
-                            
-                            <div className="gameCard__topRight">
-                              {g.video_url ? <span className="gameCard__pill" title="Есть видео">▶️</span> : null}
-                                {(() => {
-                                  const cc = g.comments_count ?? 0;
-                                  return (
-                                    <span
-                                      className="gameCard__pill"
-                                      title={cc > 0 ? "Комментарии" : "Обсудить"}
-                                      style={{ cursor: "pointer" }}
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openGameDetail(g.id, "comments");
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter" || e.key === " ") {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          openGameDetail(g.id, "comments");
-                                        }
-                                      }}
-                                    >
-                                      💬 {cc > 0 ? cc : "Обсудить"}
-                                    </span>
-                                  );
-                                })()}
-                            </div>
-                          </div>
-                    
-                          {/* MAIN */}
-                          <div className="gameCard__main">
-                            {/* DATE BADGE */}
-                            <div className="gameCard__date">
-                              <div className="gameCard__month">{month}</div>
-                              <div className="gameCard__day">{day}</div>
-                            </div>
-                    
-                            {/* INFO */}
-                            <div className="gameCard__info">
-                              <div className="gameCard__when">{when}</div>
-                              <div className="gameCard__loc">📍 {g.location || "—"}</div>
-                            </div>
-                    
-                            {/* RING */}
-                            <div className="gameCard__ringWrap" title={`${yes} будут (цель ${target})`}>
-                              <div className="progressRing" style={{ "--p": progress }}>
-                                <div className="ringCenter">{yes}</div>
-                              </div>
-                            </div>
-                          </div>
-                    
-                          {/* ACTIONS */}
-                          <div className="gameCard__actions" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              disabled={opBusy || lockRsvp}
-                              className={`rsvpBtn in ${status === "yes" ? "active" : ""}`}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const origin = e.currentTarget.getBoundingClientRect();
-                                if (lockRsvp) return;
-                            
-                                await runOp(
-                                  "Сохраняю IN…",
-                                  async () => {
-                                    await apiPost("/api/rsvp", { game_id: g.id, status: "yes" });
-                                    celebrateRsvp("yes", origin);
-                                  },
-                                  {
-                                    successText: "✅ IN сохранён",
-                                    errorText: "❌ Не удалось сохранить IN",
-                                    sync: { gameId: g.id, refreshGames: true, refreshGame: false }, // деталка не нужна на list
-                                  }
-                                );
-                              }}
-                            >
-                              👍 IN
-                            </button>
-                            
-                            <button
-                              disabled={opBusy || lockRsvp}
-                              className={`rsvpBtn out ${status === "no" ? "active" : ""} ${status === "maybe" ? "autoNoFill" : ""}`}
-                              style={status === "maybe" ? { "--auto-no-p": noAutoFill } : undefined}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const origin = e.currentTarget.getBoundingClientRect();
-                                if (lockRsvp) return;
-                            
-                                await runOp(
-                                  "Сохраняю OUT…",
-                                  async () => {
-                                    await apiPost("/api/rsvp", { game_id: g.id, status: "no" });
-                                    celebrateRsvp("no", origin);
-                                  },
-                                  {
-                                    successText: "✅ OUT сохранён",
-                                    errorText: "❌ Не удалось сохранить OUT",
-                                    sync: { gameId: g.id, refreshGames: true, refreshGame: false },
-                                  }
-                                );
-                              }}
-                            >
-                              <span>👎 OUT</span>
-                              {status === "maybe" ? <span className="rsvpBtn__hint">авто</span> : null}
-                            </button>
-                          </div>
-                          {status === "maybe" && g.auto_no_at ? (
-                            <div className="small autoNoHint">Если не отметиться, перед игрой статус станет «Не играю» автоматически.</div>
-                          ) : null}
-                              {g.notice_text ? (
-                                <div className="gameNoticeInline" onClick={(e) => e.stopPropagation()}>
-                                  <span className="gameNoticeInline__icon" aria-hidden="true">ℹ️</span>
-                                  <span className="gameNoticeInline__text">{g.notice_text}</span>
-                                  {isAdmin ? (
-                                    <button
-                                      className="iconBtn gameNoticeInline__edit"
-                                      type="button"
-                                      title="Изменить важную заметку"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openGameSheet(g);
-                                      }}
-                                    >
-                                      ✏️
-                                    </button>
-                                  ) : null}
-                                </div>
-                              ) : isAdmin ? (
-                                <button
-                                  className="btn secondary"
-                                  style={{ marginTop: 10 }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openGameSheet(g);
-                                  }}
-                                  title="Добавить важную заметку"
-                                >
-                                  ➕ Важно
-                                </button>
-                              ) : null}
-                        </div>
+                        <GameCard key={g.id} {...{ g, idx, past, lockRsvp, when, status, noAutoFill, isNext, bgUrl, month, day, yes, target, progress, isAdmin, opBusy, runOp, openGameDetail, openGameSheet }} statusLabel={uiStatus(g)} />
                       );
                     })}
                       {showPast ? (
