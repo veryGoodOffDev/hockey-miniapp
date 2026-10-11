@@ -1053,6 +1053,16 @@ async function createSeries() {
   }, { successText: "✅ Расписание создано" });
 }
 
+async function toggleAutoSchedule() {
+  const enabled = !autoSchedule.enabled;
+  await runAdminOp(enabled ? "Включаю автосоздание…" : "Выключаю автосоздание…", async () => {
+    const r = await apiPatch("/api/admin/games/auto-schedule", { enabled });
+    if (!r?.ok) throw new Error(r?.reason || "save_failed");
+    setAutoSchedule((s) => ({ ...s, enabled: !!r.cfg.enabled }));
+    await load({ silent: true });
+  }, { successText: enabled ? "✅ Автосоздание включено" : "✅ Автосоздание выключено" });
+}
+
 async function saveAutoSchedule() {
   await runAdminOp("Сохраняю авто-расписание…", async () => {
     const lat = autoSchedule.geo_lat.trim() ? Number(autoSchedule.geo_lat) : null;
@@ -2114,8 +2124,8 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       {templateAccordionOpen ? (
         <div id="template-settings" className="adminAccordionBody">
           <div className="small adminGamesHint">
-            Поддерживает постоянное количество предстоящих игр: как только одна игра уходит в прошлое,
-            при следующем tick/проверке добавляется новая в конец по шаблону.
+            Автоматически проверяет расписание каждую минуту. Через два часа после начала игры
+            добавляет недостающие игры в конец по сохранённому шаблону. Переключатель сохраняется сразу; остальные настройки — кнопкой ниже.
           </div>
 
           <div className="adminToggleRow">
@@ -2126,7 +2136,8 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
               role="switch"
               aria-checked={!!autoSchedule.enabled}
               aria-label="Включить автосоздание игр"
-              onClick={() => setAutoSchedule((s) => ({ ...s, enabled: !s.enabled }))}
+              onClick={toggleAutoSchedule}
+              disabled={opBusy}
             >
               <span className="adminSwitch__thumb" />
             </button>
