@@ -9187,10 +9187,14 @@ app.listen(port, () => console.log("Backend listening on", port));
 
 // RSVP delivery is independent of HTTP requests: retries and message IDs are
 // persisted, so Telegram downtime never prevents a player saving their mark.
-if (!isSmoke && SUPPORT_TOKEN && SUPPORT_CHAT_ID && process.env.SUPPORT_RSVP_ENABLED !== "0") {
+if (!isSmoke && SUPPORT_TOKEN && SUPPORT_CHAT_ID && process.env.SUPPORT_RSVP_ENABLED !== "0" && SUPPORT_TOKEN !== process.env.BOT_TOKEN) {
   const supportRsvpWorker = createSupportRsvpWorker({
     withTransaction, call: supportTgCall, chatId: SUPPORT_CHAT_ID,
-    isAdmin: isAdminId, timeZone: process.env.TZ_NAME || "Europe/Moscow",
+    isAdmin: isAdminId, timeZone: process.env.TZ_NAME || "Europe/Moscow", mainBotId: bot.botInfo.id,
   });
   supportRsvpWorker.start();
+}
+
+if (!isSmoke && SUPPORT_TOKEN && SUPPORT_TOKEN === process.env.BOT_TOKEN) {
+  console.error("[support RSVP] use a separate support bot token to avoid polling conflicts");
 }
