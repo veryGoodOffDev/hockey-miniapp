@@ -1,4 +1,7 @@
 import "dotenv/config";
+import { createPvpTickets, attachPvpSocket } from "./airHockeyPvp/socket.js";
+import { PvpRooms } from "./airHockeyPvp/rooms.js";
+import { createPvpRepository } from "./airHockeyPvp/rewards.js";
 import { createAutoScheduleService, startAutoScheduleWorker } from "./autoSchedule.js";
 import nodemailer from "nodemailer";
 import express from "express";
@@ -2826,6 +2829,27 @@ app.post("/api/auth/email/start", async (req, res) => {
     console.error("POST /api/auth/email/start failed:", e?.stack || e);
     return res.status(500).json({ ok: false, reason: "server_error" });
   }
+});
+
+const pvpTickets = createPvpTickets();
+const pvpRepository = createPvpRepository({ q, withTransaction });
+const pvpRooms = new PvpRooms({ repository: pvpRepository });
+
+app.post("/api/game/air-hockey/pvp/ticket", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res); if (!user) return;
+  // A signed Telegram launch must also be recent; browser bearer sessions keep their existing expiry.
+  const initData = req.header("x-telegram-init-data");
+  if (!user.is_email_auth && initData) {
+    const authDate = Number(new URLSearchParams(initData).get("auth_date"));
+    if (!Number.isFinite(authDate) || Math.abs(Date.now()/1000-authDate)>86400) return res.status(401).json({ok:false,reason:"expired_init_data"});
+  }
+  if (!(await requireGroupMember(req, res, user))) return;
+  try {
+    const player = (await q("SELECT tg_id,display_name,first_name,username,disabled FROM players WHERE tg_id=$1", [user.id])).rows[0];
+    if (!player || player.disabled) return res.status(403).json({ok:false,reason:"player_unavailable"});
+    const ticket = pvpTickets.issue({id:String(user.id),name:player.display_name || player.first_name || player.username || "Игрок"});
+    return res.json({ok:true,ticket});
+  } catch(error) { console.error("[PvP] ticket failed",error.message);return res.status(503).json({ok:false,reason:"pvp_unavailable"}); }
 });
 
 /** ====== AIR HOCKEY ====== */
@@ -9021,7 +9045,9 @@ const port = process.env.PORT || 10000;
 console.log(`[BOOT] hockey-backend starting... ${new Date().toISOString()} commit=${process.env.GIT_COMMIT || "n/a"}`);
 console.log('куку все ок играем в хоккей')
 
-app.listen(port, () => console.log("Backend listening on", port));
+if (!isSmoke) await pvpRepository.recover();
+const httpServer = app.listen(port, () => console.log("Backend listening on", port));
+if (!isSmoke) attachPvpSocket({ server: httpServer, rooms: pvpRooms, tickets: pvpTickets });
 
 // RSVP delivery is independent of HTTP requests: retries and message IDs are
 // persisted, so Telegram downtime never prevents a player saving their mark.

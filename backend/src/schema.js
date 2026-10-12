@@ -1,3 +1,4 @@
+import { ensurePvpSchema } from "./airHockeyPvp/schema.js";
 import { ensureRsvpAuditSchema } from "./rsvpAuditSchema.js";
 
 export async function ensureSchema(q) {
@@ -929,5 +930,6 @@ await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS joke_premium_note TEXT;`);
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sheep_coin_game_reward ON sheep_coin_transactions(game_id) WHERE game_id IS NOT NULL AND type='air_hockey_win';`);
 
   await ensureRsvpAuditSchema(q);
+  await ensurePvpSchema(q);
 
 }

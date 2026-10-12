@@ -4890,3 +4890,88 @@ html[data-theme="light"] .btn.outline.active{
     translate: none;
   }
 }
+
+/* PvP shares the Air Hockey shell, but never simulates client-side goals. */
+.airModeChoices {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(100%, 420px);
+  margin: 36px auto;
+  padding: 20px;
+  box-sizing: border-box;
+  background: #ffffff07;
+  border: 1px solid #ffffff12;
+  border-radius: 20px;
+}
+.airModeChoices .btn {
+  min-height: 48px;
+  white-space: normal;
+}
+.airModeChoices label {
+  display: grid;
+  gap: 8px;
+}
+.airModeChoices .input {
+  box-sizing: border-box;
+  width: 100%;
+  font-size: 22px;
+  letter-spacing: 4px;
+}
+.airModeChoices .small {
+  line-height: 1.7;
+  color: var(--tg-hint);
+}
+.airPvpConnection {
+  text-align: center;
+  font-size: 12px;
+  color: var(--tg-hint);
+  min-height: 18px;
+}
+.airPvpCode {
+  font-size: 48px;
+  letter-spacing: 8px;
+  text-align: center;
+  color: #249867;
+}
+.airPvpScreen header h2 {
+  font-size: 18px;
+}
+.airPvpScore span {
+  overflow-wrap: anywhere;
+  max-width: 32%;
+  font-size: 13px;
+}
+.airPvpField {
+  position: relative;
+  width: min(100%, 390px, calc((100dvh - 180px) * 0.5909));
+  margin: auto;
+}
+.airPvpRink {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 390/660;
+  max-height: calc(100dvh - 180px);
+  touch-action: none;
+  border-radius: 18px;
+  border: 1px solid #ffffff22;
+  box-sizing: border-box;
+}
+.airPvpOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #07131dc9;
+  color: #ecf7ff;
+  border-radius: 18px;
+  text-align: center;
+  pointer-events: none;
+}
+.airPvpOverlay strong {
+  font-size: 72px;
+  color: #b8efd3;
+}

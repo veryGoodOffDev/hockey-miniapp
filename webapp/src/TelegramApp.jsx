@@ -18,7 +18,8 @@ import player from "./player.png";
 import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
 import usePullToRefresh from "./usePullToRefresh.js";
-import AirHockey, { SheepCoin } from "./AirHockey.jsx";
+import { SheepCoin } from "./AirHockey.jsx";
+import AirHockey from "./AirHockeyModes.jsx";
 const GAME_BGS = [bg1, bg2, bg3, bg4, bg5, bg6];
 const BOT_DEEPLINK = "https://t.me/HockeyLineupBot";
 const JERSEY_COLOR_OPTS = [
@@ -152,6 +153,7 @@ useEffect(() => {
   // profile sub-tabs
   const [profileView, setProfileView] = useState("me"); // me | support | about
   const [airHockeyOpen, setAirHockeyOpen] = useState(false);
+  const [airHockeyInvite, setAirHockeyInvite] = useState(null);
   const [airHockeyBalance, setAirHockeyBalance] = useState(null);
   const refreshAirHockeyBalance = useCallback(() => {
     apiGet("/api/game/profile").then((r) => setAirHockeyBalance(r.sheepCoins)).catch(() => {});
@@ -1762,7 +1764,10 @@ function clipText(s, max = 70) {
   const sp = readStartParam();
   let forceGameId = null;
   if (sp) {
-    if (sp === "jersey") {
+    if (/^airhockey_\d{4}$/.test(sp)) {
+      setAirHockeyInvite(sp.slice("airhockey_".length));
+      setAirHockeyOpen(true);
+    } else if (sp === "jersey") {
       setTab("profile");
       setProfileView("me");
       setTimeout(() => {
@@ -3082,7 +3087,7 @@ function openYandexRoute(lat, lon) {
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
   return (
     <div ref={gamesPullRef} className="container appShell">
-    {airHockeyOpen ? <AirHockey onClose={() => { setAirHockeyOpen(false); refreshAirHockeyBalance(); }} onProfileChange={refreshAirHockeyBalance} /> : null}
+    {airHockeyOpen ? <AirHockey inviteCode={airHockeyInvite} onClose={() => { setAirHockeyOpen(false); setAirHockeyInvite(null); refreshAirHockeyBalance(); }} onProfileChange={refreshAirHockeyBalance} /> : null}
     {!inTelegramWebApp && (
       <div className="webThemeDock" role="region" aria-label="Тема (веб)">
         <div className="webThemeDock__panel">
