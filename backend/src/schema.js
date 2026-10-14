@@ -323,6 +323,9 @@ await q(`CREATE INDEX IF NOT EXISTS idx_best_votes_game_candidate ON best_player
     );
   `);
 
+  await q(`ALTER TABLE teams ADD COLUMN IF NOT EXISTS lineup JSONB;`);
+  await q(`ALTER TABLE teams ADD COLUMN IF NOT EXISTS lineup_revision INT NOT NULL DEFAULT 0;`);
+
   /** ===================== SETTINGS ===================== */
   await q(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
 

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { saveTeamLineup, lineupRosterSignature } from "./teamLineup.js";
 import { createPvpTickets, attachPvpSocket } from "./airHockeyPvp/socket.js";
 import { PvpRooms } from "./airHockeyPvp/rooms.js";
 import { createPvpRepository } from "./airHockeyPvp/rewards.js";
@@ -1469,6 +1470,7 @@ async function syncTeamsAfterRsvpChange(gid, tgId) {
 
   let teamA = Array.isArray(row.team_a) ? [...row.team_a] : [];
   let teamB = Array.isArray(row.team_b) ? [...row.team_b] : [];
+  const lineupRosterBefore = lineupRosterSignature(teamA, teamB);
 
   const id = String(tgId);
   const inA = teamA.some((p) => String(p?.tg_id ?? p) === id);
@@ -1519,9 +1521,11 @@ async function syncTeamsAfterRsvpChange(gid, tgId) {
   const meta = buildTeamsMeta(teamA, teamB);
   await q(
     `UPDATE teams
-     SET team_a=$2, team_b=$3, meta=$4, generated_at=NOW()
+     SET team_a=$2, team_b=$3, meta=$4,
+         lineup=CASE WHEN $5 THEN NULL ELSE lineup END,
+         lineup_revision=lineup_revision+($5::boolean)::int, generated_at=NOW()
      WHERE game_id=$1`,
-    [gid, JSON.stringify(teamA), JSON.stringify(teamB), JSON.stringify(meta)]
+    [gid, JSON.stringify(teamA), JSON.stringify(teamB), JSON.stringify(meta), lineupRosterBefore !== lineupRosterSignature(teamA, teamB)]
   );
 
   // best-effort: если составы уже были отправлены в чат — обновляем опубликованное сообщение
@@ -4330,7 +4334,7 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
       );
 
   const teamsPromise = q(
-    `SELECT team_a, team_b, meta, generated_at FROM teams WHERE game_id=$1`,
+    `SELECT team_a, team_b, meta, generated_at, lineup, lineup_revision FROM teams WHERE game_id=$1`,
     [game.id]
   );
 
@@ -4495,11 +4499,26 @@ app.post("/api/teams/generate", async (req, res) => {
        team_a=EXCLUDED.team_a,
        team_b=EXCLUDED.team_b,
        meta=EXCLUDED.meta,
+       lineup=NULL, lineup_revision=teams.lineup_revision+1,
        generated_at=NOW()`,
     [gid, JSON.stringify(teamA), JSON.stringify(teamB), JSON.stringify(meta)]
   );
 
   res.json({ ok: true, teamA, teamB, meta });
+});
+
+app.post("/api/teams/lineup", async (req, res) => {
+  const user = req.webappUser || requireWebAppAuth(req, res);
+  if (!user) return;
+  if (!(await requireGroupMember(req, res, user))) return;
+  if (!(await requireAdminAsync(req, res, user))) return;
+  try {
+    const saved = await saveTeamLineup(q, { gameId: Number(req.body?.game_id), lineup: req.body?.lineup, revision: req.body?.revision });
+    return res.json({ ok: true, ...saved });
+  } catch (error) {
+    if (!error.status) console.error("save lineup failed:", error);
+    return res.status(error.status || 500).json({ ok: false, reason: error.status ? error.message : "server_error" });
+  }
 });
 
 /** ====== TEAMS MANUAL EDIT (admin) ====== */
@@ -4602,7 +4621,7 @@ app.post("/api/teams/manual", async (req, res) => {
 
   await q(
     `UPDATE teams
-     SET team_a=$2, team_b=$3, meta=$4, generated_at=NOW()
+     SET team_a=$2, team_b=$3, meta=$4, lineup=NULL, lineup_revision=lineup_revision+1, generated_at=NOW()
      WHERE game_id=$1`,
     [gid, JSON.stringify(A), JSON.stringify(B), JSON.stringify(meta)]
   );

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import EmojiPicker, { Emoji } from "emoji-picker-react";
 import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
 import GameCard from "./GameCard.jsx";
+import TeamLineup from "./TeamLineup.jsx";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { celebrateRsvp } from "./rsvpFeedback.js";
 import { JerseyBadge } from "./JerseyBadge.jsx";
@@ -1195,6 +1196,8 @@ async function syncAfterMutation(sync = {}) {
         teamA: Array.isArray(t.team_a) ? t.team_a : [],
         teamB: Array.isArray(t.team_b) ? t.team_b : [],
         meta: t.meta || { sumA: 0, sumB: 0, diff: 0 },
+        lineup: t.lineup || null,
+        lineupRevision: t.lineup_revision ?? 0,
       };
     }
     return t;
@@ -4679,6 +4682,11 @@ function openYandexRoute(lat, lon) {
             )}
           </div>
         )}
+        <hr />
+        <TeamLineup key={selectedGameId} teamA={teamsWithActualPos.teamA || []} teamB={teamsWithActualPos.teamB || []} lineup={teamsWithActualPos.lineup} revision={teamsWithActualPos.lineupRevision ?? 0} canEdit={isAdmin && !teamsLocked && !teamsBusy && !opBusy} onSave={async (lineup, revision) => {
+          const saved = await apiPost("/api/teams/lineup", { game_id: selectedGameId, lineup, revision });
+          setTeams(current => current ? { ...current, lineup: saved.lineup, lineupRevision: saved.lineup_revision } : current);
+        }} />
         <hr />
         {renderTeam("A", "⬜ Белые", teamsWithActualPos.teamA || [])}
         <hr />
