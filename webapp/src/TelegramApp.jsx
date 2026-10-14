@@ -3,6 +3,7 @@ import EmojiPicker, { Emoji } from "emoji-picker-react";
 import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
 import GameCard from "./GameCard.jsx";
 import TeamLineup from "./TeamLineup.jsx";
+import StatusBlock from "./RsvpStatusBlock.jsx";
 import HockeyLoader from "./HockeyLoader.jsx";
 import { celebrateRsvp } from "./rsvpFeedback.js";
 import { JerseyBadge } from "./JerseyBadge.jsx";
@@ -5728,77 +5729,6 @@ function monthDayRu(iso) {
     .toUpperCase(); // ДЕК / ЯНВ
   const day = String(d.getDate());
   return { month, day };
-}
-const posOrder = (p) => {
-  const pos = (p?.position || "F").toUpperCase();
-  if (pos === "G") return 0;
-  if (pos === "D") return 1;
-  return 2;
-};
-function posLabel(posRaw) {
-  const pos = (posRaw || "F").toUpperCase();
-  return pos === "G" ? "🥅 G" : pos === "D" ? "🛡 D" : "🏒 F";
-}
-function StatusBlock({ title, tone, list = [], isAdmin, me, canPickPos = false, setPosPopup }) {
-  const cls = `statusBlock ${tone}`;
-  const [openId, setOpenId] = React.useState(null);
-  React.useEffect(() => {
-    const onDoc = () => setOpenId(null);
-    document.addEventListener("click", onDoc);
-    return () => document.removeEventListener("click", onDoc);
-  }, []);
-  const effPos = (r) => String(r?.position || r?.profile_position || "F").toUpperCase();
-  const profilePos = (r) => String(r?.profile_position || r?.position || "F").toUpperCase();
-  const hasOverride = (r) => !!(r?.pos_override && String(r.pos_override).trim());
-  const allowPicker = isAdmin && canPickPos && tone === "yes" && typeof setPosPopup === "function";
-  return (
-    <div className={cls}>
-      <div className="statusHeader">
-        <div className="statusTitle">{title}</div>
-        <span className="badge">{list.length}</span>
-      </div>
-      {list.length === 0 ? (
-        <div className="small" style={{ opacity: 0.8 }}>
-          —
-        </div>
-      ) : (
-        <div className="pills">
-          {[...list]
-            .sort((a, b) => posOrder({ position: effPos(a) }) - posOrder({ position: effPos(b) }))
-            .map((r) => {
-              const pos = effPos(r);
-              const n = showNum(r);
-              const mine = me?.tg_id != null && String(r.tg_id) === String(me.tg_id);
-              return (
-                <div key={r.tg_id} style={{ position: "relative" }}>
-                  <div
-                    className={`pill pos-${pos} ${mine ? "isMeGold" : ""}`}
-                    style={{ cursor: allowPicker ? "pointer" : "default" }}
-                    onClick={(e) => {
-                      if (!allowPicker) return;
-                      e.stopPropagation();
-                      setPosPopup(r);
-                    }}
-                  >
-                    <span className="posTag">
-                      {posLabel(pos)}
-                      {hasOverride(r) ? " *" : ""}
-                    </span>
-                    <span className="pillName">
-                      {showName(r)}
-                      {n && ` № ${n}`}
-                      {r.is_guest ? " · 👤 гость" : ""}
-                      {r.auto_no ? " · авто" : ""}
-                    </span>
-                    {isAdmin && r.skill != null && <span className="pillMeta">skill {r.skill}</span>}
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      )}
-    </div>
-  );
 }
 // function Avatar({ p, big = false, onClick }) {
 //   const size = big ? 84 : 52; // было 72/44 — чуть крупнее

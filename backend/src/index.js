@@ -4275,6 +4275,7 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
         `SELECT
           COALESCE(r.status, 'maybe') AS status,
           COALESCE(r.auto_no, FALSE) AS auto_no,
+          r.status_changed_at,
           p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
           p.position AS profile_position,
           r.pos_override,
@@ -4308,6 +4309,7 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
         `SELECT
           COALESCE(r.status, 'maybe') AS status,
           COALESCE(r.auto_no, FALSE) AS auto_no,
+          r.status_changed_at,
           p.tg_id, p.first_name, p.username, p.display_name, p.jersey_number,
           p.position AS profile_position,
           r.pos_override,
