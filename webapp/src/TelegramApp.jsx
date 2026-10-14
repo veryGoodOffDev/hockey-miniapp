@@ -4683,14 +4683,15 @@ function openYandexRoute(lat, lon) {
           </div>
         )}
         <hr />
+        {renderTeam("A", "⬜ Белые", teamsWithActualPos.teamA || [])}
+        <hr />
+        {renderTeam("B", "🟦 Синие", teamsWithActualPos.teamB || [])}
+        <hr />
         <TeamLineup key={selectedGameId} teamA={teamsWithActualPos.teamA || []} teamB={teamsWithActualPos.teamB || []} lineup={teamsWithActualPos.lineup} revision={teamsWithActualPos.lineupRevision ?? 0} canEdit={isAdmin && !teamsLocked && !teamsBusy && !opBusy} onSave={async (lineup, revision) => {
           const saved = await apiPost("/api/teams/lineup", { game_id: selectedGameId, lineup, revision });
           setTeams(current => current ? { ...current, lineup: saved.lineup, lineupRevision: saved.lineup_revision } : current);
         }} />
         <hr />
-        {renderTeam("A", "⬜ Белые", teamsWithActualPos.teamA || [])}
-        <hr />
-        {renderTeam("B", "🟦 Синие", teamsWithActualPos.teamB || [])}
       </>
     ) : (
       <div className="small" style={{ marginTop: 10 }}>

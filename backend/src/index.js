@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { sendCustomBotPost } from "./customBotPost.js";
 import { saveTeamLineup, lineupRosterSignature } from "./teamLineup.js";
 import { createPvpTickets, attachPvpSocket } from "./airHockeyPvp/socket.js";
 import { PvpRooms } from "./airHockeyPvp/rooms.js";
@@ -15,7 +16,7 @@ import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
 import { buildReminderKeyboard } from "./rsvpInline.js";
 import { createSupportRsvpWorker } from "./supportRsvp.js";
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard, InputFile } from "grammy";
 import { performance } from "node:perf_hooks";
 import { Resend } from "resend";
 import crypto from "crypto";
@@ -773,8 +774,10 @@ async function requireGroupMember(req, res, user) {
     console.error("isAdminId failed:", e);
   }
 
+  const memberController = new AbortController();
+  const memberTimeout = setTimeout(() => memberController.abort(), 8000);
   try {
-    const m = await bot.api.getChatMember(chatId, user.id);
+    const m = await bot.api.getChatMember(chatId, user.id, memberController.signal);
 
     if (m.status === "left" || m.status === "kicked") {
       res.status(403).json({ ok: false, reason: "not_member" });
@@ -795,7 +798,7 @@ async function requireGroupMember(req, res, user) {
     const errCode = e?.error?.code; // node-fetch
     const errNo = e?.error?.errno;
 
-    if (errCode === "ETIMEDOUT" || errNo === "ETIMEDOUT" || desc.includes("Network request")) {
+    if (memberController.signal.aborted || errCode === "ETIMEDOUT" || errNo === "ETIMEDOUT" || desc.includes("Network request")) {
       res.status(503).json({ ok: false, reason: "telegram_unavailable" });
       return false;
     }
@@ -811,7 +814,7 @@ async function requireGroupMember(req, res, user) {
 
     res.status(403).json({ ok: false, reason: "member_check_failed" });
     return false;
-  }
+  } finally { clearTimeout(memberTimeout); }
 }
 
 function int(v, def) {
@@ -5724,7 +5727,7 @@ app.get("/api/admin/bot-messages", async (req, res) => {
   params.push(offset);
 
   const r = await q(
-    `SELECT id, chat_id, message_id, kind, text, created_at, checked_at, deleted_at, delete_reason, sent_by_tg_id
+    `SELECT id, chat_id, message_id, kind, text, meta, created_at, checked_at, deleted_at, delete_reason, sent_by_tg_id
      FROM bot_messages
      WHERE ${where.join(" AND ")}
      ORDER BY created_at DESC
@@ -5739,43 +5742,28 @@ app.get("/api/admin/bot-messages", async (req, res) => {
   res.json({ ok: true, messages, has_more: hasMore, next_offset: offset + messages.length });
 });
 
-app.post("/api/admin/bot-messages/send", async (req, res) => {
+const customPostUpload = multer({ storage: multer.memoryStorage(), limits: { files: 1, fileSize: 10 * 1024 * 1024, fieldSize: 16 * 1024 } }).single("photo");
+app.post("/api/admin/bot-messages/send", async (req, res, next) => {
   const user = req.webappUser || requireWebAppAuth(req, res);
   if (!user) return;
   if (!(await requireGroupMember(req, res, user))) return;
-
-  if (!isSuperAdmin(user.id)) {
-    return res.status(403).json({ ok: false, reason: "not_super_admin" });
-  }
-
+  if (!isSuperAdmin(user.id)) return res.status(403).json({ ok: false, reason: "not_super_admin" });
+  req.customPostUser = user;
+  customPostUpload(req, res, error => {
+    if (error) return res.status(400).json({ ok: false, reason: error.code === "LIMIT_FILE_SIZE" ? "image_too_large" : "bad_attachment" });
+    next();
+  });
+}, async (req, res) => {
   const chatIdRaw = await getSetting("notify_chat_id", null);
   if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
-
   const chat_id = Number(chatIdRaw);
-  const text = String(req.body?.text || "").trim();
-
-  if (!text) return res.status(400).json({ ok: false, reason: "empty_text" });
-  if (text.length > 3500) return res.status(400).json({ ok: false, reason: "too_long" });
-
   try {
-    const sent = await bot.api.sendMessage(chat_id, text, {
-      disable_web_page_preview: true,
-    });
-
-    await logBotMessage({
-      chat_id,
-      message_id: sent.message_id,
-      kind: "custom",
-      text,
-      disable_web_page_preview: true,
-      meta: { type: "custom_from_admin" },
-      sent_by_tg_id: user.id,
-    });
-
+    const {sent,text,meta} = await sendCustomBotPost({ api: bot.api, chatId: chat_id, text: req.body?.text, file: req.file, makeInputFile: (buffer,name) => new InputFile(buffer,name) });
+    await logBotMessage({ chat_id, message_id: sent.message_id, kind: "custom", text, disable_web_page_preview: true, meta, sent_by_tg_id: req.customPostUser.id });
     res.json({ ok: true, message_id: sent.message_id });
-  } catch (e) {
-    console.error("custom send failed:", e);
-    res.status(500).json({ ok: false, reason: "send_failed", error: tgErrText(e) });
+  } catch (error) {
+    console.error("custom send failed:", error);
+    res.status(error.status || 500).json({ ok: false, reason: error.status ? error.message : "send_failed" });
   }
 });
 
@@ -5833,7 +5821,7 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
   const limit = Math.max(1, Math.min(80, Number(req.body?.limit || 30)));
 
   const r = await q(
-    `SELECT id, chat_id, message_id, text, parse_mode, disable_web_page_preview, reply_markup
+    `SELECT id, chat_id, message_id, text, meta, parse_mode, disable_web_page_preview, reply_markup
      FROM bot_messages
      WHERE chat_id=$1 AND deleted_at IS NULL
      ORDER BY created_at DESC
@@ -5854,7 +5842,11 @@ app.post("/api/admin/bot-messages/sync", async (req, res) => {
       if (row.parse_mode) opts.parse_mode = row.parse_mode;
       if (row.reply_markup) opts.reply_markup = row.reply_markup;
 
-      await bot.api.editMessageText(Number(row.chat_id), Number(row.message_id), row.text, opts);
+      if (row.meta?.media_type === "photo") {
+        await bot.api.editMessageCaption(Number(row.chat_id), Number(row.message_id), { caption: row.text || "", ...(row.parse_mode ? {parse_mode: row.parse_mode} : {}) });
+      } else {
+        await bot.api.editMessageText(Number(row.chat_id), Number(row.message_id), row.text, opts);
+      }
 
       await q(`UPDATE bot_messages SET checked_at=NOW() WHERE id=$1`, [row.id]);
     } catch (e) {

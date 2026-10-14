@@ -7,6 +7,7 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import GameSheet from "./admin/GameSheet.jsx";
+import CustomBotPostEditor from "./CustomBotPostEditor.jsx";
 import PlayerSheet from "./admin/PlayerSheet.jsx";
 // import MapPickModal from "./admin/MapPickModal.jsx";
 // import { toLocal, showName, showNum, posHuman } from "./admin/adminUtils.js";
@@ -474,7 +475,6 @@ const [jerseySelectedId, setJerseySelectedId] = useState(null);
   const [videoOpen, setVideoOpen] = useState(false);
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [attLoading, setAttLoading] = useState(false);
-  const [customMsg, setCustomMsg] = useState("");
   //messages
   const [msgHistory, setMsgHistory] = useState([]);
   const [msgLoading, setMsgLoading] = useState(false);
@@ -585,19 +585,6 @@ async function loadMsgHistory({ append = false, forceOpen = true } = {}) {
     if (forceOpen) setMsgHistoryOpened(true);
   } finally {
     setMsgLoading(false);
-  }
-}
-
-async function sendCustomToChat() {
-  if (!customMsg.trim()) return;
-  setReminderMsg("");
-  try {
-    await apiPost("/api/admin/bot-messages/send", { text: customMsg.trim() });
-    setCustomMsg("");
-    setReminderMsg("✅ Сообщение отправлено в чат");
-    if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
-  } catch (e) {
-    setReminderMsg("❌ Не удалось отправить сообщение");
   }
 }
 
@@ -1762,20 +1749,12 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       ✉️ Кастомное сообщение в командный чат (доступно только super-admin)
     </div>
 
-    <textarea
-      className="input"
-      rows={3}
-      value={customMsg}
-      onChange={(e) => setCustomMsg(e.target.value)}
-      placeholder="Текст сообщения…"
-      style={{ marginTop: 8 }}
-    />
+    <CustomBotPostEditor apiPost={apiPost} onSent={async () => {
+      setReminderMsg("✅ Сообщение отправлено в чат");
+      if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
+    }} />
 
     <div className="adminActionRow">
-      <button className="btn" onClick={sendCustomToChat} disabled={!customMsg.trim()}>
-        Отправить в чат
-      </button>
-
       <button className="btn secondary" onClick={syncHistory}>
         🔄 Синхронизировать (убрать удалённые)
       </button>
@@ -1807,6 +1786,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             </div>
 
             <div className="small" style={{ marginTop: 6, opacity: 0.9, whiteSpace: "pre-wrap" }}>
+              {m.meta?.media_type === "photo" ? "🖼 Изображение\n" : ""}
               {String(m.text || "").slice(0, 280)}
               {String(m.text || "").length > 280 ? "…" : ""}
             </div>

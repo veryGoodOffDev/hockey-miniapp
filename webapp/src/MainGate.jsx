@@ -1,5 +1,5 @@
 // MainGate.jsx
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet } from "./api";
 import { isInTelegram, tgReady } from "./tg";
 
@@ -15,6 +15,7 @@ function openInTelegramUrl() {
 }
 
 export default function MainGate({ onAuthed }) {
+  const requestRef = useRef(null);
   const [state, setState] = useState({
     loading: true,
     reason: "",
@@ -22,10 +23,13 @@ export default function MainGate({ onAuthed }) {
   });
 
   const checkMe = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setState({ loading: true, reason: "", stage: "loading" });
 
     try {
-      const me = await apiGet("/api/me");
+      const me = await apiGet("/api/me", { timeoutMs: 12_000, signal: controller.signal });
 
       // Если /api/me у тебя возвращает ok=true — отлично
       if (me?.ok) {
@@ -36,6 +40,7 @@ export default function MainGate({ onAuthed }) {
       // Если вдруг ok=false без throw
       setState({ loading: false, reason: me?.reason || "unknown", stage: "error" });
     } catch (e) {
+      if (controller.signal.aborted) return;
       const reason = e?.data?.reason || e.message || "auth_failed";
 
       
@@ -53,6 +58,7 @@ export default function MainGate({ onAuthed }) {
   useEffect(() => {
     tgReady();
     checkMe();
+    return () => requestRef.current?.abort();
   }, [checkMe]);
 
   if (state.loading) {
@@ -95,11 +101,11 @@ export default function MainGate({ onAuthed }) {
     );
   }
 
-  if (state.reason === "network_error") {
+  if (state.reason === "network_error" || state.reason === "request_timeout") {
     return (
       <div className="card">
         <h2>Не удалось подключиться к серверу</h2>
-        <div className="small">Проверьте интернет, адрес API (VITE_API_BASE) и CORS на backend.</div>
+        <div className="small">Сервер не ответил вовремя или соединение прервалось. Проверьте интернет и повторите вход.</div>
         <button className="btn" onClick={checkMe}>Повторить</button>
       </div>
     );

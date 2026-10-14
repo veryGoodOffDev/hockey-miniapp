@@ -1,4 +1,5 @@
 // api.js
+import { fetchApiResponse } from "./fetchApiResponse.js";
 import { getInitData } from "./tg.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
@@ -41,7 +42,7 @@ function makeError(message, data) {
   return err;
 }
 
-async function request(path, { method = "GET", body, signal } = {}) {
+async function request(path, { method = "GET", body, signal, timeoutMs = 20_000 } = {}) {
   const initData = getInitData();
   const token = getAuthToken();
 
@@ -57,33 +58,36 @@ async function request(path, { method = "GET", body, signal } = {}) {
 
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  let res;
+  let res, responseText;
   let netErr = null;
   for (const base of apiBaseCandidates()) {
     try {
-      res = await fetch(`${base}${path}`, {
+      const fetched = await fetchApiResponse(`${base}${path}`, {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal,
         credentials: "omit",
-      });
+      }, timeoutMs);
+      res = fetched.response; responseText = fetched.text;
       break;
     } catch (e) {
       netErr = e;
+      if (signal?.aborted) throw e;
+      if (e.name === "TimeoutError" && method !== "GET") break;
     }
   }
 
   if (!res) {
     throw makeError("network_error", {
       ok: false,
-      reason: "network_error",
+      reason: netErr?.name === "TimeoutError" ? "request_timeout" : "network_error",
       detail: netErr?.message || "fetch_failed",
     });
   }
 
   // 204 No Content
-  const text = await res.text();
+  const text = responseText;
   let data = null;
 
   if (text) {
@@ -99,13 +103,13 @@ async function request(path, { method = "GET", body, signal } = {}) {
   if (!res.ok) {
     // удобные причины для Gate/экранов
     const msg = data?.reason || data?.error || `HTTP_${res.status}`;
-    throw makeError(msg, data);
+    throw makeError(msg, { ...data, status: res.status });
   }
 
   return data;
 }
 
-export async function apiUpload(path, formData, { signal } = {}) {
+export async function apiUpload(path, formData, { signal, timeoutMs = 45_000 } = {}) {
   const initData = getInitData();
   const token = getAuthToken();
 
@@ -114,32 +118,35 @@ export async function apiUpload(path, formData, { signal } = {}) {
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   // Важно: Content-Type для formData НЕ ставим — браузер сам проставит boundary
-  let r;
+  let r, responseText;
   let netErr = null;
   for (const base of apiBaseCandidates()) {
     try {
-      r = await fetch(`${base}${path}`, {
+      const fetched = await fetchApiResponse(`${base}${path}`, {
         method: "POST",
         body: formData,
         headers,
         signal,
         credentials: "omit",
-      });
+      }, timeoutMs);
+      r = fetched.response; responseText = fetched.text;
       break;
     } catch (e) {
       netErr = e;
+      if (signal?.aborted) throw e;
+      if (e.name === "TimeoutError") break;
     }
   }
 
   if (!r) {
     throw makeError("network_error", {
       ok: false,
-      reason: "network_error",
+      reason: netErr?.name === "TimeoutError" ? "request_timeout" : "network_error",
       detail: netErr?.message || "fetch_failed",
     });
   }
 
-  const text = await r.text();
+  const text = responseText;
   let data = null;
 
   if (text) {
@@ -154,7 +161,7 @@ export async function apiUpload(path, formData, { signal } = {}) {
 
   if (!r.ok) {
     const msg = data?.reason || data?.error || `HTTP_${r.status}`;
-    throw makeError(msg, data);
+    throw makeError(msg, { ...data, status: r.status });
   }
 
   return data;

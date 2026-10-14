@@ -5170,3 +5170,45 @@ html[data-theme="light"] .btn.outline.active{
     gap: 8px;
   }
 }
+
+.customBotPost {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+.customBotPost > .small {
+  line-height: 1.5;
+  margin: 0;
+}
+.customBotPostAttach {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.customBotPostAttach input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  cursor: pointer;
+}
+.customBotPostPreview {
+  max-width: 440px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+.customBotPostPreview img {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  background: #0001;
+}
+.customBotPostPreview p {
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
