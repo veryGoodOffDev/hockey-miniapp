@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { sendCustomBotPost } from "./customBotPost.js";
+import { createCustomPostRoutes } from "./customPostUpload.js";
 import { saveTeamLineup, lineupRosterSignature } from "./teamLineup.js";
 import { createPvpTickets, attachPvpSocket } from "./airHockeyPvp/socket.js";
 import { PvpRooms } from "./airHockeyPvp/rooms.js";
@@ -16,7 +16,7 @@ import { makeTeams } from "./teamMaker.js";
 import { ensureSchema } from "./schema.js";
 import { buildReminderKeyboard } from "./rsvpInline.js";
 import { createSupportRsvpWorker } from "./supportRsvp.js";
-import { InlineKeyboard, InputFile } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { performance } from "node:perf_hooks";
 import { Resend } from "resend";
 import crypto from "crypto";
@@ -5744,30 +5744,17 @@ app.get("/api/admin/bot-messages", async (req, res) => {
   res.json({ ok: true, messages, has_more: hasMore, next_offset: offset + messages.length });
 });
 
-const customPostUpload = multer({ storage: multer.memoryStorage(), limits: { files: 1, fileSize: 10 * 1024 * 1024, fieldSize: 16 * 1024 } }).single("photo");
-app.post("/api/admin/bot-messages/send", async (req, res, next) => {
+const customPostRoutes = createCustomPostRoutes({ api: bot.api, getChatId: () => getSetting("notify_chat_id", null), logMessage: logBotMessage });
+async function requireCustomPostAdmin(req, res, next) {
   const user = req.webappUser || requireWebAppAuth(req, res);
   if (!user) return;
   if (!(await requireGroupMember(req, res, user))) return;
   if (!isSuperAdmin(user.id)) return res.status(403).json({ ok: false, reason: "not_super_admin" });
   req.customPostUser = user;
-  customPostUpload(req, res, error => {
-    if (error) return res.status(400).json({ ok: false, reason: error.code === "LIMIT_FILE_SIZE" ? "image_too_large" : "bad_attachment" });
-    next();
-  });
-}, async (req, res) => {
-  const chatIdRaw = await getSetting("notify_chat_id", null);
-  if (!chatIdRaw) return res.status(400).json({ ok: false, reason: "notify_chat_id_not_set" });
-  const chat_id = Number(chatIdRaw);
-  try {
-    const {sent,text,meta} = await sendCustomBotPost({ api: bot.api, chatId: chat_id, text: req.body?.text, file: req.file, makeInputFile: (buffer,name) => new InputFile(buffer,name) });
-    await logBotMessage({ chat_id, message_id: sent.message_id, kind: "custom", text, disable_web_page_preview: true, meta, sent_by_tg_id: req.customPostUser.id });
-    res.json({ ok: true, message_id: sent.message_id });
-  } catch (error) {
-    console.error("custom send failed:", error);
-    res.status(error.status || 500).json({ ok: false, reason: error.status ? error.message : "send_failed" });
-  }
-});
+  next();
+}
+app.post("/api/admin/bot-messages/photos", requireCustomPostAdmin, customPostRoutes.upload);
+app.post("/api/admin/bot-messages/send", requireCustomPostAdmin, customPostRoutes.send);
 
 app.post("/api/admin/bot-messages/:id/delete", async (req, res) => {
   const user = req.webappUser || requireWebAppAuth(req, res);

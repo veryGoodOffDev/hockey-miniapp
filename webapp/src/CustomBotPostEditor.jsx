@@ -1,74 +1,179 @@
 import React, { useEffect, useRef, useState } from "react";
 import { apiUpload } from "./api.js";
+import {
+  MAX_POST_PHOTOS,
+  postRequestId,
+  preparePostPhoto,
+} from "./preparePostPhoto.js";
+function PhotoPreview({ photo, index, onRemove, disabled }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    const value = URL.createObjectURL(photo.thumbnail || photo.file);
+    setUrl(value);
+    return () => URL.revokeObjectURL(value);
+  }, [photo]);
+  return (
+    <div className="customBotPostThumb">
+      <img src={url} alt={`Предпросмотр фото ${index + 1}`} />
+      <button
+        type="button"
+        className="btn secondary"
+        disabled={disabled}
+        onClick={onRemove}
+        aria-label={`Убрать фото ${index + 1}`}
+      >
+        ✕ {index + 1}
+      </button>
+    </div>
+  );
+}
 export default function CustomBotPostEditor({
   apiPost,
   onSent,
   upload = apiUpload,
 }) {
   const [text, setText] = useState(""),
-    [photo, setPhoto] = useState(null),
-    [preview, setPreview] = useState(""),
+    [photos, setPhotos] = useState([]),
     [busy, setBusy] = useState(false),
+    [processing, setProcessing] = useState(false),
     [message, setMessage] = useState("");
-  const input = useRef(null);
+  const input = useRef(null),
+    tokens = useRef(new Map()),
+    requestId = useRef(null),
+    preparing = useRef(false),
+    alive = useRef(true);
   useEffect(() => {
-    if (!photo) {
-      setPreview("");
-      return;
-    }
-    const url = URL.createObjectURL(photo);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [photo]);
-  const select = (file) => {
-    if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setMessage("Выберите изображение JPEG, PNG или WEBP");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setMessage("Изображение должно быть не больше 10 МБ");
-      return;
-    }
-    setPhoto(file);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const changed = () => {
+    requestId.current = null;
     setMessage("");
   };
-  const max = photo ? 1024 : 3500;
+  const select = async (files) => {
+    if (preparing.current || busy) return;
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    if (photos.length + list.length > MAX_POST_PHOTOS) {
+      setMessage("В одном альбоме можно отправить до 10 фотографий");
+      return;
+    }
+    preparing.current = true;
+    setProcessing(true);
+    setMessage("Подготавливаю фотографии…");
+    try {
+      const prepared = [];
+      for (const file of list) {
+        if (!alive.current) return;
+        prepared.push(await preparePostPhoto(file));
+      }
+      if (alive.current) {
+        setPhotos((old) => [...old, ...prepared]);
+        changed();
+      }
+    } catch (error) {
+      if (alive.current) setMessage(error.message);
+    } finally {
+      preparing.current = false;
+      if (alive.current) setProcessing(false);
+    }
+  };
+  const max = photos.length ? 1024 : 3500;
   const send = async () => {
+    if (busy || processing) return;
     setBusy(true);
     setMessage("");
     try {
-      if (photo) {
-        const form = new FormData();
-        form.append("text", text.trim());
-        form.append("photo", photo);
-        await upload("/api/admin/bot-messages/send", form);
-      } else
-        await apiPost("/api/admin/bot-messages/send", { text: text.trim() });
+      const receipts = [];
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        let token = tokens.current.get(photo.id);
+        if (!token) {
+          setMessage(`Загружаю фото ${i + 1} из ${photos.length}…`);
+          const form = new FormData();
+          form.append("photo", photo.file);
+          const response = await upload("/api/admin/bot-messages/photos", form);
+          token = response.token;
+          if (!token) throw new Error("upload_failed");
+          tokens.current.set(photo.id, token);
+        }
+        receipts.push(token);
+      }
+      if (!requestId.current) requestId.current = postRequestId();
+      setMessage(
+        photos.length
+          ? "Отправляю фотографии в Telegram…"
+          : "Отправляю сообщение…",
+      );
+      const result = await apiPost(
+        "/api/admin/bot-messages/send",
+        {
+          text: text.trim(),
+          photo_tokens: receipts,
+          request_id: requestId.current,
+        },
+        { timeoutMs: 90_000 },
+      );
       setText("");
-      setPhoto(null);
+      setPhotos([]);
+      tokens.current.clear();
+      requestId.current = null;
       if (input.current) input.current.value = "";
-      setMessage("✅ Сообщение отправлено в чат");
+      setMessage(
+        result?.history_warning
+          ? "✅ Пост отправлен, но не удалось сохранить всю историю."
+          : `✅ ${photos.length > 1 ? "Альбом отправлен" : "Сообщение отправлено"} в чат`,
+      );
       try {
         await onSent?.();
       } catch {
-        setMessage("✅ Сообщение отправлено. Не удалось обновить историю.");
+        setMessage("✅ Пост отправлен. Не удалось обновить историю.");
       }
-    } catch (e) {
-      const reason = e.data?.reason;
+    } catch (error) {
+      const reason = error.data?.reason,
+        detail = error.data?.detail || "";
+      if (reason === "photo_expired") {
+        tokens.current.clear();
+        requestId.current = null;
+      }
+      const descriptions = {
+        caption_too_long:
+          "Подпись к фотографиям должна быть не длиннее 1024 символов",
+        too_many_images: "В одном альбоме можно отправить до 10 фотографий",
+        photo_expired:
+          "Время хранения фотографий истекло. Нажмите отправку ещё раз — файлы загрузятся заново.",
+        photo_queue_full:
+          "Очередь загрузки заполнена. Попробуйте отправить фотографии позже.",
+        unsupported_image:
+          "Не удалось прочитать формат изображения. Выберите JPEG или PNG.",
+        prepare_image_required:
+          "Сервер отклонил размер файла. Заново добавьте фотографию для обработки.",
+        request_timeout:
+          "Сервер не ответил вовремя. Проверьте чат и историю перед повторной отправкой.",
+        telegram_delivery_unknown:
+          "Не получено подтверждение от Telegram. Проверьте чат перед повторной отправкой.",
+        not_super_admin: "Отправка доступна только главному администратору.",
+        notify_chat_id_not_set: "Не настроен командный чат для отправки.",
+      };
+      const status = error.status || error.data?.status;
       setMessage(
-        reason === "caption_too_long"
-          ? "Подпись к изображению должна быть не длиннее 1024 символов"
-          : reason === "request_timeout"
-            ? "Сервер не ответил вовремя. Проверьте историю перед повторной отправкой."
-            : reason === "unsupported_image"
-              ? "Файл должен быть изображением JPEG, PNG или WEBP"
-              : reason === "image_too_large"
-                ? "Изображение должно быть не больше 10 МБ"
-                : "❌ Не удалось отправить сообщение. Текст и изображение сохранены в редакторе.",
+        status === 404 || status === 405
+          ? "На сервере ещё нет загрузки фотографий. Обновите серверную часть приложения и повторите отправку."
+          : status === 413
+            ? "Сервер отклонил размер загрузки (413). Проверьте лимит загрузки на прокси."
+            : reason === "telegram_send_failed"
+              ? /CHAT_SEND_PHOTOS_FORBIDDEN|not enough rights|CHAT_WRITE_FORBIDDEN/i.test(
+                  detail,
+                )
+                ? "У бота нет права отправлять фотографии в этот чат. Разрешите отправку фото в настройках чата."
+                : `Telegram отклонил отправку: ${detail || "проверьте права бота и формат фото"}`
+              : descriptions[reason] ||
+                "❌ Отправка не выполнена. Фотографии и текст остались в редакторе.",
       );
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   };
   return (
@@ -78,62 +183,91 @@ export default function CustomBotPostEditor({
         rows={4}
         aria-label="Текст сообщения бота"
         value={text}
-        disabled={busy}
-        onChange={(e) => setText(e.target.value)}
-        onPaste={(e) => {
-          const file = Array.from(e.clipboardData.files || []).find((f) =>
-            f.type.startsWith("image/"),
-          );
-          if (file) select(file);
+        disabled={busy || processing}
+        onChange={(e) => {
+          setText(e.target.value);
+          changed();
         }}
-        placeholder="Текст сообщения или подпись к изображению…"
+        onPaste={(e) => {
+          const files = Array.from(e.clipboardData.files || []).filter((file) =>
+            file.type.startsWith("image/"),
+          );
+          if (files.length) void select(files);
+        }}
+        placeholder="Текст сообщения или подпись к альбому…"
       />
       <div className="small">
         {text.trim().length} / {max} символов
-        {photo ? " · подпись под изображением" : ""}
+        {photos.length ? " · общая подпись под фотографиями" : ""}
       </div>
+      {text.trim().length > max && (
+        <p className="small" role="alert">
+          Сократите текст на {text.trim().length - max} символов, чтобы
+          отправить сообщение.
+        </p>
+      )}
       <div className="adminActionRow">
         <label className="btn secondary customBotPostAttach">
-          🖼 Добавить изображение
+          🖼 Добавить фотографии · {photos.length}/10
           <input
             ref={input}
             type="file"
-            aria-label="Изображение для сообщения"
-            accept="image/jpeg,image/png,image/webp"
-            disabled={busy}
+            multiple
+            aria-label="Фотографии для сообщения"
+            accept="image/*"
+            disabled={busy || processing || photos.length >= 10}
             onChange={(e) => {
-              select(e.target.files?.[0]);
+              void select(e.target.files);
               e.target.value = "";
             }}
           />
         </label>
-        {photo && (
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={busy}
-            onClick={() => setPhoto(null)}
-          >
-            Убрать изображение
-          </button>
-        )}
       </div>
-      {preview && (
+      {photos.length > 0 && (
         <div className="customBotPostPreview">
-          <img src={preview} alt="Предпросмотр изображения в посте" />
+          <div
+            className={`customBotPostGrid ${photos.length === 1 ? "isSingle" : ""}`}
+          >
+            {photos.map((photo, index) => (
+              <PhotoPreview
+                key={photo.id}
+                photo={photo}
+                index={index}
+                disabled={busy || processing}
+                onRemove={() => {
+                  setPhotos((old) => old.filter((p) => p.id !== photo.id));
+                  tokens.current.delete(photo.id);
+                  changed();
+                }}
+              />
+            ))}
+          </div>
           {text && <p>{text}</p>}
         </div>
       )}
       <p className="small">
-        JPEG, PNG или WEBP до 10 МБ. Можно вставить картинку из буфера обмена.
+        До 10 фото в одном альбоме с общей подписью. Можно добавлять несколькими
+        выборами или вставлять из буфера. Фотографии подготавливаются
+        автоматически.
       </p>
       <button
         type="button"
         className="btn"
         onClick={send}
-        disabled={busy || (!text.trim() && !photo) || text.trim().length > max}
+        disabled={
+          busy ||
+          processing ||
+          (!text.trim() && !photos.length) ||
+          text.trim().length > max
+        }
       >
-        {busy ? "Отправляю…" : "Отправить в чат"}
+        {processing
+          ? "Подготавливаю фото…"
+          : busy
+            ? "Отправляю…"
+            : photos.length > 1
+              ? "Отправить альбом в чат"
+              : "Отправить в чат"}
       </button>
       {message && (
         <p className="small" role="status">

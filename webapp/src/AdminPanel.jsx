@@ -1786,7 +1786,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             </div>
 
             <div className="small" style={{ marginTop: 6, opacity: 0.9, whiteSpace: "pre-wrap" }}>
-              {m.meta?.media_type === "photo" ? "🖼 Изображение\n" : ""}
+              {m.meta?.media_count > 1 ? `🖼 Альбом · фото ${(m.meta.media_index ?? 0) + 1}/${m.meta.media_count}\n` : m.meta?.media_type === "photo" ? "🖼 Изображение\n" : ""}
               {String(m.text || "").slice(0, 280)}
               {String(m.text || "").length > 280 ? "…" : ""}
             </div>

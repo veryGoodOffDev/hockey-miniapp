@@ -66,3 +66,34 @@ test("invalid image, oversized file and caption are refused without sending", ()
   assert.throws(() => validateCustomBotPost("", null), /empty_text/);
   assert.equal(validateCustomBotPost("x".repeat(3500), null).length, 3500);
 });
+
+test("up to ten photos are one media group with a single caption; oversized groups are rejected", async () => {
+  let group;
+  const files = Array.from({ length: 10 }, () => file);
+  const api = {
+    sendMediaGroup: async (chatId, media) => {
+      group = media;
+      return media.map((m, i) => ({
+        message_id: i + 1,
+        media_group_id: "group",
+        photo: [{ file_id: String(i) }],
+      }));
+    },
+  };
+  const result = await sendCustomBotPost({
+    api,
+    chatId: 42,
+    text: "Альбом",
+    files,
+    makeInputFile: (b, n) => ({ b, n }),
+  });
+  assert.equal(group.length, 10);
+  assert.equal(group[0].caption, "Альбом");
+  assert.ok(group.slice(1).every((m) => !m.caption));
+  assert.equal(result.entries.length, 10);
+  assert.equal(result.entries[9].meta.media_index, 9);
+  assert.throws(
+    () => validateCustomBotPost("", [...files, file]),
+    /too_many_images/,
+  );
+});
