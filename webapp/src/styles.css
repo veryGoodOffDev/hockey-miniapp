@@ -5440,3 +5440,20 @@ button.rsvpRoster__player {
 }
 
 .customBotPostGrid.isSingle { grid-template-columns: 1fr; }
+
+.chatInbox { width: 100%; min-width: 0; margin-top: 20px; border-top: 1px solid var(--border, #334155); padding-top: 12px; }
+.chatInboxList { display: grid; gap: 12px; margin-top: 12px; }
+.chatInboxMessage { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--card-bg); }
+.chatInboxHeader { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; overflow-wrap: anywhere; }
+.chatInboxHeader time { font-size: 12px; opacity: .7; }
+.chatInboxText { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; }
+.chatInboxReaction { min-width: 44px; min-height: 44px; padding: 8px; }
+.chatInboxReaction.selected { background: rgba(34, 197, 94, .2); border-color: #22c55e; }
+.chatInboxComposer { margin: 14px 0; scroll-margin-top: 16px; }
+.chatInboxReplyTarget { display: grid; gap: 8px; padding: 12px; border-left: 3px solid #38bdf8; border-radius: 10px; background: rgba(56, 189, 248, .1); overflow-wrap: anywhere; }
+.chatInboxReplyTarget .btn { justify-self: start; }
+
+.chatInboxMessageActions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chatInbox .chatInboxMessageActions > .btn { width: auto; }
+.chatInboxReplyButton { flex: 1 0 100%; }
+.chatInbox .chatInboxMessageActions > .chatInboxReaction { flex: 0 0 44px; width: 44px; }

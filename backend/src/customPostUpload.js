@@ -1,3 +1,4 @@
+import { messageId } from "./chatInbox.js";
 import { InputFile } from "grammy";
 import multer from "multer";
 import { randomBytes, createHash } from "node:crypto";
@@ -124,6 +125,7 @@ export function createCustomPostRoutes({
   getChatId,
   logMessage,
   logger = console,
+  resolveReply,
 }) {
   const photos = createPostPhotoStore(),
     deliveries = createPostDeliveryCache();
@@ -175,8 +177,13 @@ export function createCustomPostRoutes({
           text = String(req.body?.text || "").trim(),
           tokens = req.body?.photo_tokens || [];
         if (!Array.isArray(tokens)) throw fail("bad_photo_tokens");
+        const replyTo =
+          req.body?.reply_to_message_id == null
+            ? null
+            : messageId(req.body.reply_to_message_id);
         const payload = JSON.stringify({
           text,
+          replyTo,
           tokens,
           file: req.file
             ? createHash("sha256").update(req.file.buffer).digest("hex")
@@ -189,6 +196,10 @@ export function createCustomPostRoutes({
           async () => {
             const chatId = await getChatId();
             if (!chatId) throw fail("notify_chat_id_not_set");
+            if (replyTo) {
+              if (!resolveReply) throw fail("reply_unavailable");
+              await resolveReply(chatId, replyTo);
+            }
             const files = tokens.length
               ? photos.get(userId, tokens)
               : req.file
@@ -205,6 +216,7 @@ export function createCustomPostRoutes({
                 files,
                 makeInputFile: (buffer, name) => new InputFile(buffer, name),
                 signal: controller.signal,
+                replyTo,
               });
             } finally {
               clearTimeout(timeout);

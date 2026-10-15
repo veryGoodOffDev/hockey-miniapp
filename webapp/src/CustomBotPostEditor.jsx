@@ -31,6 +31,9 @@ export default function CustomBotPostEditor({
   apiPost,
   onSent,
   upload = apiUpload,
+  replyTo = null,
+  onCancelReply,
+  onBusyChange,
 }) {
   const [text, setText] = useState(""),
     [photos, setPhotos] = useState([]),
@@ -48,6 +51,14 @@ export default function CustomBotPostEditor({
       alive.current = false;
     };
   }, []);
+  useEffect(() => {
+    requestId.current = null;
+    setMessage("");
+  }, [replyTo?.message_id]);
+  useEffect(() => {
+    onBusyChange?.(busy || processing);
+    return () => onBusyChange?.(false);
+  }, [busy, processing, onBusyChange]);
   const changed = () => {
     requestId.current = null;
     setMessage("");
@@ -113,6 +124,7 @@ export default function CustomBotPostEditor({
           text: text.trim(),
           photo_tokens: receipts,
           request_id: requestId.current,
+          ...(replyTo ? { reply_to_message_id: replyTo.message_id } : {}),
         },
         { timeoutMs: 90_000 },
       );
@@ -156,21 +168,30 @@ export default function CustomBotPostEditor({
           "Не получено подтверждение от Telegram. Проверьте чат перед повторной отправкой.",
         not_super_admin: "Отправка доступна только главному администратору.",
         notify_chat_id_not_set: "Не настроен командный чат для отправки.",
+        reply_message_not_found:
+          "Сообщение больше недоступно. Обновите список и выберите другое.",
+        bad_message_id: "Некорректное сообщение для ответа.",
       };
       const status = error.status || error.data?.status;
       setMessage(
-        status === 404 || status === 405
-          ? "На сервере ещё нет загрузки фотографий. Обновите серверную часть приложения и повторите отправку."
-          : status === 413
-            ? "Сервер отклонил размер загрузки (413). Проверьте лимит загрузки на прокси."
-            : reason === "telegram_send_failed"
-              ? /CHAT_SEND_PHOTOS_FORBIDDEN|not enough rights|CHAT_WRITE_FORBIDDEN/i.test(
-                  detail,
-                )
-                ? "У бота нет права отправлять фотографии в этот чат. Разрешите отправку фото в настройках чата."
-                : `Telegram отклонил отправку: ${detail || "проверьте права бота и формат фото"}`
-              : descriptions[reason] ||
-                "❌ Отправка не выполнена. Фотографии и текст остались в редакторе.",
+        reason === "reply_message_not_found"
+          ? descriptions[reason]
+          : status === 404 || status === 405
+            ? "На сервере ещё нет загрузки фотографий. Обновите серверную часть приложения и повторите отправку."
+            : status === 413
+              ? "Сервер отклонил размер загрузки (413). Проверьте лимит загрузки на прокси."
+              : reason === "telegram_send_failed"
+                ? /message to be replied not found|REPLY_MESSAGE_ID_INVALID/i.test(
+                    detail,
+                  )
+                  ? "Сообщение для ответа удалено или недоступно. Выберите другое сообщение."
+                  : /CHAT_SEND_PHOTOS_FORBIDDEN|not enough rights|CHAT_WRITE_FORBIDDEN/i.test(
+                        detail,
+                      )
+                    ? "У бота нет права отправлять фотографии в этот чат. Разрешите отправку фото в настройках чата."
+                    : `Telegram отклонил отправку: ${detail || "проверьте права бота и формат фото"}`
+                : descriptions[reason] ||
+                  "❌ Отправка не выполнена. Фотографии и текст остались в редакторе.",
       );
     } finally {
       if (alive.current) setBusy(false);
@@ -178,6 +199,25 @@ export default function CustomBotPostEditor({
   };
   return (
     <div className="customBotPost">
+      {replyTo && (
+        <div className="chatInboxReplyTarget">
+          <strong>↩ Ответ: {replyTo.sender_name}</strong>
+          <div className="small">
+            {String(
+              replyTo.text ||
+                (replyTo.media_type ? "Сообщение с вложением" : "Сообщение"),
+            ).slice(0, 240)}
+          </div>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={busy || processing}
+            onClick={onCancelReply}
+          >
+            Отменить ответ
+          </button>
+        </div>
+      )}
       <textarea
         className="input"
         rows={4}

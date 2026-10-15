@@ -1,3 +1,4 @@
+import ChatInbox from "./ChatInbox.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -1754,6 +1755,10 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
       if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
     }} />
 
+    <ChatInbox apiGet={apiGet} apiPost={apiPost} onSent={async () => {
+      if (msgHistoryOpened) await loadMsgHistory({ append: false, forceOpen: false });
+    }} />
+
     <div className="adminActionRow">
       <button className="btn secondary" onClick={syncHistory}>
         🔄 Синхронизировать (убрать удалённые)
@@ -1787,6 +1792,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
             <div className="small" style={{ marginTop: 6, opacity: 0.9, whiteSpace: "pre-wrap" }}>
               {m.meta?.media_count > 1 ? `🖼 Альбом · фото ${(m.meta.media_index ?? 0) + 1}/${m.meta.media_count}\n` : m.meta?.media_type === "photo" ? "🖼 Изображение\n" : ""}
+              {m.meta?.reply_to_message_id ? `↩ Ответ на сообщение #${m.meta.reply_to_message_id}\n` : ""}
               {String(m.text || "").slice(0, 280)}
               {String(m.text || "").length > 280 ? "…" : ""}
             </div>

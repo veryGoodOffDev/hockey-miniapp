@@ -1,3 +1,4 @@
+import { createChatInboxRepository, createChatInboxCapture, createChatInboxRoutes } from "./chatInbox.js";
 import "dotenv/config";
 import { createCustomPostRoutes } from "./customPostUpload.js";
 import { saveTeamLineup, lineupRosterSignature } from "./teamLineup.js";
@@ -335,7 +336,8 @@ await initDb();
 await ensureSchema(q);
 
 // Telegram bot (polling)
-const bot = createBot();
+const chatInbox = createChatInboxRepository(q);
+const bot = createBot({ onGroupUpdate: createChatInboxCapture({ repository: chatInbox, getChatId: () => getSetting("notify_chat_id", null) }) });
 await bot.init();
 
 // чтобы ошибки бота были видны в systemd логах
@@ -5744,7 +5746,7 @@ app.get("/api/admin/bot-messages", async (req, res) => {
   res.json({ ok: true, messages, has_more: hasMore, next_offset: offset + messages.length });
 });
 
-const customPostRoutes = createCustomPostRoutes({ api: bot.api, getChatId: () => getSetting("notify_chat_id", null), logMessage: logBotMessage });
+const customPostRoutes = createCustomPostRoutes({ api: bot.api, getChatId: () => getSetting("notify_chat_id", null), logMessage: logBotMessage, resolveReply: (chatId, id) => chatInbox.get(chatId, id) });
 async function requireCustomPostAdmin(req, res, next) {
   const user = req.webappUser || requireWebAppAuth(req, res);
   if (!user) return;
@@ -5753,6 +5755,9 @@ async function requireCustomPostAdmin(req, res, next) {
   req.customPostUser = user;
   next();
 }
+const chatInboxRoutes = createChatInboxRoutes({ repository: chatInbox, api: bot.api, getChatId: () => getSetting("notify_chat_id", null) });
+app.get("/api/admin/chat-messages", requireCustomPostAdmin, chatInboxRoutes.list);
+app.post("/api/admin/chat-messages/:messageId/reaction", requireCustomPostAdmin, chatInboxRoutes.react);
 app.post("/api/admin/bot-messages/photos", requireCustomPostAdmin, customPostRoutes.upload);
 app.post("/api/admin/bot-messages/send", requireCustomPostAdmin, customPostRoutes.send);
 

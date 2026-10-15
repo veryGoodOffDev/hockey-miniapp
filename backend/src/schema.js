@@ -1,7 +1,9 @@
+import { ensureChatInboxSchema } from "./chatInbox.js";
 import { ensurePvpSchema } from "./airHockeyPvp/schema.js";
 import { ensureRsvpAuditSchema } from "./rsvpAuditSchema.js";
 
 export async function ensureSchema(q) {
+  await ensureChatInboxSchema(q);
   /** ===================== ADMIN SSL AUDIT ===================== */
   await q(`
     CREATE TABLE IF NOT EXISTS admin_ssl_operations (

@@ -11,9 +11,11 @@ function isAdmin(id) {
   return adminIds().includes(String(id));
 }
 
-export function createBot() {
+export function createBot({ onGroupUpdate } = {}) {
   const bot = new Bot(process.env.BOT_TOKEN);
   const webAppUrl = process.env.WEB_APP_URL;
+  // Capture before commands/session handlers that may consume group messages.
+  if (onGroupUpdate) bot.use(onGroupUpdate);
 
   // режим ожидания: await_avatar | await_name | null
   bot.use(session({ initial: () => ({ mode: null, owner_reply_to: null }) }));

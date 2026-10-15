@@ -35,8 +35,17 @@ export async function sendCustomBotPost({
   files = file ? [file] : [],
   makeInputFile,
   signal,
+  replyTo = null,
 }) {
   text = validateCustomBotPost(text, files);
+  const replyOptions = replyTo
+    ? {
+        reply_parameters: {
+          message_id: replyTo,
+          allow_sending_without_reply: false,
+        },
+      }
+    : {};
   let messages;
   if (files.length > 1) {
     messages = await api.sendMediaGroup(
@@ -46,7 +55,7 @@ export async function sendCustomBotPost({
         media: makeInputFile(file.buffer, file.originalname),
         ...(index === 0 && text ? { caption: text } : {}),
       })),
-      {},
+      replyOptions,
       signal,
     );
   } else if (files.length === 1) {
@@ -54,7 +63,7 @@ export async function sendCustomBotPost({
       await api.sendPhoto(
         chatId,
         makeInputFile(files[0].buffer, files[0].originalname),
-        { caption: text || undefined },
+        { caption: text || undefined, ...replyOptions },
         signal,
       ),
     ];
@@ -63,7 +72,7 @@ export async function sendCustomBotPost({
       await api.sendMessage(
         chatId,
         text,
-        { disable_web_page_preview: true },
+        { disable_web_page_preview: true, ...replyOptions },
         signal,
       ),
     ];
@@ -72,6 +81,7 @@ export async function sendCustomBotPost({
     text: index === 0 ? text : "",
     meta: {
       type: "custom_from_admin",
+      ...(replyTo ? { reply_to_message_id: replyTo } : {}),
       media_type: files.length ? "photo" : null,
       photo_file_id: sent.photo?.at(-1)?.file_id || null,
       media_group_id: sent.media_group_id || null,
