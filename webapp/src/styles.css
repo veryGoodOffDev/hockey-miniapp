@@ -5213,201 +5213,96 @@ html[data-theme="light"] .btn.outline.active{
   overflow-wrap: anywhere;
 }
 
-/* RSVP rows match the matte sports cards; position colours stay small accents. */
+/* A single compact roster; position and RSVP accents remain visible on the ice background. */
 .rsvpRoster {
-  margin: 12px 0;
-  padding: 14px;
-  border-radius: 20px;
-  border: 1px solid #ffffff12;
-  background: linear-gradient(150deg, #252c32, #10171d);
-  box-shadow:
-    0 10px 26px #0003,
-    inset 0 1px 0 #ffffff09;
-  color: #edf3f6;
+  --roster-accent: #91c9ff;
+  --roster-accent-text: #071c30;
+  margin: 10px 0;
+  padding: 11px;
+  border-radius: 16px;
+  border: 1px solid #4376a4;
+  background: linear-gradient(145deg, #112d47, #091827);
+  box-shadow: 0 6px 18px #0003, inset 0 1px 0 #ffffff0f;
+  color: #f4f9ff;
 }
+.rsvpRoster--yes { --roster-accent: #51efae; --roster-accent-text: #063323; }
+.rsvpRoster--no { --roster-accent: #ff929e; --roster-accent-text: #420d19; }
 .rsvpRoster__header,
 .rsvpRoster__heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 9px;
 }
-.rsvpRoster__heading {
-  justify-content: flex-start;
-}
-.rsvpRoster__heading h4 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 750;
-}
+.rsvpRoster__header { margin-bottom: 9px; }
+.rsvpRoster__heading { justify-content: flex-start; }
+.rsvpRoster__heading h4 { margin: 0; font-size: 15px; font-weight: 800; color: #f4f9ff; }
 .rsvpRoster__total {
-  min-width: 32px;
-  padding: 5px 10px;
-  border: 1px solid #ffffff14;
-  border-radius: 999px;
-  background: #ffffff08;
-  font-size: 12px;
-  text-align: center;
-  color: #d0dbe2;
-}
-.rsvpRoster__led {
-  width: 9px;
-  height: 9px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: #778792;
-  box-shadow:
-    0 0 0 4px #050a0f,
-    inset 0 1px 0 #ffffff33;
-}
-.rsvpRoster--yes .rsvpRoster__led {
-  background: #51d695;
-  box-shadow:
-    0 0 0 4px #050a0f,
-    0 0 12px #51d69540;
-}
-.rsvpRoster--no .rsvpRoster__led {
-  background: #e8757f;
-  box-shadow:
-    0 0 0 4px #050a0f,
-    0 0 12px #e8757f30;
-}
-.rsvpRoster__group {
-  margin-top: 16px;
-  --position-color: #94c8f0;
-}
-.rsvpRoster__group.position-G {
-  --position-color: #91d7b4;
-}
-.rsvpRoster__group.position-D {
-  --position-color: #e8c38f;
-}
-.rsvpRoster__groupHeading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.2px;
-  color: #a7b9c5;
-  margin: 0 3px 7px;
-}
-.rsvpRoster__groupHeading > span:last-child {
-  font-weight: 500;
-  color: #8294a0;
-}
-.rsvpRoster__list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 6px;
-}
-.rsvpRoster__player {
-  display: grid;
-  grid-template-columns: 15px 28px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 54px;
-  padding: 9px 10px;
-  border: 1px solid #ffffff0d;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #ffffff09, #ffffff03);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  box-shadow: inset 0 1px 0 #ffffff04;
-}
-button.rsvpRoster__player {
-  cursor: pointer;
-}
-.rsvpRoster__player.isMine {
-  border-color: #d5b87550;
-  background: linear-gradient(100deg, #d5b87512, #ffffff04);
-}
-.rsvpRoster__ordinal {
-  font-size: 10px;
-  color: #6f8492;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.rsvpRoster__position {
   display: grid;
   place-items: center;
-  width: 28px;
-  min-height: 28px;
-  border: 1px solid #ffffff14;
-  border-radius: 9px;
-  color: var(--position-color);
-  background: #0002;
-  font-size: 11px;
-  font-weight: 800;
+  min-width: 42px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 1px solid #ffffff45;
+  border-radius: 10px;
+  background: var(--roster-accent);
+  box-shadow: 0 2px 9px #0003;
+  font-size: 17px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--roster-accent-text);
 }
-.rsvpRoster__identity {
-  min-width: 0;
+.rsvpRoster__led { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--roster-accent); box-shadow: 0 0 9px color-mix(in srgb, var(--roster-accent) 40%, transparent); }
+.rsvpRoster__list { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.rsvpRoster__player {
+  --position-color: #83c9ff;
+  --position-bg: #163e63;
   display: grid;
-  gap: 3px;
+  grid-template-columns: 14px 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid #3a6081;
+  border-left: 3px solid var(--position-color);
+  border-radius: 10px;
+  background: #16314b;
+  color: #f4f9ff;
+  font: inherit;
+  text-align: left;
 }
-.rsvpRoster__name {
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+.rsvpRoster__player.position-G { --position-color: #75edb4; --position-bg: #134c41; }
+.rsvpRoster__player.position-D { --position-color: #ffcf80; --position-bg: #514025; }
+button.rsvpRoster__player { cursor: pointer; }
+.rsvpRoster__player.isMine {
+  border-color: #66e0ff;
+  border-left-color: #66e0ff;
+  background: linear-gradient(100deg, #075269, #173c59);
+  box-shadow: inset 0 0 0 1px #66e0ff30;
 }
-.rsvpRoster__details {
-  font-size: 10px;
-  line-height: 1.4;
-  color: #a3b3be;
-}
-.rsvpRoster__number {
-  font-size: 11px;
-  color: #c4d0d7;
-  padding: 4px 6px;
-  border-radius: 7px;
-  background: #ffffff06;
-  white-space: nowrap;
-}
-.rsvpRoster__skill {
-  font-size: 10px;
-  color: #849baa;
-  line-height: 1.3;
-}
-.rsvpRoster__skill b {
-  font-weight: 600;
-  color: #b9c9d4;
-}
-.rsvpRoster__empty {
-  font-size: 12px;
-  color: #96aab8;
-  margin: 14px 0 0;
-}
-.rsvpRoster__player:focus-visible {
-  outline: 2px solid var(--position-color);
-  outline-offset: 2px;
-}
+.rsvpRoster__ordinal { font-size: 10px; font-weight: 600; color: #acc7df; text-align: center; font-variant-numeric: tabular-nums; }
+.rsvpRoster__position { display: grid; place-items: center; width: 28px; min-height: 28px; border: 1px solid var(--position-color); border-radius: 8px; color: var(--position-color); background: var(--position-bg); font-size: 11px; font-weight: 850; }
+.rsvpRoster__identity { min-width: 0; display: grid; gap: 2px; }
+.rsvpRoster__nameLine { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rsvpRoster__name { min-width: 0; font-size: 14px; font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
+.rsvpRoster__you { flex-shrink: 0; padding: 2px 5px; border-radius: 5px; background: #8aecff; color: #063141; font-size: 10px; font-weight: 900; line-height: 1.2; }
+.rsvpRoster__details { font-size: 10px; line-height: 1.3; color: #c0d6e8; }
+.rsvpRoster__meta { display: grid; justify-items: end; gap: 2px; }
+.rsvpRoster__number { font-size: 12px; font-weight: 750; color: #f4f9ff; white-space: nowrap; }
+.rsvpRoster__skill { font-size: 10px; color: #bdd1e3; line-height: 1.2; white-space: nowrap; }
+.rsvpRoster__skill b { font-weight: 750; color: #f4f9ff; }
+.rsvpRoster__empty { font-size: 12px; color: #bfd4e6; margin: 0; }
+.rsvpRoster__player:focus-visible { outline: 2px solid #8aecff; outline-offset: 2px; }
 @media (hover: hover) {
-  button.rsvpRoster__player:hover {
-    background: #ffffff0d;
-    border-color: #ffffff22;
-  }
+  button.rsvpRoster__player:hover { background: #214967; border-color: #94cfff; }
+  button.rsvpRoster__player.isMine:hover { background: #125970; border-color: #a7efff; }
 }
 @media (max-width: 350px) {
-  .rsvpRoster {
-    padding: 11px;
-  }
-  .rsvpRoster__player {
-    gap: 6px;
-    padding: 8px;
-    grid-template-columns: 12px 25px minmax(0, 1fr) auto;
-  }
-  .rsvpRoster__position {
-    width: 25px;
-  }
-  .rsvpRoster__name {
-    font-size: 13px;
-  }
+  .rsvpRoster { padding: 9px; }
+  .rsvpRoster__player { gap: 5px; padding: 6px; grid-template-columns: 12px 26px minmax(0, 1fr) auto; }
+  .rsvpRoster__position { width: 26px; }
+  .rsvpRoster__name { font-size: 13px; }
 }
 
 .customBotPostGrid {

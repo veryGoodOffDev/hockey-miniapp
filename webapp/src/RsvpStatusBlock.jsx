@@ -9,7 +9,13 @@ export default function RsvpStatusBlock({
   canPickPos = false,
   setPosPopup,
 }) {
-  const groups = useMemo(() => groupRsvpPlayers(list, tone), [list, tone]);
+  const players = useMemo(
+    () =>
+      groupRsvpPlayers(list, tone).flatMap((group) =>
+        group.players.map((player) => ({ player, group })),
+      ),
+    [list, tone],
+  );
   const editable =
     isAdmin &&
     canPickPos &&
@@ -32,91 +38,80 @@ export default function RsvpStatusBlock({
       {!list.length ? (
         <p className="rsvpRoster__empty">Пока нет игроков</p>
       ) : (
-        groups.map((group) => (
-          <div
-            className={`rsvpRoster__group position-${group.position}`}
-            key={group.position}
-          >
-            <div className="rsvpRoster__groupHeading">
-              <span>
-                {group.icon} {group.title}
-              </span>
-              <span>{group.players.length}</span>
-            </div>
-            <ol className="rsvpRoster__list">
-              {group.players.map((p, index) => {
-                const mine =
-                    me?.tg_id != null && String(me.tg_id) === String(p.tg_id),
-                  number = p.jersey_number,
-                  hasNumber =
-                    number !== null &&
-                    number !== undefined &&
-                    number !== "" &&
-                    Number.isFinite(Number(number)),
-                  override = !!String(p.pos_override || "").trim();
-                const Row = editable ? "button" : "div";
-                return (
-                  <li key={p.tg_id}>
-                    <Row
-                      className={`rsvpRoster__player ${mine ? "isMine" : ""}`}
-                      {...(editable
-                        ? {
-                            type: "button",
-                            onClick: (event) => {
-                              event.stopPropagation();
-                              setPosPopup(p);
-                            },
-                            title: "Изменить позицию игрока",
-                          }
-                        : {})}
-                    >
-                      <span className="rsvpRoster__ordinal" aria-hidden="true">
-                        {index + 1}
+        <ol className="rsvpRoster__list">
+          {players.map(({ player: p, group }, index) => {
+            const mine =
+                me?.tg_id != null && String(me.tg_id) === String(p.tg_id),
+              number = p.jersey_number,
+              hasNumber =
+                number !== null &&
+                number !== undefined &&
+                number !== "" &&
+                Number.isFinite(Number(number)),
+              override = !!String(p.pos_override || "").trim();
+            const Row = editable ? "button" : "div";
+            return (
+              <li key={p.tg_id}>
+                <Row
+                  className={`rsvpRoster__player position-${group.position} ${mine ? "isMine" : ""}`}
+                  {...(editable
+                    ? {
+                        type: "button",
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          setPosPopup(p);
+                        },
+                        title: "Изменить позицию игрока",
+                      }
+                    : {})}
+                >
+                  <span className="rsvpRoster__ordinal" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                  <span
+                    className="rsvpRoster__position"
+                    title={
+                      override ? "Позиция изменена для этой игры" : group.title
+                    }
+                  >
+                    {group.position}
+                    {override ? "*" : ""}
+                  </span>
+                  <span className="rsvpRoster__identity">
+                    <span className="rsvpRoster__nameLine">
+                      <span className="rsvpRoster__name">{playerName(p)}</span>
+                      {mine && <span className="rsvpRoster__you">Вы</span>}
+                    </span>
+                    {(p.is_guest || p.auto_no) && (
+                      <span className="rsvpRoster__details">
+                        {[
+                          p.is_guest ? "Гость" : null,
+                          p.auto_no ? "Автоматическая отметка" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </span>
-                      <span
-                        className="rsvpRoster__position"
-                        title={
-                          override
-                            ? "Позиция изменена для этой игры"
-                            : group.title
-                        }
-                      >
-                        {group.position}
-                        {override ? "*" : ""}
-                      </span>
-                      <span className="rsvpRoster__identity">
-                        <span className="rsvpRoster__name">
-                          {playerName(p)}
-                        </span>
-                        {(mine || p.is_guest || p.auto_no) && (
-                          <span className="rsvpRoster__details">
-                            {[
-                              mine ? "Вы" : null,
-                              p.is_guest ? "Гость" : null,
-                              p.auto_no ? "Автоматическая отметка" : null,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                        )}
-                        {isAdmin && p.skill != null && (
-                          <span className="rsvpRoster__skill">
-                            Навык <b>{p.skill}</b>
-                          </span>
-                        )}
-                      </span>
+                    )}
+                  </span>
+                  {(hasNumber || (isAdmin && p.skill != null)) && (
+                    <span className="rsvpRoster__meta">
                       {hasNumber && (
                         <span className="rsvpRoster__number">
                           № {Math.trunc(Number(number))}
                         </span>
                       )}
-                    </Row>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        ))
+                      {isAdmin && p.skill != null && (
+                        <span className="rsvpRoster__skill">
+                          Навык <b>{p.skill}</b>
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </Row>
+              </li>
+            );
+          })}
+        </ol>
       )}
     </section>
   );
