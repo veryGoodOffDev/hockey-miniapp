@@ -2415,116 +2415,6 @@ html[data-theme="light"] .btn.outline.active{
   border: 1px solid rgba(255,255,255,0.10);
 }
 
-.gameHero{
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(127,127,127,0.22);
-  background: var(--tg-theme-secondary-bg-color, rgba(255,255,255,0.06));
-  color: var(--tg-theme-text-color, #eaeaea);
-  display: grid;
-  gap: 10px;
-}
-
-.gameHero__top{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.gameHero__when{
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-}
-
-.gameHero__whenIcon{ opacity: 0.9; }
-
-.gameHero__settings{
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  background: rgba(127,127,127,0.12);
-  border: 1px solid rgba(127,127,127,0.22);
-}
-
-.gameHero__mid{
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.gameHero__where{
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.gameHero__whereIcon{ opacity: 0.9; }
-
-.gameHero__whereText{
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.95;
-}
-
-.gameHero__status{
-  justify-self: end;
-  padding: 7px 10px;
-  border-radius: 999px;
-  font-weight: 800;
-  font-size: 13px;
-  line-height: 1;
-  border: 1px solid rgba(127,127,127,0.22);
-  background: rgba(127,127,127,0.12);
-}
-
-.gameHero__actions{
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.gameHero__actionBtn{
-  border-radius: 14px;
-  padding: 12px 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-/* На очень узких экранах — в столбик */
-@media (max-width: 360px){
-  .gameHero__actions{ grid-template-columns: 1fr; }
-}
-
-.gameHero__my{
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(127,127,127,0.18);
-}
-
-.gameHero__myLabel{
-  opacity: 0.7;
-  font-size: 12px;
-}
-
-.gameHero__myValue{
-  font-weight: 800;
-  font-size: 13px;
-}
-
 
 .gameNoticeInline{
   margin-top: 10px;
@@ -5357,3 +5247,65 @@ button.rsvpRoster__player { cursor: pointer; }
 .teamColorMark { display: inline-block; flex: 0 0 auto; vertical-align: -1px; border: 1px solid; border-radius: 3px; box-shadow: inset 0 1px 0 #ffffff40, 0 1px 3px #0005; }
 .game-card__heading { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .game-card__team { color: #e4edf6; font-size: 11px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+
+/* Game detail: navigation, ice hero and RSVP actions share the reference's blue palette. */
+.gameDetailNav { display: grid; grid-template-columns: .87fr 1fr 1fr; gap: 8px; margin: 0 0 14px; }
+.gameDetailNav__item { min-width: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 6px; border: 1px solid #345c7e; border-radius: 12px; color: #c9ddf4; background: linear-gradient(145deg, #10273b, #08182c); font: inherit; font-size: 14px; font-weight: 750; text-decoration: none; cursor: pointer; }
+.gameDetailNav__item svg { flex-shrink: 0; width: 20px; height: 20px; }
+.gameDetailNav__item.isActive { border-color: #65bcff; background: linear-gradient(145deg, #2378e7, #1049b6); box-shadow: inset 0 0 0 1px #8dd9ff55, 0 0 15px #1b83ff33; color: white; cursor: default; }
+.gameDetailTop { color: #f3f7ff; display: grid; gap: 13px; margin-bottom: 18px; }
+.gameDetailHero { min-width: 0; display: grid; gap: 14px; padding: 15px; border: 1px solid #315b88; border-radius: 17px; background-color: #071b32; background-image: linear-gradient(90deg, #061629b8, #06162930), url('/detail-bg.png'); background-size: cover; background-position: center 74%; box-shadow: inset 0 1px 0 #7ebeff12, 0 5px 18px #0002; }
+.gameDetailHero__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.gameDetailHero__date { min-width: 0; display: flex; align-items: center; gap: 10px; font-size: clamp(15px, 4.2vw, 19px); line-height: 1.45; }
+.gameDetailHero__date strong { font-weight: 800; }
+.gameDetailHero__date svg { color: #2b98ff; flex: 0 0 22px; }
+.gameDetailHero__settings { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; padding: 0; border-radius: 12px; border: 1px solid #456082; background: #0c233bd9; color: #d3e7ff; cursor: pointer; }
+.gameDetailHero__location { display: flex; align-items: flex-start; gap: 10px; font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+.gameDetailHero__location svg { color: #ff543c; flex-shrink: 0; }
+.gameDetailHero__state { display: flex; align-items: center; gap: 8px; justify-self: start; padding: 7px 11px; border: 1px solid #627e9d60; border-radius: 12px; background: linear-gradient(120deg, #465e7ecc, #263e5bb0); font-size: 12px; font-weight: 750; line-height: 1.25; }
+.gameDetailHero__state svg { color: #c6dcf7; flex-shrink: 0; }
+.gameDetailHero__links { display: grid; gap: 8px; }
+.gameDetailLink { display: grid; grid-template-columns: 25px minmax(0, 1fr) 18px; align-items: center; gap: 10px; width: 100%; min-height: 49px; padding: 10px 12px; border: 1px solid #567599; border-radius: 13px; background: linear-gradient(115deg, #173555aa, #0c2138da); color: #f4f7ff; font: inherit; font-size: 15px; font-weight: 750; text-align: left; cursor: pointer; }
+.gameDetailLink > svg:first-child { color: #a5c5e9; }
+.gameDetailLink > svg:last-child { color: #c5dcf7; }
+.gameDetailLink--route { border-color: #479ade; background: linear-gradient(115deg, #0c3a66bb, #092340e6); }
+.gameDetailLink--route > svg:first-child { color: #ffdb31; }
+.gameDetailHero__mine { display: grid; grid-template-columns: 19px minmax(0, 1fr) auto 17px; align-items: center; gap: 8px; width: 100%; padding: 13px 0 0; border: 0; border-top: 1px solid #54759570; background: none; color: #abc4e4; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.gameDetailHero__mine strong { color: #dce7f4; font-size: 14px; }
+.gameDetailHero__mine.status-yes strong { color: #71efb5; }
+.gameDetailHero__mine.status-no strong { color: #ff9d9d; }
+.gameDetailOrganizer { display: grid; gap: 13px; padding: 14px; border: 1px solid #375775; border-radius: 17px; background: linear-gradient(135deg, #10243cce, #071b2fe6); }
+.gameDetailSectionTitle { display: flex; gap: 10px; align-items: flex-start; }
+.gameDetailSectionTitle > svg { color: #aec8e8; flex-shrink: 0; margin-top: 1px; }
+.gameDetailSectionTitle h3 { margin: 0; font-size: 15px; font-weight: 800; line-height: 1.4; color: #f4f7ff; }
+.gameDetailSectionTitle p { margin: 3px 0 0; font-size: 12px; color: #9cb8d9; line-height: 1.45; }
+.gameDetailOrganizer__actions { display: grid; gap: 9px; }
+.gameDetailOrganizer .gameDetailLink { font-size: 14px; }
+.gameDetailPlus { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; border: 1px solid #398eff; background: linear-gradient(145deg, #227beb, #0d4abd); color: white; }
+.gameDetailParticipation { display: grid; gap: 12px; padding-top: 15px; border-top: 1px solid #3c5d7e99; scroll-margin-top: 20px; }
+.gameDetailParticipation__buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gameDetailRsvp { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 53px; min-width: 0; padding: 10px 8px; border: 1px solid #617b9f; border-radius: 13px; background: linear-gradient(145deg, #233149, #14243a); color: #f3f7ff; font: inherit; font-size: 17px; font-weight: 800; cursor: pointer; }
+.gameDetailRsvp__icon { display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: #f7fffc; color: #07835a; }
+.gameDetailRsvp--no .gameDetailRsvp__icon { color: #09243b; background: #ff513f; }
+.gameDetailRsvp--yes.isSelected { border-color: #73f7bb; background: linear-gradient(130deg, #079759, #006d4b); box-shadow: inset 0 0 0 1px #c5ffe155, 0 0 16px #20e89426; }
+.gameDetailRsvp--no.isSelected { border-color: #ff8d8d; background: linear-gradient(130deg, #a52d3c, #671f35); box-shadow: inset 0 0 0 1px #ffb7b733, 0 0 14px #ff52521c; }
+.gameDetailRsvp:disabled { opacity: .6; cursor: wait; }
+.gameDetailParticipation__notice { margin: 0; font-size: 13px; color: #b9cce2; line-height: 1.5; }
+.gameDetailNotes { display: grid; gap: 10px; }
+.gameDetailNote { padding: 13px 14px; border: 1px solid #466382; border-radius: 14px; background: #10243ae8; }
+.gameDetailNote--important { border-color: #d4a34d99; background: #362d22df; }
+.gameDetailNote h3 { color: #f4f7ff; margin: 0 0 6px; font-size: 14px; }
+.gameDetailNote p { margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gameDetailNav__item:focus-visible, .gameDetailTop button:focus-visible { outline: 2px solid #77c5ff; outline-offset: 3px; }
+@media (hover: hover) { .gameDetailTop button:not(:disabled):hover, button.gameDetailNav__item:hover { filter: brightness(1.12); } }
+@media (max-width: 350px) {
+  .gameDetailNav { gap: 6px; }
+  .gameDetailNav__item { font-size: 12px; gap: 5px; }
+  .gameDetailNav__item svg { width: 17px; height: 17px; }
+  .gameDetailHero, .gameDetailOrganizer { padding: 12px; }
+  .gameDetailHero__date { font-size: 15px; gap: 7px; }
+  .gameDetailHero__settings { flex-basis: 36px; width: 36px; height: 36px; }
+  .gameDetailHero__location { font-size: 15px; }
+  .gameDetailRsvp { font-size: 15px; gap: 6px; }
+  .gameDetailRsvp__icon { width: 25px; height: 25px; flex-basis: 25px; }
+}

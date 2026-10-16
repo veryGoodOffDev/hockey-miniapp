@@ -1,3 +1,4 @@
+import GameDetailTop, { GameDetailNav } from "./GameDetailTop.jsx";
 import useGameTeamColors from "./useGameTeamColors.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EmojiPicker, { Emoji } from "emoji-picker-react";
@@ -18,7 +19,6 @@ import bg4 from "./bg4.webp";
 import bg5 from "./bg5.webp";
 import bg6 from "./bg6.webp";
 import player from "./player.png";
-import yandexNavIcon from "./YandexNavigatorLogo.svg";
 import talismanIcon from "./talisman.webp";
 import usePullToRefresh from "./usePullToRefresh.js";
 import { SheepCoin } from "./AirHockey.jsx";
@@ -2550,7 +2550,6 @@ function mergeUniqueById(primary = [], extra = []) {
     const row = (rsvps || []).find((r) => String(r.tg_id) === String(me.tg_id));
     return row?.status || null;
   }, [rsvps, me]);
-  const statusLabel = (s) => ({ yes: "Буду", maybe: "Не отметился", no: "Не буду" }[s] || s);
   const autoNoProgress = (g) => {
     const created = g?.created_at ? new Date(g.created_at).getTime() : NaN;
     const deadline = g?.auto_no_at ? new Date(g.auto_no_at).getTime() : NaN;
@@ -2562,7 +2561,6 @@ function mergeUniqueById(primary = [], extra = []) {
     if (!g?.auto_no_at) return "дедлайна";
     return new Intl.DateTimeFormat("ru-RU", { weekday: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(g.auto_no_at));
   };
-  const btnClass = (s) => (myRsvp === s ? "btn" : "btn secondary");
   function displayName(r) {
     const dn = (r?.display_name || "").trim();
     if (dn) return dn;
@@ -3369,199 +3367,33 @@ function openYandexRoute(lat, lon) {
             </>
           ) : (
             <>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <h2 style={{ margin: 0 }}>Игра</h2>
-                <button
-                  className={tab === "teams" ? "btn" : "btn secondary"}
-                  onClick={() => {
-                    setTeamsBack({ tab: "game", gameView });
-                    setTab("teams");
-                  }}
-                >
-                  Составы
-                </button>
-                <button className="btn secondary" onClick={() => setGameView("list")}>
-                  ← К списку
-                </button>
-              </div>
-              <hr />
+              <GameDetailNav onTeams={() => {
+                setTeamsBack({ tab: "game", gameView });
+                setTab("teams");
+              }} onBack={() => setGameView("list")} />
               {detailLoading ? (
                 <HockeyLoader text="Загружаем игру..." />
               ) : !game ? (
                 <div className="small">Не удалось загрузить игру.</div>
               ) : (
                 (() => {
-                  const { isPast, isFinished } = gameFlags(game?.starts_at);
-                  const past = isPast; // если где-то дальше понадобится для UI
+                  const { isFinished } = gameFlags(game?.starts_at);
                   const lockRsvp = isFinished && !isAdmin;
-                  const bestCandidates = (rsvps || []).filter((p) => p.status === "yes");
                   return (
                     <>
-                        <div className="gameHero">
-                          <div className="gameHero__top">
-                            <div className="gameHero__when">
-                              <span className="gameHero__whenIcon" aria-hidden="true">🗓</span>
-                              <span>{formatWhen(game.starts_at)}</span>
-                            </div>
-                            {isAdmin ? (
-                              <button
-                                className="iconBtn gameHero__settings"
-                                type="button"
-                                title="Настройки игры"
-                                onClick={() => openGameSheet(game)}
-                              >
-                                <span aria-hidden="true">⚙️</span>
-                              </button>
-                            ) : null}
-                          </div>
-                          <div className="gameHero__mid">
-                            <div className="gameHero__where">
-                              <span className="gameHero__whereIcon" aria-hidden="true">📍</span>
-                              <span className="gameHero__whereText">{game.location || "—"}</span>
-                            </div>
-                            <span className="gameHero__status">
-                              {uiStatus(game)}
-                            </span>
-                          </div>
-                          {(game.geo_lat != null && game.geo_lon != null) || game.video_url ? (
-                            <div className="gameHero__actions">
-                              {game.geo_lat != null && game.geo_lon != null ? (
-                                <button
-                                  className="btn secondary gameHero__actionBtn"
-                                  onClick={() => openYandexRoute(game.geo_lat, game.geo_lon)}
-                                  title="Построить маршрут"
-                                >
-                                  <img className="yandexNavIcon" src={yandexNavIcon} alt="" aria-hidden="true" />
-                                  Маршрут
-                                </button>
-                              ) : null}
-                              {game.video_url ? (
-                                <button
-                                  className="btn secondary gameHero__actionBtn"
-                                  onClick={() => (tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank"))}
-                                >
-                                  ▶️ Видео
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : null}
-                          {myRsvp ? (
-                            <div className="gameHero__my">
-                              <span className="gameHero__myLabel">Мой статус</span>
-                              <span className="gameHero__myValue">{statusLabel(myRsvp)}</span>
-                            </div>
-                          ) : null}
-                        </div>
-                        {game.notice_text ? (
-                          <div className="gameNoticeBlock">
-                            <span className="gameNoticeBlock__icon" aria-hidden="true">⚠️</span>
-                            <div className="gameNoticeBlock__body">
-                              <div className="gameNoticeBlock__title">Важно</div>
-                              <div className="gameNoticeBlock__text">{game.notice_text}</div>
-                            </div>
-                          {isAdmin ? (
-                                  <button
-                                    className="iconBtn"
-                                    type="button"
-                                    title="Редактировать"
-                                    onClick={() => openGameSheet(game)}
-                                  >
-                                    ✏️
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : isAdmin ? (
-                              <button className="btn secondary" style={{ marginTop: 10 }} onClick={() => openGameSheet(game)}>
-                                ➕ Добавить “Важно”
-                              </button>
-                            ) : null}
-                            {game.info_text ? (
-                              <div className="card" style={{ marginTop: 12 }}>
-                                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                                  <h3 style={{ margin: 0 }}>ℹ️ Важная информация</h3>
-                                  {isAdmin ? (
-                                    <button className="iconBtn" type="button" title="Редактировать" onClick={() => openGameSheet(game)}>
-                                      ✏️
-                                    </button>
-                                  ) : null}
-                                </div>
-                                <div className="small" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                                  {game.info_text}
-                                </div>
-                              </div>
-                            ) : isAdmin ? (
-                              <button className="btn secondary" style={{ marginTop: 10 }} onClick={() => openGameSheet(game)}>
-                                ➕ Добавить подробности
-                              </button>
-                            ) : null}
-                     {/*   {isAdmin && game && isPastGame(game) && (
-                        <div className="card" style={{ marginTop: 12 }}>
-                          <h3 style={{ margin: 0 }}>🏆 Best player</h3>
-                      
-                          <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
-                            Выбери лучшего игрока матча — он станет обладателем талисмана до следующей игры.
-                          </div>
-                      
-                          <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center" }}>
-                            <select
-                              className="input"
-                              value={bestPick}
-                              onChange={(e) => setBestPick(e.target.value)}
-                              style={{ flex: 1 }}
-                            >
-                              <option value="">— не выбран —</option>
-                              {bestCandidates.map((p) => (
-                                <option key={p.tg_id} value={String(p.tg_id)}>
-                                  {p.display_name || p.first_name || (p.username ? `@${p.username}` : p.tg_id)}
-                                </option>
-                              ))}
-                            </select>
-                      
-                            <button
-                              className="btn"
-                              onClick={async () => {
-                                const v = bestPick ? Number(bestPick) : null;
-                                await apiPost(`/api/admin/games/${game.id}/best-player`, { best_player_tg_id: v });
-                                await refreshAll(game.id); // чтобы game.best_player_* обновились
-                              }}
-                            >
-                              Сохранить
-                            </button>
-                          </div>
-                      
-                          {game.best_player_name ? (
-                            <div className="small" style={{ marginTop: 10 }}>
-                              Сейчас: <b>{game.best_player_name}</b>
-                            </div>
-                          ) : null}
-                        </div>
-                      )}*/}
-                      <hr />
-                     
-                      {game.status === "cancelled" ? (
-                        <div className="small">Эта игра отменена.</div>
-                      ) : lockRsvp ? (
-                        <div className="small" style={{ opacity: 0.85 }}>
-                          Игра уже прошла — менять отметки нельзя.
-                        </div>
-                      ) : (
-                        <div className="row">
-                          <button className={btnClass("yes")} onClick={(e) => rsvp("yes", e)}>
-                            ✅ Буду
-                          </button>
-                          <button
-                            className={`${btnClass("no")} ${myRsvp === "maybe" ? "autoNoFill" : ""}`}
-                            style={myRsvp === "maybe" ? { "--auto-no-p": autoNoProgress(game) } : undefined}
-                            onClick={(e) => rsvp("no", e)}
-                          >
-                            ❌ Не буду
-                          </button>
-                          <button className={btnClass("maybe")} onClick={() => rsvp("maybe")}>
-                            🗘 Сбросить
-                          </button>
-                        </div>
-                      )}
-                      <hr />
+                      <GameDetailTop
+                        game={game}
+                        when={formatWhen(game.starts_at)}
+                        status={uiStatus(game)}
+                        myRsvp={myRsvp}
+                        isAdmin={isAdmin}
+                        locked={lockRsvp}
+                        busy={opBusy}
+                        onSettings={() => openGameSheet(game)}
+                        onRoute={() => openYandexRoute(game.geo_lat, game.geo_lon)}
+                        onVideo={() => (tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank"))}
+                        onRsvp={rsvp}
+                      />
                       <div className="small">Отметки:</div>
                       <div style={{ marginTop: 10 }}>
                       <StatusBlock
