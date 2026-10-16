@@ -2,14 +2,14 @@
 export const TEAM_COLORS = {
   white: {
     label: "Белые",
-    message: "Ваша команда — белые",
+    message: "Ты в команде белых",
     fill: "#f8fafc",
     stroke: "#9bacbf",
     stripe: "#bdcddd",
   },
   blue: {
     label: "Синие",
-    message: "Ваша команда — синие",
+    message: "Ты в команде синих",
     fill: "#288bff",
     stroke: "#a4d4ff",
     stripe: "#153f88",

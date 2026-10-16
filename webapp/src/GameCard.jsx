@@ -1,4 +1,4 @@
-import TeamJersey from "./TeamJersey.jsx";
+import TeamColorMark from "./TeamColorMark.jsx";
 import { TEAM_COLORS } from "./teamColors.js";
 import React from "react";
 import { apiPost } from "./api.js";
@@ -65,8 +65,21 @@ export default function GameCard({
       <div className="game-card__overlay" aria-hidden="true" />
       {/* TOP BAR */}
       <div className="gameCard__topbar">
-        <div className="gameCard__title">
-          {isNext ? "Ближайшая игра" : statusLabel}
+        <div className="game-card__heading">
+          <div className="gameCard__title">
+            {isNext ? "Ближайшая игра" : statusLabel}
+          </div>
+          {status === "yes" &&
+            !past &&
+            g.status !== "cancelled" &&
+            TEAM_COLORS[myTeamColor] && (
+              <div
+                className="game-card__team"
+                aria-label={TEAM_COLORS[myTeamColor].message}
+              >
+                Ты в команде — <TeamColorMark color={myTeamColor} size={13} />
+              </div>
+            )}
         </div>
 
         <div className="gameCard__topRight">
@@ -137,16 +150,6 @@ export default function GameCard({
           </div>
         </div>
       </div>
-
-      {status === "yes" &&
-        !past &&
-        g.status !== "cancelled" &&
-        TEAM_COLORS[myTeamColor] && (
-          <div className={`game-card__team game-card__team--${myTeamColor}`}>
-            <TeamJersey color={myTeamColor} size={27} />
-            <span>{TEAM_COLORS[myTeamColor].message}</span>
-          </div>
-        )}
 
       {/* ACTIONS */}
       <div className="gameCard__actions" onClick={(e) => e.stopPropagation()}>

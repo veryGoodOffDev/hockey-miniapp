@@ -1,4 +1,4 @@
-import TeamJersey from "./TeamJersey.jsx";
+import TeamColorMark from "./TeamColorMark.jsx";
 import { playerTeamColor } from "./teamColors.js";
 import React, { useMemo } from "react";
 import { groupRsvpPlayers, playerName } from "./rsvpPlayerOrder.js";
@@ -84,7 +84,7 @@ export default function RsvpStatusBlock({
                   </span>
                   <span className="rsvpRoster__identity">
                     <span className="rsvpRoster__nameLine">
-                      {color && <TeamJersey color={color} />}
+                      {color && <TeamColorMark color={color} />}
                       <span className="rsvpRoster__name">{playerName(p)}</span>
                       {mine && <span className="rsvpRoster__you">Вы</span>}
                     </span>
