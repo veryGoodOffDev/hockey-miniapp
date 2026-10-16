@@ -1,3 +1,5 @@
+import TeamJersey from "./TeamJersey.jsx";
+import { TEAM_COLORS } from "./teamColors.js";
 import React from "react";
 import { apiPost } from "./api.js";
 import { celebrateRsvp } from "./rsvpFeedback.js";
@@ -43,6 +45,7 @@ export default function GameCard({
   openGameDetail,
   openGameSheet,
   statusLabel,
+  myTeamColor = null,
 }) {
   return (
     <div
@@ -134,6 +137,16 @@ export default function GameCard({
           </div>
         </div>
       </div>
+
+      {status === "yes" &&
+        !past &&
+        g.status !== "cancelled" &&
+        TEAM_COLORS[myTeamColor] && (
+          <div className={`game-card__team game-card__team--${myTeamColor}`}>
+            <TeamJersey color={myTeamColor} size={27} />
+            <span>{TEAM_COLORS[myTeamColor].message}</span>
+          </div>
+        )}
 
       {/* ACTIONS */}
       <div className="gameCard__actions" onClick={(e) => e.stopPropagation()}>

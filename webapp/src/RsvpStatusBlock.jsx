@@ -1,3 +1,5 @@
+import TeamJersey from "./TeamJersey.jsx";
+import { playerTeamColor } from "./teamColors.js";
 import React, { useMemo } from "react";
 import { groupRsvpPlayers, playerName } from "./rsvpPlayerOrder.js";
 export default function RsvpStatusBlock({
@@ -8,6 +10,7 @@ export default function RsvpStatusBlock({
   me,
   canPickPos = false,
   setPosPopup,
+  teams = null,
 }) {
   const players = useMemo(
     () =>
@@ -49,6 +52,8 @@ export default function RsvpStatusBlock({
                 number !== "" &&
                 Number.isFinite(Number(number)),
               override = !!String(p.pos_override || "").trim();
+            const color =
+              tone === "yes" ? playerTeamColor(teams, p.tg_id) : null;
             const Row = editable ? "button" : "div";
             return (
               <li key={p.tg_id}>
@@ -79,6 +84,7 @@ export default function RsvpStatusBlock({
                   </span>
                   <span className="rsvpRoster__identity">
                     <span className="rsvpRoster__nameLine">
+                      {color && <TeamJersey color={color} />}
                       <span className="rsvpRoster__name">{playerName(p)}</span>
                       {mine && <span className="rsvpRoster__you">Вы</span>}
                     </span>

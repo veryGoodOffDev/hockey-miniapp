@@ -5352,3 +5352,10 @@ button.rsvpRoster__player { cursor: pointer; }
 .chatInbox .chatInboxMessageActions > .btn { width: auto; }
 .chatInboxReplyButton { flex: 1 0 100%; }
 .chatInbox .chatInboxMessageActions > .chatInboxReaction { flex: 0 0 44px; width: 44px; }
+
+/* Jersey hints use the same white/blue assignment as the lineups screen. */
+.teamJersey { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; vertical-align: middle; line-height: 0; }
+.teamJersey svg { display: block; filter: drop-shadow(0 1px 2px #0005); }
+.rsvpRoster__nameLine .teamJersey { margin-right: -2px; }
+.game-card__team { position: relative; display: flex; align-items: center; gap: 9px; margin: 0 12px; padding: 8px 11px; border: 1px solid #d4e3f066; border-radius: 11px; background: linear-gradient(110deg, #f4f8ff20, #c5d8ea0c); color: #f7fbff; font-size: 13px; font-weight: 750; line-height: 1.35; }
+.game-card__team--blue { border-color: #68b7ff99; background: linear-gradient(110deg, #1768b85c, #16365c90); color: #e5f3ff; }

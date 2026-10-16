@@ -1,3 +1,4 @@
+import useGameTeamColors from "./useGameTeamColors.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EmojiPicker, { Emoji } from "emoji-picker-react";
 import { apiGet, apiPost, apiPatch, apiDelete, getAuthToken, clearAuthToken } from "./api.js";
@@ -2625,6 +2626,7 @@ function mergeUniqueById(primary = [], extra = []) {
         .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)),
     [games]
   );
+  const myTeamColors = useGameTeamColors(upcomingGames, me?.tg_id, tab === "game" && gameView === "list" && !showPast && !loading);
   // Today's finished game stays in the list until midnight, but loses the nearest highlight.
   // Recalculate on render so the label follows the same clock as uiStatus.
   const nextUpcomingId = upcomingGames.find(
@@ -3333,7 +3335,7 @@ function openYandexRoute(lat, lon) {
                       const progress = Math.min(1, yes / Math.max(1, target));
                     
                       return (
-                        <GameCard key={g.id} {...{ g, idx, past, lockRsvp, when, status, noAutoFill, isNext, bgUrl, month, day, yes, target, progress, isAdmin, opBusy, runOp, openGameDetail, openGameSheet }} statusLabel={uiStatus(g)} />
+                        <GameCard key={g.id} {...{ g, idx, past, lockRsvp, when, status, noAutoFill, isNext, bgUrl, month, day, yes, target, progress, isAdmin, opBusy, runOp, openGameDetail, openGameSheet }} statusLabel={uiStatus(g)} myTeamColor={myTeamColors[String(g.id)]} />
                       );
                     })}
                       {showPast ? (
@@ -3568,6 +3570,7 @@ function openYandexRoute(lat, lon) {
                         list={grouped.yes}
                         isAdmin={isAdmin}
                         me={me}
+                        teams={teams}
                         canPickPos={true}
                         setPosPopup={setPosPopup}
                       />
