@@ -2070,7 +2070,7 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
   );
 }
   
-async function giveMatchAward(player) {
+async function giveMatchAward(player, { remove = false } = {}) {
   if (
     !isAdmin ||
     opBusy ||
@@ -2082,12 +2082,13 @@ async function giveMatchAward(player) {
   )
     return;
   const gameId = game.id,
-    playerId = player.tg_id,
+    playerId = remove ? null : player.tg_id,
     previous = game.best_player_tg_id;
-  if (previous != null && String(previous) === String(playerId)) return;
+  if (remove && (previous == null || String(previous) !== String(player.tg_id))) return;
+  if (!remove && previous != null && String(previous) === String(playerId)) return;
   awardBusyRef.current = true;
   try {
-    if (previous != null) {
+    if (!remove && previous != null) {
       const previousName =
         game.best_player_name ||
         (rsvps.some((p) => String(p.tg_id) === String(previous))
@@ -2101,7 +2102,7 @@ async function giveMatchAward(player) {
       if (!confirmed) return;
     }
     const saved = await runOp(
-      "Выдаю награду…",
+      remove ? "Снимаю награду…" : "Выдаю награду…",
       async () => {
         const response = await apiPost(
           `/api/admin/games/${gameId}/best-player`,
@@ -2117,7 +2118,7 @@ async function giveMatchAward(player) {
             ? {
                 ...current,
                 ...response.game,
-                best_player_name: showName(player),
+                best_player_name: remove ? null : showName(player),
               }
             : current;
         setGame(patch);
@@ -2125,8 +2126,8 @@ async function giveMatchAward(player) {
         setPastPage((current) => current.map(patch));
       },
       {
-        successText: "🏆 Лучший игрок матча выбран",
-        errorText: "❌ Не удалось выдать награду",
+        successText: remove ? "Награда отменена" : "🏆 Лучший игрок матча выбран",
+        errorText: remove ? "❌ Не удалось отменить награду" : "❌ Не удалось выдать награду",
         sync: { gameId, refreshGames: true, refreshGame: true },
       },
     );
@@ -4946,8 +4947,8 @@ function openYandexRoute(lat, lon) {
                     {canGiveMatchAward && <div className="playerGameActions__award">
                       <div className="playerGameActions__label">Награда за этот матч</div>
                       <p className="small">Один лучший игрок на игру. Награда сохраняется в истории этого матча.</p>
-                      <button type="button" className="btn playerGameActions__awardButton" disabled={opBusy || popupHasAward} onClick={() => giveMatchAward(posPopup)}>
-                        <MatchAwardBadge decorative /><span>{popupHasAward ? "Награда уже выдана" : game.best_player_tg_id != null ? "Переназначить награду" : "Выдать награду"}</span>
+                      <button type="button" className="btn playerGameActions__awardButton" disabled={opBusy} onClick={() => giveMatchAward(posPopup, { remove: popupHasAward })}>
+                        <MatchAwardBadge decorative /><span>{popupHasAward ? "Отменить награду" : game.best_player_tg_id != null ? "Переназначить награду" : "Выдать награду"}</span>
                       </button>
                     </div>}
                     <div className="row" style={{ marginTop: 10 }}>
