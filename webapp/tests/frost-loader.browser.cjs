@@ -137,7 +137,7 @@ const assert = require("node:assert/strict");
     const maskFrames = await overlay.evaluate((element) => {
       const animation = element.getAnimations()[0];
       animation.pause();
-      const samples = [0, 900, 1800].map((time) => {
+      const samples = [0, 2500, 5000].map((time) => {
         animation.currentTime = time;
         return getComputedStyle(element).maskSize;
       });
@@ -153,16 +153,13 @@ const assert = require("node:assert/strict");
       return result;
     });
     assert.equal(maskFrames.name, "frostReveal");
-    assert.equal(maskFrames.duration, "1.8s");
+    assert.equal(maskFrames.duration, "5s");
     assert.match(maskFrames.image, /frost-overlay\.png/);
-    assert.equal((maskFrames.mask.match(/linear-gradient/g) || []).length, 4);
-    assert.equal(maskFrames.samples[0], "100% 0%, 100% 0%, 0% 100%, 0% 100%");
+    assert.match(maskFrames.mask, /radial-gradient/);
+    assert.equal(maskFrames.samples[0], "100% 100%, 260% 260%");
     assert.notEqual(maskFrames.samples[1], maskFrames.samples[0]);
     assert.notEqual(maskFrames.samples[1], maskFrames.samples[2]);
-    assert.equal(
-      maskFrames.samples[2],
-      "100% 100%, 100% 100%, 100% 100%, 100% 100%",
-    );
+    assert.equal(maskFrames.samples[2], "100% 100%, 0% 0%");
     const asset = await page.request.get(
       new URL("/frost-overlay.png", page.url()).href,
     );
@@ -235,9 +232,17 @@ const assert = require("node:assert/strict");
     await page.getByText("Загружаем составы…", { exact: true }).waitFor();
     await same();
     assert.equal(meRequests, 1);
+    // Loading must end during the reveal, without waiting for its five seconds.
+    await overlay.evaluate((element) => {
+      const animation = element.getAnimations()[0];
+      animation.currentTime = 500;
+      animation.play();
+    });
     detail.release();
     await page.locator(".gameCard").first().waitFor();
-    await page.locator(".frostLoader--screen").waitFor({ state: "detached" });
+    await page
+      .locator(".frostLoader--screen")
+      .waitFor({ state: "detached", timeout: 1500 });
     assert.equal(await page.locator("[inert]").count(), 0);
     assert.equal(
       await page.locator('[aria-hidden="true"] .appShell').count(),
