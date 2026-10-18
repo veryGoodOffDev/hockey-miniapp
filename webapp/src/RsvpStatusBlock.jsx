@@ -1,3 +1,4 @@
+import MatchAwardBadge from "./MatchAwardBadge.jsx";
 import TeamColorMark from "./TeamColorMark.jsx";
 import { playerTeamColor } from "./teamColors.js";
 import React, { useMemo } from "react";
@@ -11,6 +12,7 @@ export default function RsvpStatusBlock({
   canPickPos = false,
   setPosPopup,
   teams = null,
+  bestPlayerId = null,
 }) {
   const players = useMemo(
     () =>
@@ -66,7 +68,7 @@ export default function RsvpStatusBlock({
                           event.stopPropagation();
                           setPosPopup(p);
                         },
-                        title: "Изменить позицию игрока",
+                        title: "Действия с игроком на эту игру",
                       }
                     : {})}
                 >
@@ -85,7 +87,13 @@ export default function RsvpStatusBlock({
                   <span className="rsvpRoster__identity">
                     <span className="rsvpRoster__nameLine">
                       {color && <TeamColorMark color={color} />}
-                      <span className="rsvpRoster__name">{playerName(p)}</span>
+                      <span className="rsvpRoster__name">
+                        {playerName(p)}
+                        {bestPlayerId != null &&
+                          String(bestPlayerId) === String(p.tg_id) && (
+                            <MatchAwardBadge />
+                          )}
+                      </span>
                       {mine && <span className="rsvpRoster__you">Вы</span>}
                     </span>
                     {(p.is_guest || p.auto_no) && (

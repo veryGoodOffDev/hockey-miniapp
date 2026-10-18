@@ -1,3 +1,4 @@
+import MatchAwardBadge from "./MatchAwardBadge.jsx";
 import GameDetailTop, { GameDetailNav } from "./GameDetailTop.jsx";
 import useGameTeamColors from "./useGameTeamColors.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -206,7 +207,8 @@ useEffect(() => {
   const [teamsSendMsg, setTeamsSendMsg] = useState("");
   const [talismanHolder, setTalismanHolder] = useState(null);
   const [bestPick, setBestPick] = useState("");
-  const [posPopup, setPosPopup] = useState(null); 
+  const [posPopup, setPosPopup] = useState(null);
+  const awardBusyRef = useRef(false);
   // ===== players photo modal =====
 const [photoModal, setPhotoModal] = useState({ open: false, src: "", title: "" });
 const [remEnabled, setRemEnabled] = useState(false);
@@ -2068,7 +2070,73 @@ async function setGamePosOverride(player, nextPos /* 'F'|'D'|'G' */) {
   );
 }
   
-  async function sendTeamsToChat() {
+async function giveMatchAward(player) {
+  if (
+    !isAdmin ||
+    opBusy ||
+    awardBusyRef.current ||
+    !game?.id ||
+    game.status === "cancelled" ||
+    !gameFlags(game.starts_at).isFinished ||
+    player?.tg_id == null
+  )
+    return;
+  const gameId = game.id,
+    playerId = player.tg_id,
+    previous = game.best_player_tg_id;
+  if (previous != null && String(previous) === String(playerId)) return;
+  awardBusyRef.current = true;
+  try {
+    if (previous != null) {
+      const previousName =
+        game.best_player_name ||
+        (rsvps.some((p) => String(p.tg_id) === String(previous))
+          ? showName(rsvps.find((p) => String(p.tg_id) === String(previous)))
+          : "другой игрок");
+      const confirmed = await tgConfirm({
+        title: "Переназначить награду?",
+        message: `Сейчас лучший игрок этого матча — ${previousName}.\n\nПередать награду игроку ${showName(player)}? Предыдущий значок в этой игре будет снят.`,
+        okText: "Передать награду",
+      });
+      if (!confirmed) return;
+    }
+    const saved = await runOp(
+      "Выдаю награду…",
+      async () => {
+        const response = await apiPost(
+          `/api/admin/games/${gameId}/best-player`,
+          { best_player_tg_id: playerId },
+        );
+        if (
+          !response?.ok ||
+          String(response.game?.best_player_tg_id) !== String(playerId)
+        )
+          throw new Error("award_not_saved");
+        const patch = (current) =>
+          current && String(current.id) === String(gameId)
+            ? {
+                ...current,
+                ...response.game,
+                best_player_name: showName(player),
+              }
+            : current;
+        setGame(patch);
+        setGames((current) => current.map(patch));
+        setPastPage((current) => current.map(patch));
+      },
+      {
+        successText: "🏆 Лучший игрок матча выбран",
+        errorText: "❌ Не удалось выдать награду",
+        sync: { gameId, refreshGames: true, refreshGame: true },
+      },
+    );
+    if (saved) setPosPopup(null);
+  } finally {
+    awardBusyRef.current = false;
+  }
+}
+
+async function sendTeamsToChat() {
   if (!selectedGameId) return;
   setTeamsSendMsg("");
   const ok1 = confirm("Отправить составы в командный чат?");
@@ -3089,6 +3157,8 @@ function openYandexRoute(lat, lon) {
     );
   }
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
+  const canGiveMatchAward = !!game?.id && game.status !== "cancelled" && gameFlags(game.starts_at).isFinished;
+  const popupHasAward = game?.best_player_tg_id != null && String(game.best_player_tg_id) === String(posPopup?.tg_id);
   return (
     <div ref={gamesPullRef} className="container appShell">
     {airHockeyOpen ? <AirHockey inviteCode={airHockeyInvite} onClose={() => { setAirHockeyOpen(false); setAirHockeyInvite(null); refreshAirHockeyBalance(); }} onProfileChange={refreshAirHockeyBalance} /> : null}
@@ -3394,6 +3464,9 @@ function openYandexRoute(lat, lon) {
                         onVideo={() => (tg?.openLink ? tg.openLink(game.video_url) : window.open(game.video_url, "_blank"))}
                         onRsvp={rsvp}
                       />
+                      {game.best_player_tg_id != null && !rsvps.some(p => String(p.tg_id) === String(game.best_player_tg_id)) && <div className="matchAwardArchive">
+                        <MatchAwardBadge /><span>Лучший игрок матча: <strong>{game.best_player_name || `Игрок #${game.best_player_tg_id}`}</strong></span>
+                      </div>}
                       <div className="small">Отметки:</div>
                       <div style={{ marginTop: 10 }}>
                       <StatusBlock
@@ -3403,11 +3476,12 @@ function openYandexRoute(lat, lon) {
                         isAdmin={isAdmin}
                         me={me}
                         teams={teams}
+                        bestPlayerId={game.best_player_tg_id}
                         canPickPos={true}
                         setPosPopup={setPosPopup}
                       />
-                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} />
-                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} />
+                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} />
+                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} />
                       </div>
                       <hr />
                                   <div ref={commentsBlockRef} />
@@ -4831,14 +4905,16 @@ function openYandexRoute(lat, lon) {
        {/* ====== MODAL POSITION ====== */}
               {isAdmin && posPopup && (
                 <div className="modalBackdrop" onClick={() => setPosPopup(null)}>
-                  <div className="modalSheet" onClick={(e) => e.stopPropagation()}>
-                    <div style={{ fontWeight: 900, fontSize: 16 }}>Позиция на игру</div>
+                  <div className="modalSheet playerGameActions" role="dialog" aria-modal="true" aria-label="Действия с игроком" onClick={(e) => e.stopPropagation()}>
+                    <div style={{ fontWeight: 900, fontSize: 16 }}>Действия с игроком</div>
                     <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                      {showName(posPopup)}
+                      {showName(posPopup)} {popupHasAward && <MatchAwardBadge />}
                     </div>
+                    <div className="playerGameActions__label">Позиция на игру</div>
                     <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                       <button
                         className={`btn outline ${curPos === "G" ? "active" : ""}`}
+                        disabled={opBusy}
                         onClick={async () => {
                           await setGamePosOverride(posPopup, "G");
                           setPosPopup(null);
@@ -4848,6 +4924,7 @@ function openYandexRoute(lat, lon) {
                       </button>
                       <button
                         className={`btn outline ${curPos === "D" ? "active" : ""}`}
+                        disabled={opBusy}
                         onClick={async () => {
                           await setGamePosOverride(posPopup, "D");
                           setPosPopup(null);
@@ -4857,6 +4934,7 @@ function openYandexRoute(lat, lon) {
                       </button>
                       <button
                         className={`btn outline ${curPos === "F" ? "active" : ""}`}
+                        disabled={opBusy}
                         onClick={async () => {
                           await setGamePosOverride(posPopup, "F");
                           setPosPopup(null);
@@ -4865,6 +4943,13 @@ function openYandexRoute(lat, lon) {
                         🏒 Нападающий
                       </button>
                     </div>
+                    {canGiveMatchAward && <div className="playerGameActions__award">
+                      <div className="playerGameActions__label">Награда за этот матч</div>
+                      <p className="small">Один лучший игрок на игру. Награда сохраняется в истории этого матча.</p>
+                      <button type="button" className="btn playerGameActions__awardButton" disabled={opBusy || popupHasAward} onClick={() => giveMatchAward(posPopup)}>
+                        <MatchAwardBadge decorative /><span>{popupHasAward ? "Награда уже выдана" : game.best_player_tg_id != null ? "Переназначить награду" : "Выдать награду"}</span>
+                      </button>
+                    </div>}
                     <div className="row" style={{ marginTop: 10 }}>
                       <button className="btn secondary" onClick={() => setPosPopup(null)}>
                         Отмена

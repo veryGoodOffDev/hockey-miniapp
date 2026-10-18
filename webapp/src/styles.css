@@ -5318,3 +5318,12 @@ button.rsvpRoster__player { cursor: pointer; }
 .chatInbox .chatInboxPickerGrid > .chatInboxReaction { position: relative; width: 100%; min-width: 0; min-height: 44px; padding: 7px; font-size: 22px; }
 .chatInboxReaction sup { position: absolute; top: 3px; right: 3px; font-size: 9px; color: var(--tg-link); }
 .chatInboxReplyTarget [role="alert"] { font-size: 12px; line-height: 1.4; }
+
+.matchAwardBadge { display: inline-block; width: 28px; height: 28px; flex: 0 0 28px; object-fit: contain; vertical-align: middle; margin-left: 7px; padding: 1px; border: 1px solid #e5bc68; border-radius: 7px; background: #f5f0e8; box-shadow: 0 1px 5px #0003; }
+.playerGameActions .small { line-height: 1.45; }
+.playerGameActions__label { font-size: 12px; font-weight: 750; color: var(--tg-hint); margin-top: 14px; }
+.playerGameActions__award { margin-top: 15px; padding-top: 1px; border-top: 1px solid var(--border); }
+.playerGameActions__award p { font-size: 12px; margin: 6px 0 10px; color: var(--tg-hint); }
+.playerGameActions .playerGameActions__awardButton { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 49px; padding: 9px 12px; background: linear-gradient(120deg, #78501d, #49371d); color: #fff4d5; border: 1px solid #d7b16f; font-size: 14px; }
+.playerGameActions__awardButton .matchAwardBadge, .matchAwardArchive .matchAwardBadge { margin-left: 0; }
+.matchAwardArchive { display: flex; gap: 9px; align-items: center; margin: 0 0 12px; padding: 10px 12px; border: 1px solid #b98c3e77; border-radius: 12px; background: #986c2017; font-size: 13px; line-height: 1.4; }
