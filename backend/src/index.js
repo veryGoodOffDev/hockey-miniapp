@@ -1,3 +1,4 @@
+import { getPreviousMatchAward } from "./previousMatchAward.js";
 import { createChatInboxRepository, createChatInboxCapture, createChatInboxRoutes } from "./chatInbox.js";
 import "dotenv/config";
 import { createCustomPostRoutes } from "./customPostUpload.js";
@@ -4345,7 +4346,11 @@ const vote_open = !!startsMs && startsMs < nowMs && nowMs < (startsMs + VOTE_HOU
     [game.id]
   );
 
-  const [rr, tr] = await Promise.all([rrPromise, teamsPromise]);
+  const previousAwardPromise = getPreviousMatchAward(q, game.id).catch(error => {
+    console.error("[previous match award] lookup failed:", error?.message);
+    return null;
+  });
+  const [rr, tr, previousAward] = await Promise.all([rrPromise, teamsPromise, previousAwardPromise]);
   const teams = tr.rows[0] || null;
 
 
@@ -4394,7 +4399,7 @@ try {
 // отдаём расширенный game
 res.json({
   ok: true,
-  game: { ...game, autoNoAt: game.auto_no_at, gameStartAt: game.starts_at },
+  game: { ...game, previous_game_award: previousAward, autoNoAt: game.auto_no_at, gameStartAt: game.starts_at },
   rsvps: rr.rows.map((row) => ({ ...row, autoNo: row.auto_no })),
   teams,
   vote_open,

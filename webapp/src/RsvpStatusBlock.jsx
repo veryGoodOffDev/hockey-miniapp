@@ -13,6 +13,7 @@ export default function RsvpStatusBlock({
   setPosPopup,
   teams = null,
   bestPlayerId = null,
+  previousAward = null,
 }) {
   const players = useMemo(
     () =>
@@ -96,6 +97,16 @@ export default function RsvpStatusBlock({
                       </span>
                       {mine && <span className="rsvpRoster__you">Вы</span>}
                     </span>
+                    {previousAward?.tg_id != null &&
+                      String(previousAward.tg_id) === String(p.tg_id) && (
+                        <span
+                          className="rsvpRoster__previousAward"
+                          title="Лучший игрок предыдущего матча. Не забудьте принести трофей на эту игру."
+                        >
+                          <MatchAwardBadge previous decorative />
+                          <span>В прошлой игре</span>
+                        </span>
+                      )}
                     {(p.is_guest || p.auto_no) && (
                       <span className="rsvpRoster__details">
                         {[

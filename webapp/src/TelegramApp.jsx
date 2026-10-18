@@ -3468,6 +3468,9 @@ function openYandexRoute(lat, lon) {
                       {game.best_player_tg_id != null && !rsvps.some(p => String(p.tg_id) === String(game.best_player_tg_id)) && <div className="matchAwardArchive">
                         <MatchAwardBadge /><span>Лучший игрок матча: <strong>{game.best_player_name || `Игрок #${game.best_player_tg_id}`}</strong></span>
                       </div>}
+                      {game.previous_game_award?.tg_id != null && !rsvps.some(p => String(p.tg_id) === String(game.previous_game_award.tg_id)) && <div className="matchAwardArchive matchAwardArchive--previous">
+                        <MatchAwardBadge previous decorative /><span><strong>{game.previous_game_award.name}</strong> · в прошлой игре</span>
+                      </div>}
                       <div className="small">Отметки:</div>
                       <div style={{ marginTop: 10 }}>
                       <StatusBlock
@@ -3478,11 +3481,12 @@ function openYandexRoute(lat, lon) {
                         me={me}
                         teams={teams}
                         bestPlayerId={game.best_player_tg_id}
+                        previousAward={game.previous_game_award}
                         canPickPos={true}
                         setPosPopup={setPosPopup}
                       />
-                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} />
-                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} />
+                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
+                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
                       </div>
                       <hr />
                                   <div ref={commentsBlockRef} />
