@@ -1,5 +1,18 @@
 // Only the configured team group is archived; private bot conversations never enter this inbox.
-export const CHAT_REACTIONS = ["👍", "❤️", "🔥", "👏", "😁", "😢"];
+import {
+  createChatReactions,
+  parseReaction,
+  reactionKey,
+} from "./chatReactions.js";
+export const CHAT_REACTIONS = ["👍", "❤", "🔥", "👏", "😁", "😢"];
+export function isMissingTelegramMessage(error) {
+  return (
+    error?.error_code === 400 &&
+    /\bMESSAGE_ID_INVALID\b|\bREPLY_MESSAGE_ID_INVALID\b|\bMESSAGE_NOT_FOUND\b|(?:replied )?message(?: to (?:be replied|react|set reaction))? (?:was )?not found/i.test(
+      error.description || "",
+    )
+  );
+}
 const fail = (reason, status = 400) =>
   Object.assign(new Error(reason), { status });
 export function messageId(value) {
@@ -23,6 +36,8 @@ export async function ensureChatInboxSchema(q) {
     PRIMARY KEY(chat_id, message_id)
   );
   CREATE INDEX IF NOT EXISTS chat_inbox_recent_idx ON chat_inbox_messages(chat_id, message_id DESC);`);
+  await q(`ALTER TABLE chat_inbox_messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE chat_inbox_messages ADD COLUMN IF NOT EXISTS deletion_reason TEXT;`);
 }
 export function inboxMessage(message, chatId) {
   if (
@@ -114,7 +129,15 @@ export function createChatInboxRepository(q, { now = Date.now } = {}) {
         [chatId, id],
       );
       if (!result.rows[0]) throw fail("reply_message_not_found", 404);
+      if (result.rows[0].deleted_at) throw fail("message_deleted", 410);
       return result.rows[0];
+    },
+    async markDeleted(chatId, id) {
+      await q(
+        `UPDATE chat_inbox_messages SET deleted_at=COALESCE(deleted_at,NOW()),
+        deletion_reason='telegram_message_missing', bot_reaction=NULL WHERE chat_id=$1 AND message_id=$2`,
+        [chatId, id],
+      );
     },
     async setReaction(chatId, id, emoji) {
       await q(
@@ -144,6 +167,7 @@ export function createChatInboxCapture({
 }
 export function createChatInboxRoutes({ repository, api, getChatId }) {
   const locks = new Set();
+  const reactions = createChatReactions(api);
   const route = (fn) => async (req, res) => {
     try {
       const chatId = await getChatId();
@@ -168,14 +192,32 @@ export function createChatInboxRoutes({ repository, api, getChatId }) {
       const before =
         req.query.before == null ? null : messageId(req.query.before);
       const result = await repository.list(chatId, { before });
-      res.json({ ok: true, ...result, reaction_choices: CHAT_REACTIONS });
+      let choices = [],
+        reactionsError = false;
+      try {
+        choices = await reactions.get(chatId);
+      } catch {
+        reactionsError = true;
+      }
+      res.json({
+        ok: true,
+        ...result,
+        reactions: choices,
+        reactions_error: reactionsError,
+        reaction_choices: choices
+          .filter((r) => r.type === "emoji")
+          .map((r) => r.emoji),
+      });
     }),
     react: route(async (req, res, chatId) => {
       const id = messageId(req.params.messageId),
-        emoji = req.body?.emoji;
-      if (emoji !== "" && !CHAT_REACTIONS.includes(emoji))
-        throw fail("bad_reaction");
+        reaction = parseReaction(req.body);
       await repository.get(chatId, id);
+      if (reaction) {
+        const allowed = await reactions.get(chatId);
+        if (!allowed.some((r) => r.key === reactionKey(reaction)))
+          throw fail("reaction_not_allowed");
+      }
       const key = `${chatId}:${id}`;
       if (locks.has(key)) throw fail("reaction_busy", 409);
       locks.add(key);
@@ -183,12 +225,20 @@ export function createChatInboxRoutes({ repository, api, getChatId }) {
         await api.setMessageReaction(
           Number(chatId),
           id,
-          emoji ? [{ type: "emoji", emoji }] : [],
+          reaction ? [reaction] : [],
           { is_big: false },
           AbortSignal.timeout(10_000),
         );
-        await repository.setReaction(chatId, id, emoji);
-        res.json({ ok: true, bot_reaction: emoji || null });
+        const key = reactionKey(reaction);
+        await repository.setReaction(chatId, id, key);
+        res.json({ ok: true, bot_reaction: key });
+      } catch (error) {
+        if (isMissingTelegramMessage(error)) {
+          await repository.markDeleted(chatId, id);
+          throw fail("message_deleted", 410);
+        }
+        if (error.error_code === 400) reactions.invalidate(chatId);
+        throw error;
       } finally {
         locks.delete(key);
       }

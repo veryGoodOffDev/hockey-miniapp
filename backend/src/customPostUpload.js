@@ -1,4 +1,4 @@
-import { messageId } from "./chatInbox.js";
+import { messageId, isMissingTelegramMessage } from "./chatInbox.js";
 import { InputFile } from "grammy";
 import multer from "multer";
 import { randomBytes, createHash } from "node:crypto";
@@ -126,6 +126,7 @@ export function createCustomPostRoutes({
   logMessage,
   logger = console,
   resolveReply,
+  onReplyMissing,
 }) {
   const photos = createPostPhotoStore(),
     deliveries = createPostDeliveryCache();
@@ -218,6 +219,16 @@ export function createCustomPostRoutes({
                 signal: controller.signal,
                 replyTo,
               });
+            } catch (error) {
+              if (
+                replyTo &&
+                isMissingTelegramMessage(error) &&
+                onReplyMissing
+              ) {
+                await onReplyMissing(chatId, replyTo);
+                throw fail("message_deleted", 410);
+              }
+              throw error;
             } finally {
               clearTimeout(timeout);
             }

@@ -5309,3 +5309,12 @@ button.rsvpRoster__player { cursor: pointer; }
   .gameDetailRsvp { font-size: 15px; gap: 6px; }
   .gameDetailRsvp__icon { width: 25px; height: 25px; flex-basis: 25px; }
 }
+
+.chatInboxMessage.isDeleted { border-style: dashed; border-color: var(--border); }
+.chatInboxDeleted { display: inline-block; margin: 8px 0 2px; padding: 5px 8px; border: 1px solid #ef9a7755; border-radius: 8px; background: #ef9a7710; color: var(--tg-text); font-size: 12px; line-height: 1.4; }
+.chatInboxPicker { margin-top: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 13px; background: var(--card-bg); }
+.chatInboxPickerCaption { margin-bottom: 8px; }
+.chatInboxPickerGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; max-height: 265px; overflow-y: auto; overscroll-behavior: contain; }
+.chatInbox .chatInboxPickerGrid > .chatInboxReaction { position: relative; width: 100%; min-width: 0; min-height: 44px; padding: 7px; font-size: 22px; }
+.chatInboxReaction sup { position: absolute; top: 3px; right: 3px; font-size: 9px; color: var(--tg-link); }
+.chatInboxReplyTarget [role="alert"] { font-size: 12px; line-height: 1.4; }

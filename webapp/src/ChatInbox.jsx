@@ -19,6 +19,10 @@ function errorText(error) {
   const reason = error.data?.reason;
   if (reason === "notify_chat_id_not_set")
     return "Сначала назначьте командный чат командой /setchat в группе.";
+  if (reason === "message_deleted")
+    return "Сообщение удалено из чата. Ответы и реакции недоступны.";
+  if (reason === "reaction_not_allowed")
+    return "Эта реакция больше не разрешена в группе. Обновите список сообщений.";
   if (reason === "reply_message_not_found")
     return "Сообщение больше недоступно. Обновите список.";
   if (reason === "telegram_reaction_failed") {
@@ -37,6 +41,8 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
   const [opened, setOpened] = useState(false),
     [messages, setMessages] = useState([]),
     [choices, setChoices] = useState([]),
+    [picker, setPicker] = useState(null),
+    [reactionsError, setReactionsError] = useState(false),
     [more, setMore] = useState(false),
     [loading, setLoading] = useState(false),
     [error, setError] = useState(""),
@@ -75,7 +81,25 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
             ]
           : result.messages,
       );
-      setChoices(result.reaction_choices || []);
+      setChoices(
+        Array.isArray(result.reactions)
+          ? result.reactions
+          : (result.reaction_choices || []).map((emoji) => ({
+              type: "emoji",
+              emoji,
+              key: emoji.replace(/\uFE0F/g, ""),
+              label: emoji,
+            })),
+      );
+      setReactionsError(!!result.reactions_error);
+      setReply((old) => {
+        const fresh = result.messages.find(
+          (m) => String(m.message_id) === String(old?.message_id),
+        );
+        return fresh?.deleted_at
+          ? { ...old, deleted_at: fresh.deleted_at }
+          : old;
+      });
       setMore(!!result.has_more);
     } catch (e) {
       if (alive.current) setError(errorText(e));
@@ -84,15 +108,38 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
       if (alive.current) setLoading(false);
     }
   }
-  async function react(message, emoji) {
-    if (reacting !== null) return;
+  function markDeleted(id) {
+    if (id == null) return;
+    const patch = (m) =>
+      String(m.message_id) === String(id)
+        ? {
+            ...m,
+            deleted_at: m.deleted_at || new Date().toISOString(),
+            bot_reaction: null,
+          }
+        : m;
+    setMessages((old) => old.map(patch));
+    setReply((old) => (old ? patch(old) : old));
+    setPicker(null);
+  }
+  async function react(message, choice) {
+    if (reacting !== null || message.deleted_at) return;
     setReacting(message.message_id);
     setError("");
     setNotice("");
     try {
       const result = await apiPost(
         `/api/admin/chat-messages/${message.message_id}/reaction`,
-        { emoji },
+        {
+          reaction: choice
+            ? choice.type === "custom_emoji"
+              ? {
+                  type: "custom_emoji",
+                  custom_emoji_id: choice.custom_emoji_id,
+                }
+              : { type: "emoji", emoji: choice.emoji }
+            : null,
+        },
       );
       if (alive.current) {
         setMessages((old) =>
@@ -102,20 +149,25 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
               : m,
           ),
         );
+        setPicker(null);
         setNotice(
           result.bot_reaction
-            ? `Реакция ${result.bot_reaction} установлена от имени бота`
+            ? `Реакция ${choice?.label || ""} установлена от имени бота`
             : "Реакция бота убрана",
         );
       }
     } catch (e) {
-      if (alive.current) setError(errorText(e));
+      if (alive.current) {
+        if (e.data?.reason === "message_deleted")
+          markDeleted(message.message_id);
+        setError(errorText(e));
+      }
     } finally {
       if (alive.current) setReacting(null);
     }
   }
   function chooseReply(message) {
-    if (editorBusy) return;
+    if (editorBusy || message.deleted_at) return;
     setReply(message);
     setNotice("");
     requestAnimationFrame(() =>
@@ -152,6 +204,12 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
           </button>
         )}
       </div>
+      {reactionsError && (
+        <p className="small" role="status">
+          Не удалось загрузить реакции группы. Нажмите «Обновить сообщения
+          чата».
+        </p>
+      )}
       {error && (
         <p className="small" role="alert">
           ❌ {error}
@@ -169,6 +227,7 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
             replyTo={reply}
             onCancelReply={() => setReply(null)}
             onBusyChange={setEditorBusy}
+            onReplyDeleted={markDeleted}
             onSent={async () => {
               setNotice(`Ответ отправлен: ${reply.sender_name}`);
               setReply(null);
@@ -186,7 +245,10 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
             </p>
           )}
           {messages.map((m) => (
-            <article className="chatInboxMessage" key={m.message_id}>
+            <article
+              className={`chatInboxMessage${m.deleted_at ? " isDeleted" : ""}`}
+              key={m.message_id}
+            >
               <div className="chatInboxHeader">
                 <strong>{m.sender_name}</strong>
                 <time dateTime={m.sent_at}>
@@ -198,6 +260,11 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
                   })}
                 </time>
               </div>
+              {m.deleted_at && (
+                <div className="chatInboxDeleted" role="status">
+                  Удалено из чата · ответы и реакции недоступны
+                </div>
+              )}
               {m.sender_username && (
                 <div className="small">@{m.sender_username}</div>
               )}
@@ -222,37 +289,85 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
                   type="button"
                   className="btn secondary chatInboxReplyButton"
                   onClick={() => chooseReply(m)}
-                  disabled={editorBusy}
+                  disabled={editorBusy || !!m.deleted_at}
                   aria-label={`Ответить: ${m.sender_name}`}
                 >
                   ↩ Ответить
                 </button>
-                {choices.map((emoji) => (
-                  <button
-                    type="button"
-                    key={emoji}
-                    className={`btn secondary chatInboxReaction${m.bot_reaction === emoji ? " selected" : ""}`}
-                    aria-label={`Реакция ${emoji}: ${m.sender_name}`}
-                    aria-pressed={m.bot_reaction === emoji}
-                    disabled={reacting !== null}
-                    onClick={() =>
-                      react(m, m.bot_reaction === emoji ? "" : emoji)
-                    }
-                  >
-                    {emoji}
-                  </button>
-                ))}
+                <button
+                  type="button"
+                  className="btn secondary chatInboxChooseReaction"
+                  disabled={
+                    !!m.deleted_at || reacting !== null || !choices.length
+                  }
+                  aria-expanded={picker === m.message_id}
+                  onClick={() =>
+                    setPicker((old) =>
+                      old === m.message_id ? null : m.message_id,
+                    )
+                  }
+                >
+                  {choices.find(
+                    (c) =>
+                      c.key ===
+                      String(m.bot_reaction || "").replace(/\uFE0F/g, ""),
+                  )?.label || "☺"}{" "}
+                  {picker === m.message_id
+                    ? "Скрыть реакции"
+                    : choices.length
+                      ? "Выбрать реакцию"
+                      : "Реакции недоступны"}
+                </button>
                 {m.bot_reaction && (
                   <button
                     type="button"
                     className="btn secondary"
-                    disabled={reacting !== null}
-                    onClick={() => react(m, "")}
+                    disabled={!!m.deleted_at || reacting !== null}
+                    onClick={() => react(m, null)}
                   >
                     Убрать реакцию
                   </button>
                 )}
               </div>
+              {picker === m.message_id && !m.deleted_at && (
+                <div
+                  className="chatInboxPicker"
+                  role="group"
+                  aria-label={`Реакции для сообщения: ${m.sender_name}`}
+                >
+                  <div className="small chatInboxPickerCaption">
+                    Доступные реакции группы · {choices.length}
+                  </div>
+                  <div className="chatInboxPickerGrid">
+                    {choices.map((choice) => {
+                      const selected =
+                        choice.key ===
+                        String(m.bot_reaction || "").replace(/\uFE0F/g, "");
+                      return (
+                        <button
+                          type="button"
+                          key={choice.key}
+                          className={`btn secondary chatInboxReaction${selected ? " selected" : ""}`}
+                          aria-label={`Реакция ${choice.label}${choice.type === "custom_emoji" ? ` · кастомная ${choice.custom_emoji_id}` : ""}: ${m.sender_name}`}
+                          title={
+                            choice.type === "custom_emoji"
+                              ? `Кастомный эмодзи ${choice.custom_emoji_id}`
+                              : choice.label
+                          }
+                          aria-pressed={selected}
+                          disabled={reacting !== null}
+                          onClick={() => react(m, selected ? null : choice)}
+                        >
+                          {choice.label}
+                          {choice.type === "custom_emoji" && (
+                            <sup aria-hidden="true">✦</sup>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {reacting === m.message_id && (
                 <div className="small" role="status">
                   Обновляю реакцию…

@@ -5746,7 +5746,7 @@ app.get("/api/admin/bot-messages", async (req, res) => {
   res.json({ ok: true, messages, has_more: hasMore, next_offset: offset + messages.length });
 });
 
-const customPostRoutes = createCustomPostRoutes({ api: bot.api, getChatId: () => getSetting("notify_chat_id", null), logMessage: logBotMessage, resolveReply: (chatId, id) => chatInbox.get(chatId, id) });
+const customPostRoutes = createCustomPostRoutes({ api: bot.api, getChatId: () => getSetting("notify_chat_id", null), logMessage: logBotMessage, resolveReply: (chatId, id) => chatInbox.get(chatId, id), onReplyMissing: (chatId, id) => chatInbox.markDeleted(chatId, id) });
 async function requireCustomPostAdmin(req, res, next) {
   const user = req.webappUser || requireWebAppAuth(req, res);
   if (!user) return;

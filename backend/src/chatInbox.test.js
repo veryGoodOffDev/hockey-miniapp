@@ -166,6 +166,17 @@ test("HTTP + real grammY: inbox paging, reactions/removal, chat scoping, rejecte
   telegram.use(express.json());
   telegram.post("/bot:token/:method", (req, res) => {
     calls.push({ method: req.params.method, body: req.body });
+    if (req.params.method === "getChat")
+      return res.json({
+        ok: true,
+        result: {
+          id: group.id,
+          available_reactions: CHAT_REACTIONS.map((emoji) => ({
+            type: "emoji",
+            emoji,
+          })),
+        },
+      });
     if (failure)
       return res.status(400).json({
         ok: false,
@@ -197,7 +208,13 @@ test("HTTP + real grammY: inbox paging, reactions/removal, chat scoping, rejecte
         throw Object.assign(new Error("reply_message_not_found"), {
           status: 404,
         });
+      if (row.deleted_at)
+        throw Object.assign(new Error("message_deleted"), { status: 410 });
       return row;
+    },
+    markDeleted: async (chat, id) => {
+      saved.get(id).deleted_at = new Date().toISOString();
+      saved.get(id).bot_reaction = null;
     },
     setReaction: async (chat, id, emoji) => {
       saved.get(id).bot_reaction = emoji || null;
@@ -212,6 +229,7 @@ test("HTTP + real grammY: inbox paging, reactions/removal, chat scoping, rejecte
     api,
     getChatId: async () => group.id,
     resolveReply: repository.get,
+    onReplyMissing: repository.markDeleted,
     logMessage: async (m) => logs.push(m),
     logger: { error() {} },
   });
@@ -327,8 +345,19 @@ test("HTTP + real grammY: inbox paging, reactions/removal, chat scoping, rejecte
       ...body,
       request_id: "d".repeat(32),
     });
-    assert.equal(deleted.data.reason, "telegram_send_failed");
-    assert.match(deleted.data.detail, /message to be replied not found/);
+    assert.equal(deleted.data.reason, "message_deleted");
+    assert.equal(deleted.status, 410);
+    assert.ok(saved.get(17).deleted_at);
+    const afterMissing = calls.length;
+    assert.equal(
+      (await request("/inbox/17/reaction", { emoji: "👍" })).status,
+      410,
+    );
+    assert.equal(
+      (await request("/send", { ...body, request_id: "e".repeat(32) })).status,
+      410,
+    );
+    assert.equal(calls.length, afterMissing);
     assert.equal(logs.length, 1);
     assert.equal(
       calls.at(-1).body.reply_parameters.allow_sending_without_reply,
@@ -374,6 +403,14 @@ test(
       assert.equal(edited.text, "Изменено");
       assert.equal(edited.bot_reaction, "👍");
       await repository.record(inboxMessage(message(18), group.id));
+      await repository.markDeleted(group.id, 18);
+      await repository.record(inboxMessage(message(18), group.id));
+      await assert.rejects(repository.get(group.id, 18), /message_deleted/);
+      assert.ok(
+        (await repository.list(group.id)).messages.find(
+          (m) => Number(m.message_id) === 18,
+        ).deleted_at,
+      );
       await repository.record({ ...entry, chat_id: "-55" });
       const page = await repository.list(group.id, { limit: 1 });
       assert.equal(page.has_more, true);

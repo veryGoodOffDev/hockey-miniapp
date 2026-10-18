@@ -34,6 +34,7 @@ export default function CustomBotPostEditor({
   replyTo = null,
   onCancelReply,
   onBusyChange,
+  onReplyDeleted,
 }) {
   const [text, setText] = useState(""),
     [photos, setPhotos] = useState([]),
@@ -93,7 +94,7 @@ export default function CustomBotPostEditor({
   };
   const max = photos.length ? 1024 : 3500;
   const send = async () => {
-    if (busy || processing) return;
+    if (busy || processing || replyTo?.deleted_at) return;
     setBusy(true);
     setMessage("");
     try {
@@ -146,6 +147,7 @@ export default function CustomBotPostEditor({
     } catch (error) {
       const reason = error.data?.reason,
         detail = error.data?.detail || "";
+      if (reason === "message_deleted") onReplyDeleted?.(replyTo?.message_id);
       if (reason === "photo_expired") {
         tokens.current.clear();
         requestId.current = null;
@@ -170,11 +172,13 @@ export default function CustomBotPostEditor({
         notify_chat_id_not_set: "Не настроен командный чат для отправки.",
         reply_message_not_found:
           "Сообщение больше недоступно. Обновите список и выберите другое.",
+        message_deleted:
+          "Сообщение удалено из чата. Выберите другое сообщение для ответа — черновик сохранён.",
         bad_message_id: "Некорректное сообщение для ответа.",
       };
       const status = error.status || error.data?.status;
       setMessage(
-        reason === "reply_message_not_found"
+        reason === "reply_message_not_found" || reason === "message_deleted"
           ? descriptions[reason]
           : status === 404 || status === 405
             ? "На сервере ещё нет загрузки фотографий. Обновите серверную часть приложения и повторите отправку."
@@ -202,6 +206,11 @@ export default function CustomBotPostEditor({
       {replyTo && (
         <div className="chatInboxReplyTarget">
           <strong>↩ Ответ: {replyTo.sender_name}</strong>
+          {replyTo.deleted_at && (
+            <div role="alert">
+              Сообщение удалено. Выберите другое сообщение для ответа.
+            </div>
+          )}
           <div className="small">
             {String(
               replyTo.text ||
@@ -297,6 +306,7 @@ export default function CustomBotPostEditor({
         disabled={
           busy ||
           processing ||
+          !!replyTo?.deleted_at ||
           (!text.trim() && !photos.length) ||
           text.trim().length > max
         }
