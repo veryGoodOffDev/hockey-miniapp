@@ -1,4 +1,5 @@
 import MatchAwardBadge from "./MatchAwardBadge.jsx";
+import { describeConnectionError } from "./connectionError.js";
 import SheepReminder from "./SheepReminder.jsx";
 import GameDetailTop, { GameDetailNav } from "./GameDetailTop.jsx";
 import useGameTeamColors from "./useGameTeamColors.js";
@@ -1406,7 +1407,7 @@ async function refreshAll(forceGameId) {
     setTeams(normalizeTeams(gg.teams));
   } catch (e) {
     console.error("refreshAll failed", e);
-    setGamesError({ ok: false, error: "network_or_unknown" });
+    setGamesError(e);
   }
 }
 const gameListPull = usePullToRefresh({
@@ -3158,6 +3159,7 @@ function openYandexRoute(lat, lon) {
       </div>
     );
   }
+  const gamesFailure = gamesError ? describeConnectionError(gamesError) : null;
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
   const canGiveMatchAward = !!game?.id && game.status !== "cancelled" && gameFlags(game.starts_at).isFinished;
   const popupHasAward = game?.best_player_tg_id != null && String(game.best_player_tg_id) === String(posPopup?.tg_id);
@@ -3319,7 +3321,9 @@ function openYandexRoute(lat, lon) {
                 <div className="card" style={{ border: "1px solid rgba(255,0,0,.25)", marginTop: 10 }}>
                   <div style={{ fontWeight: 900 }}>Не удалось загрузить игры</div>
                   <div className="small" style={{ opacity: 0.85, marginTop: 6 }}>
-                    Причина: <b>{gamesError.reason || gamesError.error || gamesError.status || "unknown"}</b>
+                    <b>{gamesFailure.title}</b>
+                    <p>{gamesFailure.message}</p>
+                    {gamesFailure.hint && <p>{gamesFailure.hint}</p>}
                   </div>
                   <div className="row" style={{ marginTop: 10 }}>
                     <button className="btn" onClick={() => refreshAll(selectedGameId)}>
@@ -3329,7 +3333,7 @@ function openYandexRoute(lat, lon) {
                 </div>
               ) : null}
               {listToShow.length === 0 ? (
-                <div className="small" style={{ marginTop: 2 }}>
+                !gamesError && <div className="small" style={{ marginTop: 2 }}>
                   {showPast ? "Прошедших игр пока нет." : "Предстоящих игр пока нет."}
                 </div>
                 ) : (

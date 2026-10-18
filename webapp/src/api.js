@@ -1,5 +1,5 @@
 // api.js
-import { fetchApiResponse } from "./fetchApiResponse.js";
+import { fetchApiCandidates } from "./fetchApiCandidates.js";
 import { getInitData } from "./tg.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
@@ -42,7 +42,10 @@ function makeError(message, data) {
   return err;
 }
 
-async function request(path, { method = "GET", body, signal, timeoutMs = 20_000 } = {}) {
+async function request(
+  path,
+  { method = "GET", body, signal, timeoutMs = 20_000 } = {},
+) {
   const initData = getInitData();
   const token = getAuthToken();
 
@@ -59,30 +62,27 @@ async function request(path, { method = "GET", body, signal, timeoutMs = 20_000 
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
   let res, responseText;
-  let netErr = null;
-  for (const base of apiBaseCandidates()) {
-    try {
-      const fetched = await fetchApiResponse(`${base}${path}`, {
+  try {
+    const fetched = await fetchApiCandidates(
+      apiBaseCandidates().map((base) => `${base}${path}`),
+      {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal,
         credentials: "omit",
-      }, timeoutMs);
-      res = fetched.response; responseText = fetched.text;
-      break;
-    } catch (e) {
-      netErr = e;
-      if (signal?.aborted) throw e;
-      if (e.name === "TimeoutError" && method !== "GET") break;
-    }
-  }
-
-  if (!res) {
+      },
+      timeoutMs,
+    );
+    res = fetched.response;
+    responseText = fetched.text;
+  } catch (error) {
+    if (signal?.aborted) throw error;
     throw makeError("network_error", {
       ok: false,
-      reason: netErr?.name === "TimeoutError" ? "request_timeout" : "network_error",
-      detail: netErr?.message || "fetch_failed",
+      reason:
+        error?.name === "TimeoutError" ? "request_timeout" : "network_error",
+      detail: error?.message || "fetch_failed",
     });
   }
 
@@ -94,7 +94,12 @@ async function request(path, { method = "GET", body, signal, timeoutMs = 20_000 
     try {
       data = JSON.parse(text);
     } catch {
-      data = { ok: false, error: "non_json_response", status: res.status, text };
+      data = {
+        ok: false,
+        error: "non_json_response",
+        status: res.status,
+        text,
+      };
     }
   } else {
     data = { ok: res.ok, status: res.status };
@@ -109,7 +114,11 @@ async function request(path, { method = "GET", body, signal, timeoutMs = 20_000 
   return data;
 }
 
-export async function apiUpload(path, formData, { signal, timeoutMs = 45_000 } = {}) {
+export async function apiUpload(
+  path,
+  formData,
+  { signal, timeoutMs = 45_000 } = {},
+) {
   const initData = getInitData();
   const token = getAuthToken();
 
@@ -119,30 +128,27 @@ export async function apiUpload(path, formData, { signal, timeoutMs = 45_000 } =
 
   // Важно: Content-Type для formData НЕ ставим — браузер сам проставит boundary
   let r, responseText;
-  let netErr = null;
-  for (const base of apiBaseCandidates()) {
-    try {
-      const fetched = await fetchApiResponse(`${base}${path}`, {
+  try {
+    const fetched = await fetchApiCandidates(
+      apiBaseCandidates().map((base) => `${base}${path}`),
+      {
         method: "POST",
         body: formData,
         headers,
         signal,
         credentials: "omit",
-      }, timeoutMs);
-      r = fetched.response; responseText = fetched.text;
-      break;
-    } catch (e) {
-      netErr = e;
-      if (signal?.aborted) throw e;
-      if (e.name === "TimeoutError") break;
-    }
-  }
-
-  if (!r) {
+      },
+      timeoutMs,
+    );
+    r = fetched.response;
+    responseText = fetched.text;
+  } catch (error) {
+    if (signal?.aborted) throw error;
     throw makeError("network_error", {
       ok: false,
-      reason: netErr?.name === "TimeoutError" ? "request_timeout" : "network_error",
-      detail: netErr?.message || "fetch_failed",
+      reason:
+        error?.name === "TimeoutError" ? "request_timeout" : "network_error",
+      detail: error?.message || "fetch_failed",
     });
   }
 
@@ -168,14 +174,22 @@ export async function apiUpload(path, formData, { signal, timeoutMs = 45_000 } =
 }
 
 export function setAuthToken(token) {
-  try { localStorage.setItem("auth_token", token || ""); } catch {}
+  try {
+    localStorage.setItem("auth_token", token || "");
+  } catch {}
 }
 
 export function clearAuthToken() {
-  try { localStorage.removeItem("auth_token"); } catch {}
+  try {
+    localStorage.removeItem("auth_token");
+  } catch {}
 }
 
-export const apiGet = (path, opts) => request(path, { method: "GET", ...(opts || {}) });
-export const apiPost = (path, body, opts) => request(path, { method: "POST", body: body ?? {}, ...(opts || {}) });
-export const apiPatch = (path, body, opts) => request(path, { method: "PATCH", body: body ?? {}, ...(opts || {}) });
-export const apiDelete = (path, opts) => request(path, { method: "DELETE", ...(opts || {}) });
+export const apiGet = (path, opts) =>
+  request(path, { method: "GET", ...(opts || {}) });
+export const apiPost = (path, body, opts) =>
+  request(path, { method: "POST", body: body ?? {}, ...(opts || {}) });
+export const apiPatch = (path, body, opts) =>
+  request(path, { method: "PATCH", body: body ?? {}, ...(opts || {}) });
+export const apiDelete = (path, opts) =>
+  request(path, { method: "DELETE", ...(opts || {}) });
