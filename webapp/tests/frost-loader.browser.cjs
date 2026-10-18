@@ -10,11 +10,24 @@ const assert = require("node:assert/strict");
     ],
   });
   try {
+    let stylesheetRequests = 0;
+    async function breakExternalStyles(target) {
+      if (!process.env.BLOCK_EXTERNAL_CSS) return;
+      await target.route(/\.css(?:\?|$)/, (route) => {
+        stylesheetRequests++;
+        return route.fulfill({
+          status: 200,
+          contentType: "text/plain",
+          body: "stylesheet unavailable",
+        });
+      });
+    }
     // The same shell is present even before the application JavaScript runs.
     const shell = await browser.newPage({
       javaScriptEnabled: false,
       viewport: { width: 390, height: 844 },
     });
+    await breakExternalStyles(shell);
     await shell.goto(process.argv[2] || "http://localhost:5173/", {
       waitUntil: "domcontentloaded",
     });
@@ -29,10 +42,17 @@ const assert = require("node:assert/strict");
         .evaluate((e) => e.complete && e.naturalWidth > 0),
       true,
     );
+    assert.equal(
+      await shell
+        .locator("#startup-splash")
+        .evaluate((e) => getComputedStyle(e).position),
+      "fixed",
+    );
     await shell.close();
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },
     });
+    await breakExternalStyles(page);
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.addInitScript(() => {
@@ -248,6 +268,21 @@ const assert = require("node:assert/strict");
       await page.locator('[aria-hidden="true"] .appShell').count(),
       0,
     );
+    assert.notEqual(
+      await page
+        .locator(".gameCard")
+        .first()
+        .evaluate((e) => getComputedStyle(e).borderTopLeftRadius),
+      "0px",
+    );
+    if (process.env.BLOCK_EXTERNAL_CSS) {
+      assert.equal(
+        stylesheetRequests,
+        0,
+        "Production HTML must not require an external CSS file",
+      );
+      await page.screenshot({ path: "/tmp/hockey-css-restored.png" });
+    }
     assert.deepEqual(errors, []);
     console.log(
       "PASS: one persistent centered frost screen across auth/games/detail/error/retry, one auth request, assets, mobile widths/landscape, reduced motion, focus, fade cleanup and restored interaction.",
