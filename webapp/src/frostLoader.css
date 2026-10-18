@@ -51,7 +51,7 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: url("/frost-overlay.png") center / 100% 100% no-repeat;
+  background: url("/frosty-overlay.png") center / 100% 100% no-repeat;
   animation: frostOverlayFade 5s ease-in-out both;
 }
 /* Shrink a feathered elliptical hole in an opaque mask: the frost spreads

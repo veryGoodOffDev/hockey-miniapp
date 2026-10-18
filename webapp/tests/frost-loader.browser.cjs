@@ -174,14 +174,14 @@ const assert = require("node:assert/strict");
     });
     assert.equal(maskFrames.name, "frostReveal");
     assert.equal(maskFrames.duration, "5s");
-    assert.match(maskFrames.image, /frost-overlay\.png/);
+    assert.match(maskFrames.image, /frosty-overlay\.png/);
     assert.match(maskFrames.mask, /radial-gradient/);
     assert.equal(maskFrames.samples[0], "100% 100%, 260% 260%");
     assert.notEqual(maskFrames.samples[1], maskFrames.samples[0]);
     assert.notEqual(maskFrames.samples[1], maskFrames.samples[2]);
     assert.equal(maskFrames.samples[2], "100% 100%, 0% 0%");
     const asset = await page.request.get(
-      new URL("/frost-overlay.png", page.url()).href,
+      new URL("/frosty-overlay.png", page.url()).href,
     );
     assert.equal(asset.status(), 200);
     assert.match(asset.headers()["content-type"], /image\/png/);
