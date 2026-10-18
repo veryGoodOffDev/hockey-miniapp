@@ -132,13 +132,42 @@ const assert = require("node:assert/strict");
         ),
         true,
       );
-    await page.waitForFunction(
-      () =>
-        Number(
-          getComputedStyle(document.querySelector(".frostLoader__edge"))
-            .opacity,
-        ) > 0.7,
+    assert.equal(await page.locator(".frostLoader__edge").count(), 0);
+    const overlay = page.locator(".frostLoader__overlay");
+    const maskFrames = await overlay.evaluate((element) => {
+      const animation = element.getAnimations()[0];
+      animation.pause();
+      const samples = [0, 900, 1800].map((time) => {
+        animation.currentTime = time;
+        return getComputedStyle(element).maskSize;
+      });
+      const style = getComputedStyle(element);
+      const result = {
+        samples,
+        name: style.animationName,
+        duration: style.animationDuration,
+        image: style.backgroundImage,
+        mask: style.maskImage,
+      };
+      animation.finish();
+      return result;
+    });
+    assert.equal(maskFrames.name, "frostReveal");
+    assert.equal(maskFrames.duration, "1.8s");
+    assert.match(maskFrames.image, /frost-overlay\.png/);
+    assert.equal((maskFrames.mask.match(/linear-gradient/g) || []).length, 4);
+    assert.equal(maskFrames.samples[0], "100% 0%, 100% 0%, 0% 100%, 0% 100%");
+    assert.notEqual(maskFrames.samples[1], maskFrames.samples[0]);
+    assert.notEqual(maskFrames.samples[1], maskFrames.samples[2]);
+    assert.equal(
+      maskFrames.samples[2],
+      "100% 100%, 100% 100%, 100% 100%, 100% 100%",
     );
+    const asset = await page.request.get(
+      new URL("/frost-overlay.png", page.url()).href,
+    );
+    assert.equal(asset.status(), 200);
+    assert.match(asset.headers()["content-type"], /image\/png/);
     for (const width of [320, 390, 430]) {
       await page.setViewportSize({ width, height: 844 });
       assert.equal(
@@ -161,7 +190,7 @@ const assert = require("node:assert/strict");
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(
       await page
-        .locator(".frostLoader__edge")
+        .locator(".frostLoader__overlay")
         .first()
         .evaluate((e) => getComputedStyle(e).animationName),
       "none",

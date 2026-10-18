@@ -45,27 +45,38 @@
       transparent 74%,
       #bbecff30
     );
-  animation: frostMistIn 2.4s ease-out both;
 }
-.frostLoader__edge {
+.frostLoader__overlay {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: min(34vw, 260px);
+  inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: url("/frost-edge.svg") left center / 100% 100% no-repeat;
-  opacity: 0.8;
-  transform-origin: left center;
-  animation: frostEdgeIn 2.6s ease-out both;
+  background: url("/frost-overlay.png") center / 100% 100% no-repeat;
+  animation: frostOverlayFade 1.8s ease-out both;
 }
-.frostLoader__edge--left {
-  left: 0;
-}
-.frostLoader__edge--right {
-  right: 0;
-  transform-origin: center;
-  scale: -1 1;
+/* Four soft masks grow inward. mask-size animates in older Telegram WebViews too,
+   without @property support or a frame-by-frame JavaScript loop. */
+@supports (mask-image: linear-gradient(#000, transparent)) or
+  (-webkit-mask-image: linear-gradient(#000, transparent)) {
+  .frostLoader__overlay {
+    -webkit-mask-image:
+      linear-gradient(to bottom, #000 65%, transparent),
+      linear-gradient(to top, #000 65%, transparent),
+      linear-gradient(to right, #000 65%, transparent),
+      linear-gradient(to left, #000 65%, transparent);
+    mask-image:
+      linear-gradient(to bottom, #000 65%, transparent),
+      linear-gradient(to top, #000 65%, transparent),
+      linear-gradient(to right, #000 65%, transparent),
+      linear-gradient(to left, #000 65%, transparent);
+    -webkit-mask-position: top, bottom, left, right;
+    mask-position: top, bottom, left, right;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    animation: frostReveal 1.8s ease-out both;
+  }
 }
 .frostLoader__content {
   width: min(100%, 370px);
@@ -190,17 +201,33 @@
   width: min(140px, 22vh);
   margin-bottom: 20px;
 }
-@keyframes frostEdgeIn {
+@keyframes frostReveal {
   from {
-    opacity: 0;
-    transform: scaleX(0.72);
+    -webkit-mask-size:
+      100% 0%,
+      100% 0%,
+      0% 100%,
+      0% 100%;
+    mask-size:
+      100% 0%,
+      100% 0%,
+      0% 100%,
+      0% 100%;
   }
   to {
-    opacity: 0.8;
-    transform: scaleX(1);
+    -webkit-mask-size:
+      100% 100%,
+      100% 100%,
+      100% 100%,
+      100% 100%;
+    mask-size:
+      100% 100%,
+      100% 100%,
+      100% 100%,
+      100% 100%;
   }
 }
-@keyframes frostMistIn {
+@keyframes frostOverlayFade {
   from {
     opacity: 0;
   }

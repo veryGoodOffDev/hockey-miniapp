@@ -15,6 +15,7 @@
     <meta name="theme-color" content="#111111" />
     <link rel="stylesheet" href="/src/frostLoader.css" />
     <link rel="preload" href="/premiumaward.png" as="image" />
+    <link rel="preload" href="/frost-overlay.png" as="image" />
   </head>
   <body>
     <div
@@ -24,14 +25,7 @@
       aria-label="Подключаемся…"
     >
       <div class="frostLoader__mist" aria-hidden="true"></div>
-      <div
-        class="frostLoader__edge frostLoader__edge--left"
-        aria-hidden="true"
-      ></div>
-      <div
-        class="frostLoader__edge frostLoader__edge--right"
-        aria-hidden="true"
-      ></div>
+      <div class="frostLoader__overlay" aria-hidden="true"></div>
       <div class="frostLoader__content">
         <div class="frostLoader__emblem">
           <img src="/premiumaward.png" width="220" height="220" alt="" />

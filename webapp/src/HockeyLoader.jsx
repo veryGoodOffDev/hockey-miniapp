@@ -22,14 +22,7 @@ export default function HockeyLoader({
       aria-hidden={leaving || undefined}
     >
       <div className="frostLoader__mist" aria-hidden="true" />
-      <div
-        className="frostLoader__edge frostLoader__edge--left"
-        aria-hidden="true"
-      />
-      <div
-        className="frostLoader__edge frostLoader__edge--right"
-        aria-hidden="true"
-      />
+      <div className="frostLoader__overlay" aria-hidden="true" />
       <div className="frostLoader__content">
         <div className="frostLoader__emblem" aria-hidden="true">
           <img
