@@ -1,0 +1,84 @@
+.sheepReminder {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  color: #eef6ff;
+  background: linear-gradient(145deg, #163452, #081726 80%);
+  border: 1px solid #5386ae;
+  border-radius: 24px;
+  box-shadow: 0 16px 70px #0008;
+  z-index: 2147483647;
+}
+.sheepReminder::backdrop {
+  background: #020912cc;
+  backdrop-filter: blur(6px);
+}
+.sheepReminder__card {
+  padding: 26px 22px 22px;
+  text-align: center;
+}
+.sheepReminder h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.3;
+  color: #f3f8ff;
+}
+.sheepReminder__image {
+  display: block;
+  width: min(220px, 100%);
+  height: auto;
+  margin: 18px auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 15px #0005);
+}
+.sheepReminder__choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.sheepReminder__choice input {
+  width: 20px;
+  height: 20px;
+  accent-color: #3289f5;
+}
+.sheepReminder__confirm {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 14px;
+  border: 1px solid #60a9ff;
+  border-radius: 14px;
+  background: linear-gradient(#267fea, #1759c2);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sheepReminder__confirm:focus-visible {
+  outline: 3px solid #a3d4ff;
+  outline-offset: 3px;
+}
+.sheepReminder__error {
+  color: #ffbfbc;
+  font-size: 13px;
+  line-height: 1.4;
+}
+@media (max-height: 530px) {
+  .sheepReminder__card {
+    padding: 16px;
+  }
+  .sheepReminder h2 {
+    font-size: 18px;
+  }
+  .sheepReminder__image {
+    width: 130px;
+    margin: 8px auto;
+  }
+}

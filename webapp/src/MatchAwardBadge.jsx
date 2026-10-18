@@ -8,7 +8,7 @@ export default function MatchAwardBadge({
   return (
     <img
       className={`matchAwardBadge ${previous ? "matchAwardBadge--previous" : ""} ${className}`}
-      src="/sheepawardtiny.jpg"
+      src="/premiumaward.png"
       width="28"
       height="28"
       alt={

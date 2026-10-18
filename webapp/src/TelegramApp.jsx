@@ -1,4 +1,5 @@
 import MatchAwardBadge from "./MatchAwardBadge.jsx";
+import SheepReminder from "./SheepReminder.jsx";
 import GameDetailTop, { GameDetailNav } from "./GameDetailTop.jsx";
 import useGameTeamColors from "./useGameTeamColors.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -3162,6 +3163,7 @@ function openYandexRoute(lat, lon) {
   const popupHasAward = game?.best_player_tg_id != null && String(game.best_player_tg_id) === String(posPopup?.tg_id);
   return (
     <div ref={gamesPullRef} className="container appShell">
+    <SheepReminder playerId={me?.tg_id} nextGameId={nextUpcomingId} />
     {airHockeyOpen ? <AirHockey inviteCode={airHockeyInvite} onClose={() => { setAirHockeyOpen(false); setAirHockeyInvite(null); refreshAirHockeyBalance(); }} onProfileChange={refreshAirHockeyBalance} /> : null}
     {!inTelegramWebApp && (
       <div className="webThemeDock" role="region" aria-label="Тема (веб)">
