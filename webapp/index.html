@@ -2,7 +2,10 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>Mighty Sheep App</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -10,10 +13,37 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#111111" />
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/src/frostLoader.css" />
+    <link rel="preload" href="/premiumaward.png" as="image" />
   </head>
   <body>
+    <div
+      id="startup-splash"
+      class="frostLoader frostLoader--screen"
+      role="status"
+      aria-label="Подключаемся…"
+    >
+      <div class="frostLoader__mist" aria-hidden="true"></div>
+      <div
+        class="frostLoader__edge frostLoader__edge--left"
+        aria-hidden="true"
+      ></div>
+      <div
+        class="frostLoader__edge frostLoader__edge--right"
+        aria-hidden="true"
+      ></div>
+      <div class="frostLoader__content">
+        <div class="frostLoader__emblem">
+          <img src="/premiumaward.png" width="220" height="220" alt="" />
+        </div>
+        <div class="frostLoader__status">
+          <span class="frostLoader__eyebrow">MIGHTY SHEEP</span>
+          <div class="frostLoader__text">Подключаемся…</div>
+        </div>
+      </div>
+    </div>
     <div id="root"></div>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

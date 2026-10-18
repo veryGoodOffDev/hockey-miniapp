@@ -1,25 +1,32 @@
-// App.jsx
-import { useState } from "react";
-
+import { useEffect, useState } from "react";
 import TelegramApp from "./TelegramApp.jsx";
 import PublicRsvpPage from "./PublicRsvpPage.jsx";
 import MainGate from "./MainGate.jsx";
-
+import StartupOverlay from "./StartupOverlay.jsx";
 import { apiGet, apiPost } from "./api.js";
 
 export default function App() {
-  // если открыли ссылку гостя в обычном браузере
+  const [me, setMe] = useState(null);
+  const [startup, setStartup] = useState({ text: "Подключаемся…" });
+  useEffect(() => {
+    document.getElementById("startup-splash")?.remove();
+  }, []);
   if (window.location.pathname.startsWith("/rsvp")) {
     return <PublicRsvpPage apiGet={apiGet} apiPost={apiPost} />;
   }
-
-  // gate решает: Telegram / Web (email) / error
-  const [me, setMe] = useState(null);
-
-  if (!me) {
-    return <MainGate onAuthed={(meData) => setMe(meData)} />;
-  }
-
-  // дальше — твоё обычное приложение
-  return <TelegramApp me={me} />;
+  return (
+    <>
+      <div
+        inert={startup ? "" : undefined}
+        aria-hidden={startup ? true : undefined}
+      >
+        {me ? (
+          <TelegramApp me={me} onStartupState={setStartup} />
+        ) : (
+          <MainGate onAuthed={setMe} onStartupState={setStartup} />
+        )}
+      </div>
+      <StartupOverlay state={startup} />
+    </>
+  );
 }

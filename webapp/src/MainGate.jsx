@@ -5,7 +5,7 @@ import { isInTelegram, tgReady } from "./tg";
 
 // сюда ты позже подключишь EmailOTP экран
 import AuthLanding from "./AuthLanding.jsx";
-import { describeConnectionError } from "./connectionError.js";
+import HockeyLoader from "./HockeyLoader.jsx";
 
 const BOT_USERNAME = import.meta.env.VITE_BOT_USERNAME; // без @
 const STARTAPP = import.meta.env.VITE_STARTAPP_PARAM || "home";
@@ -15,7 +15,7 @@ function openInTelegramUrl() {
   return `https://t.me/${BOT_USERNAME}?startapp=${encodeURIComponent(STARTAPP)}`;
 }
 
-export default function MainGate({ onAuthed }) {
+export default function MainGate({ onAuthed, onStartupState }) {
   const requestRef = useRef(null);
   const [state, setState] = useState({
     loading: true,
@@ -28,6 +28,7 @@ export default function MainGate({ onAuthed }) {
     const controller = new AbortController();
     requestRef.current = controller;
     setState({ loading: true, error: null, stage: "loading" });
+    onStartupState?.({ text: "Проверяем доступ…" });
 
     try {
       const me = await apiGet("/api/me", {
@@ -52,13 +53,19 @@ export default function MainGate({ onAuthed }) {
         error?.status === 401 ||
         ["no_init_data", "invalid_token"].includes(reason);
       // Missing credentials are expected in a browser. A network failure is not a login screen.
+      const login = !isInTelegram() && needsLogin;
+      onStartupState?.(
+        login
+          ? null
+          : { error, onRetry: checkMe, telegramUrl: openInTelegramUrl() },
+      );
       setState({
         loading: false,
         error,
-        stage: !isInTelegram() && needsLogin ? "login" : "error",
+        stage: login ? "login" : "error",
       });
     }
-  }, [onAuthed]);
+  }, [onAuthed, onStartupState]);
 
   useEffect(() => {
     tgReady();
@@ -67,7 +74,7 @@ export default function MainGate({ onAuthed }) {
   }, [checkMe]);
 
   if (state.loading) {
-    return <div className="card">Загружаем…</div>;
+    return onStartupState ? null : <HockeyLoader text="Проверяем доступ…" />;
   }
 
   // ===== ВЕБ-ВХОД (не Telegram) =====
@@ -85,29 +92,11 @@ export default function MainGate({ onAuthed }) {
     );
   }
 
-  const failure = describeConnectionError(state.error);
-  const tgUrl = openInTelegramUrl();
-  return (
-    <div className="card" role="alert" aria-live="polite">
-      <h2>{failure.title}</h2>
-      <p className="small" style={{ lineHeight: 1.5 }}>
-        {failure.message}
-      </p>
-      {failure.hint && (
-        <p className="small" style={{ lineHeight: 1.5 }}>
-          {failure.hint}
-        </p>
-      )}
-      <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-        <button className="btn" onClick={checkMe}>
-          Повторить
-        </button>
-        {failure.kind === "auth" && tgUrl && (
-          <a className="btn secondary" href={tgUrl}>
-            Открыть бота
-          </a>
-        )}
-      </div>
-    </div>
+  return onStartupState ? null : (
+    <HockeyLoader
+      error={state.error}
+      onRetry={checkMe}
+      telegramUrl={openInTelegramUrl()}
+    />
   );
 }

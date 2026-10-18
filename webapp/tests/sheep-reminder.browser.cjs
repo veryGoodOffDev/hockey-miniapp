@@ -81,7 +81,9 @@ const assert = require("node:assert/strict");
         };
       if (url.pathname === "/api/game") {
         detailRequests++;
-        if (failDetail) return r.fulfill({ status: 503, json: { ok: false } });
+        // Fail only the optional reminder lookup, after the mandatory startup detail.
+        if (failDetail && detailRequests > 1)
+          return r.fulfill({ status: 503, json: { ok: false } });
         const game = games.find(
           (g) => g.id === Number(url.searchParams.get("game_id")),
         );

@@ -37,7 +37,7 @@ const SOCKS_SIZE_OPTS = [
   { code: "adult", label: "Обычный" },
   { code: "junior", label: "Junior" },
 ];
-export default function TelegramApp({ me: initialMeProp }) {
+export default function TelegramApp({ me: initialMeProp, onStartupState }) {
   const tg = window.Telegram?.WebApp;
   const initData = tg?.initData || "";
   const tgUser = tg?.initDataUnsafe?.user || null;
@@ -1276,11 +1276,12 @@ async function loadAttendance(opts = {}) {
     setStatsLoading(false);
   }
 }
-async function refreshAll(forceGameId) {
+async function refreshAll(forceGameId, { startup = false, signal } = {}) {
   
+  const get = (url) => apiGet(url, { signal });
   try {
     setGamesError(null);
-    const m = await apiGet("/api/me");
+    const m = startup && initialMeProp?.player ? initialMeProp : await get("/api/me");
     // доступ закрыт
     if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set" || m?.reason === "player_deleted")) {
       setMe(null);
@@ -1338,6 +1339,7 @@ async function refreshAll(forceGameId) {
     }
     setIsAdmin(!!m?.is_admin);
     setAccessReason(null);
+    if (startup) onStartupState?.({ text: "Загружаем игры…" });
     const gamesUrl = hasWebAuth && !inTelegramWebApp
       ? "/api/games?scope=all&limit=365&offset=0"
       : "/api/games?scope=upcoming&limit=365&offset=0";
@@ -1348,13 +1350,18 @@ async function refreshAll(forceGameId) {
     let ggOptimistic = null;
     if (gameUrl) {
       // ✅ параллельные запросы
-      const [glRes, ggRes] = await Promise.allSettled([apiGet(gamesUrl), apiGet(gameUrl)]);
+      const [glRes, ggRes] = await Promise.allSettled([get(gamesUrl), get(gameUrl)]);
       if (glRes.status === "rejected") throw glRes.reason;
       gl = glRes.value;
       if (ggRes.status === "fulfilled") ggOptimistic = ggRes.value;
       // если gg упал — просто догрузим позже, не валим весь refreshAll
     } else {
-      gl = await apiGet(gamesUrl);
+      gl = await get(gamesUrl);
+    }
+    if (startup && !gl?.ok) {
+      const error = new Error("invalid_response");
+      error.data = gl?.ok === false ? gl : { reason: "invalid_response" };
+      throw error;
     }
     if (gl?.ok === false) {
       setGamesError(gl);
@@ -1367,9 +1374,10 @@ async function refreshAll(forceGameId) {
     }
     let todayFromPast = [];
     try {
-      const p = await apiGet("/api/games?scope=past&limit=20&offset=0");
+      const p = await get("/api/games?scope=past&limit=20&offset=0");
       todayFromPast = (p?.games || []).filter((g) => !gameFlags(g?.starts_at).isPast);
     } catch {}
+    if (signal?.aborted) throw signal.reason;
     let list = mergeUniqueById(gl.games || [], todayFromPast);
     setGames(list);
     setTalismanHolder(gl.talisman_holder || null);
@@ -1377,7 +1385,7 @@ async function refreshAll(forceGameId) {
       const hasUpcoming = (list || []).some((g) => !isPastGame(g));
       if (!hasUpcoming) {
         try {
-          const all = await apiGet("/api/games?scope=all&limit=365&offset=0");
+          const all = await get("/api/games?scope=all&limit=365&offset=0");
           if (all?.games?.length) {
             list = all.games || [];
             setGames(list);
@@ -1396,18 +1404,27 @@ async function refreshAll(forceGameId) {
     const nextId = forceGameId ?? selectedGameId ?? safeNext;
     if (nextId) setSelectedGameId(nextId);
     // если параллельно грузили не ту игру — догружаем нужную
+    if (startup) onStartupState?.({ text: "Загружаем составы…" });
     let gg;
     if (ggOptimistic && String(nextId) === String(optimisticId)) {
       gg = ggOptimistic;
     } else {
-      gg = await apiGet(nextId ? `/api/game?game_id=${encodeURIComponent(nextId)}` : "/api/game");
+      gg = await get(nextId ? `/api/game?game_id=${encodeURIComponent(nextId)}` : "/api/game");
+    }
+    if (signal?.aborted) throw signal.reason;
+    if (startup && !gg?.ok) {
+      const error = new Error("invalid_response");
+      error.data = gg?.ok === false ? gg : { reason: "invalid_response" };
+      throw error;
     }
     setGame(gg.game);
     setRsvps(gg.rsvps || []);
     setTeams(normalizeTeams(gg.teams));
   } catch (e) {
+    if (signal?.aborted) throw e;
     console.error("refreshAll failed", e);
     setGamesError(e);
+    if (startup) throw e;
   }
 }
 const gameListPull = usePullToRefresh({
@@ -1808,25 +1825,40 @@ function clipText(s, max = 70) {
       }
     }
   }
-  (async () => {
+  let active = true;
+  let controller;
+  let themeSubscribed = false;
+  async function start() {
+    controller?.abort();
+    controller = new AbortController();
+    const signal = controller.signal;
+    let ready = false;
+    setLoading(true);
+    onStartupState?.({ text: "Загружаем игры…" });
     try {
-      setLoading(true);
-      // TG-специфичные штуки — только если реально внутри Telegram
-      if (inTelegramWebApp) {
+      if (inTelegramWebApp && !themeSubscribed) {
         tg?.ready?.();
         tg?.expand?.();
         applyTheme();
         tg?.onEvent?.("themeChanged", applyTheme);
+        themeSubscribed = true;
       }
-      await refreshAll(forceGameId);
+      await refreshAll(forceGameId, { startup: true, signal });
+      ready = true;
+      if (active && !signal.aborted) onStartupState?.(null);
+    } catch (error) {
+      if (active && !signal.aborted) onStartupState?.({ error, onRetry: start });
     } finally {
-      setLoading(false);
+      if (active && !signal.aborted && (ready || !onStartupState)) setLoading(false);
     }
-  })();
+  }
+  void start();
   return () => {
-    if (inTelegramWebApp) tg?.offEvent?.("themeChanged", applyTheme);
+    active = false;
+    controller?.abort();
+    if (themeSubscribed) tg?.offEvent?.("themeChanged", applyTheme);
   };
-}, [inTelegramWebApp, hasWebAuth]);
+}, [inTelegramWebApp, hasWebAuth, onStartupState]);
 //   useEffect(() => {
 //     if (!inTelegramWebApp) {
 //       setLoading(false);
@@ -3065,7 +3097,7 @@ function openYandexRoute(lat, lon) {
     });
   }, [playersDir, playerQ]);
   // === RENDER ===
-  if (loading) return <HockeyLoader fullScreen text="Загружаем..." />;
+  if (loading) return onStartupState ? null : <HockeyLoader fullScreen text="Загружаем игры…" />;
   if (!inTelegramWebApp && !hasWebAuth) {
     return (
       <div className="container">
@@ -3449,7 +3481,7 @@ function openYandexRoute(lat, lon) {
                 setTab("teams");
               }} onBack={() => setGameView("list")} />
               {detailLoading ? (
-                <HockeyLoader text="Загружаем игру..." />
+                <HockeyLoader fullScreen={false} text="Загружаем игру…" />
               ) : !game ? (
                 <div className="small">Не удалось загрузить игру.</div>
               ) : (
@@ -4793,7 +4825,7 @@ function openYandexRoute(lat, lon) {
               />
               <hr />
               {playersLoading ? (
-                <HockeyLoader text="Загружаем игроков..." />
+                <HockeyLoader fullScreen={false} text="Загружаем игроков…" />
               ) : filteredPlayersDir.length === 0 ? (
                 <div className="small">Пока нет игроков.</div>
               ) : (
@@ -4868,7 +4900,7 @@ function openYandexRoute(lat, lon) {
               </div>
               <hr />
               {playerDetailLoading ? (
-                <HockeyLoader text="Загружаем профиль..." />
+                <HockeyLoader fullScreen={false} text="Загружаем профиль…" />
               ) : !selectedPlayer ? (
                 <div className="small">Игрок не найден.</div>
               ) : (

@@ -204,10 +204,10 @@ const assert = require("node:assert/strict");
     {
       const { page, setMode } = await setup("games-network");
       await page
-        .getByText("Не удалось загрузить игры", { exact: true })
-        .waitFor();
-      await page
-        .getByText("Не удалось связаться с сервером", { exact: true })
+        .getByRole("heading", {
+          name: "Не удалось связаться с сервером",
+          exact: true,
+        })
         .waitFor();
       assert.match(await page.locator("body").innerText(), /VPN/);
       assert.doesNotMatch(
@@ -216,7 +216,7 @@ const assert = require("node:assert/strict");
       );
       setMode("healthy");
       await page
-        .getByRole("button", { name: "🔄 Обновить", exact: true })
+        .getByRole("button", { name: "Повторить", exact: true })
         .click();
       await page.locator(".gameCard").first().waitFor();
       assert.equal(
