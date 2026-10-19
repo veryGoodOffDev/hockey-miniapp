@@ -193,6 +193,7 @@ export async function ensureSchema(q) {
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS display_name TEXT;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS jersey_number INT;`);
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS rsvp_view TEXT NOT NULL DEFAULT 'list' CHECK (rsvp_view IN ('list', 'chips'));`);
 
   //  поля гостей (оставляем для совместимости)
   await q(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE;`);

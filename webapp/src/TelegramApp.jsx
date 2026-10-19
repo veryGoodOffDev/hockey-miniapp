@@ -1,3 +1,5 @@
+import useRsvpView from "./useRsvpView.js";
+import RsvpViewToggle from "./RsvpViewToggle.jsx";
 import MatchAwardBadge from "./MatchAwardBadge.jsx";
 import { describeConnectionError } from "./connectionError.js";
 import SheepReminder from "./SheepReminder.jsx";
@@ -114,6 +116,9 @@ useEffect(() => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [me, setMe] = useState(initialMeProp?.player ?? initialMeProp ?? null);
+  const rsvpView = useRsvpView(me?.tg_id, me?.rsvp_view, (view) => {
+    setMe(previous => previous ? { ...previous, rsvp_view: view } : previous);
+  });
   const [accessReason, setAccessReason] = useState(null);
   const [isAdmin, setIsAdmin] = useState(!!initialMeProp?.is_admin);
   const [games, setGames] = useState([]);
@@ -3510,9 +3515,11 @@ function openYandexRoute(lat, lon) {
                         <MatchAwardBadge previous decorative /><span><strong>{game.previous_game_award.name}</strong> · в прошлой игре</span>
                       </div>}
                       <div className="small">Отметки:</div>
+                      <RsvpViewToggle {...rsvpView} />
                       <div style={{ marginTop: 10 }}>
                       <StatusBlock
                         title="Буду"
+                        view={rsvpView.view}
                         tone="yes"
                         list={grouped.yes}
                         isAdmin={isAdmin}
@@ -3523,8 +3530,8 @@ function openYandexRoute(lat, lon) {
                         canPickPos={true}
                         setPosPopup={setPosPopup}
                       />
-                        <StatusBlock title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
-                        <StatusBlock title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
+                        <StatusBlock view={rsvpView.view} title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
+                        <StatusBlock view={rsvpView.view} title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
                       </div>
                       <hr />
                                   <div ref={commentsBlockRef} />

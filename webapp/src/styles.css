@@ -5333,3 +5333,23 @@ button.rsvpRoster__player { cursor: pointer; }
 .rsvpRoster__previousAward .matchAwardBadge { width: 28px; height: 28px; flex-basis: 28px; margin: 0; }
 .matchAwardBadge--previous { opacity: .5; filter: saturate(.55); box-shadow: none; }
 .matchAwardArchive--previous { font-size: 12px; border-color: var(--border); background: transparent; color: var(--tg-hint); }
+
+.rsvpViewToolbar { margin: 10px 0 4px; }
+.rsvpViewToggle { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid #3a6081; border-radius: 14px; background: #0c1e31; }
+.rsvpViewToggle button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #b8cfe4; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.rsvpViewToggle button.isActive { border-color: #5caef3; background: #18568b; color: #fff; box-shadow: 0 2px 8px #0003; }
+.rsvpViewToggle button:focus-visible { outline: 2px solid #8aecff; outline-offset: 2px; }
+.rsvpViewToolbar__status { display: block; margin-top: 5px; font-size: 11px; line-height: 1.4; color: #bed3e6; }
+.rsvpViewToolbar__status:empty { display: none; }
+.rsvpViewToolbar__status button { padding: 4px 0; border: 0; background: transparent; color: #91d5ff; text-decoration: underline; font: inherit; cursor: pointer; }
+.rsvpRoster--chips .rsvpRoster__list { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 7px; }
+.rsvpRoster--chips .rsvpRoster__list > li { flex: 0 1 auto; max-width: 100%; min-width: 0; }
+.rsvpRoster--chips .rsvpRoster__player { display: flex; align-items: center; width: auto; max-width: 100%; gap: 6px; padding: 6px 10px 6px 7px; border-radius: 24px; }
+.rsvpRoster--chips .rsvpRoster__ordinal { display: none; }
+.rsvpRoster--chips .rsvpRoster__position { flex: 0 0 23px; width: 23px; min-height: 23px; border-radius: 50%; font-size: 10px; }
+.rsvpRoster--chips .rsvpRoster__identity { flex: 0 1 auto; }
+.rsvpRoster--chips .rsvpRoster__name { font-size: 12px; }
+.rsvpRoster--chips .rsvpRoster__nameLine { gap: 4px; }
+.rsvpRoster--chips .rsvpRoster__meta { flex-shrink: 0; gap: 1px; }
+.rsvpRoster--chips .rsvpRoster__number { font-size: 11px; }
+.rsvpRoster--chips .rsvpRoster__skill { font-size: 9px; }

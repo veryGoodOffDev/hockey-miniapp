@@ -1,3 +1,4 @@
+import { createPlayerPreferencesHandler } from "./playerPreferences.js";
 import { getPreviousMatchAward } from "./previousMatchAward.js";
 import { createChatInboxRepository, createChatInboxCapture, createChatInboxRoutes } from "./chatInbox.js";
 import "dotenv/config";
@@ -2976,6 +2977,17 @@ app.get("/api/me", async (req, res) => {
 
   res.json({ ok: true, player, is_admin: admin });
 });
+
+app.patch("/api/me/preferences", createPlayerPreferencesHandler({
+  q,
+  authenticate: async (req, res) => {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return null;
+    const admin = await isAdminId(user.id);
+    if (!admin && !user.is_email_auth && !(await requireGroupMember(req, res, user))) return null;
+    return user;
+  },
+}));
 
 app.post("/api/me", async (req, res) => {
   const user = req.webappUser || requireWebAppAuth(req, res);

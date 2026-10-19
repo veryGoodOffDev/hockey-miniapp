@@ -14,6 +14,7 @@ export default function RsvpStatusBlock({
   teams = null,
   bestPlayerId = null,
   previousAward = null,
+  view = "list",
 }) {
   const players = useMemo(
     () =>
@@ -28,7 +29,10 @@ export default function RsvpStatusBlock({
     tone === "yes" &&
     typeof setPosPopup === "function";
   return (
-    <section className={`rsvpRoster rsvpRoster--${tone}`} aria-label={title}>
+    <section
+      className={`rsvpRoster rsvpRoster--${tone}${view === "chips" ? " rsvpRoster--chips" : ""}`}
+      aria-label={title}
+    >
       <header className="rsvpRoster__header">
         <div className="rsvpRoster__heading">
           <span className="rsvpRoster__led" aria-hidden="true" />
