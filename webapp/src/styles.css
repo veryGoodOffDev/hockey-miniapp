@@ -5336,7 +5336,7 @@ button.rsvpRoster__player { cursor: pointer; }
 
 .rsvpViewToolbar { margin: 10px 0 4px; }
 .rsvpViewToggle { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid #3a6081; border-radius: 14px; background: #0c1e31; }
-.rsvpViewToggle button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #b8cfe4; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.rsvpViewToggle button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; min-width: 44px; padding: 10px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #b8cfe4; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .rsvpViewToggle button.isActive { border-color: #5caef3; background: #18568b; color: #fff; box-shadow: 0 2px 8px #0003; }
 .rsvpViewToggle button:focus-visible { outline: 2px solid #8aecff; outline-offset: 2px; }
 .rsvpViewToolbar__status { display: block; margin-top: 5px; font-size: 11px; line-height: 1.4; color: #bed3e6; }

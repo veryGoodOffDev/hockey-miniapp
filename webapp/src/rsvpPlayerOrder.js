@@ -12,7 +12,7 @@ export const POSITION_GROUPS = [
   { position: "D", title: "Защитники", icon: "🛡" },
   { position: "F", title: "Нападающие", icon: "🏒" },
 ];
-export function groupRsvpPlayers(list, tone) {
+export function groupRsvpPlayers(list, tone, view = "list") {
   const time = (p) => {
     if (tone === "maybe") return Infinity;
     const value = p.status_changed_at ? Date.parse(p.status_changed_at) : NaN;
@@ -29,6 +29,11 @@ export function groupRsvpPlayers(list, tone) {
         );
       })
       .sort((a, b) => {
+        if (view === "chips") {
+          const lengthDifference =
+            Array.from(playerName(a)).length - Array.from(playerName(b)).length;
+          if (lengthDifference !== 0) return lengthDifference;
+        }
         const first = time(a),
           second = time(b);
         if (first !== second) return first < second ? -1 : 1;

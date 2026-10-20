@@ -61,3 +61,85 @@ test("missing timestamps follow dated players; unknown positions and empty/unmar
   );
   assert.deepEqual(groupRsvpPlayers([], "yes"), []);
 });
+
+test("capsules sort short names first inside each position; rows retain chronological order and source data", () => {
+  const players = [
+    {
+      tg_id: 1,
+      display_name: "Александр",
+      position: "D",
+      status_changed_at: "2026-10-19T10:00:00Z",
+    },
+    {
+      tg_id: 2,
+      display_name: "Ли",
+      position: "D",
+      status_changed_at: "2026-10-19T12:00:00Z",
+    },
+    {
+      tg_id: 3,
+      display_name: "Иван",
+      position: "D",
+      status_changed_at: "2026-10-19T11:00:00Z",
+    },
+    { tg_id: 4, display_name: "Длинное имя вратаря", position: "G" },
+    { tg_id: 5, display_name: "Ян", position: "F" },
+  ];
+  const original = structuredClone(players);
+  for (const tone of ["yes", "no", "maybe"]) {
+    const chips = groupRsvpPlayers(players, tone, "chips");
+    assert.deepEqual(
+      chips.map((group) => group.position),
+      ["G", "D", "F"],
+    );
+    assert.deepEqual(
+      chips[1].players.map((player) => player.tg_id),
+      [2, 3, 1],
+    );
+  }
+  for (const tone of ["yes", "no"]) {
+    assert.deepEqual(
+      groupRsvpPlayers(players, tone, "list")[1].players.map(
+        (player) => player.tg_id,
+      ),
+      [1, 3, 2],
+    );
+    assert.deepEqual(
+      groupRsvpPlayers(players, tone),
+      groupRsvpPlayers(players, tone, "list"),
+    );
+  }
+  assert.deepEqual(players, original);
+});
+
+test("equal-length names keep time/alphabet ties and Unicode characters are not counted as UTF-16 halves", () => {
+  const list = [
+    {
+      tg_id: 1,
+      display_name: "Олег",
+      status_changed_at: "2026-10-19T10:00:00Z",
+    },
+    {
+      tg_id: 2,
+      display_name: "Иван",
+      status_changed_at: "2026-10-19T11:00:00Z",
+    },
+    { tg_id: 3, first_name: "Ян" },
+    { tg_id: 4, display_name: "😀" },
+    { tg_id: 5, username: "xy" },
+    { tg_id: 6 },
+  ];
+  assert.deepEqual(
+    groupRsvpPlayers(list, "yes", "chips")[0].players.map(
+      (player) => player.tg_id,
+    ),
+    [4, 6, 3, 5, 1, 2],
+  );
+  assert.deepEqual(
+    groupRsvpPlayers(list.slice(0, 2), "maybe", "chips")[0].players.map(
+      (player) => player.tg_id,
+    ),
+    [2, 1],
+  );
+  assert.deepEqual(groupRsvpPlayers([], "yes", "chips"), []);
+});

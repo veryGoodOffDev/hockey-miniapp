@@ -18,10 +18,10 @@ export default function RsvpStatusBlock({
 }) {
   const players = useMemo(
     () =>
-      groupRsvpPlayers(list, tone).flatMap((group) =>
+      groupRsvpPlayers(list, tone, view).flatMap((group) =>
         group.players.map((player) => ({ player, group })),
       ),
-    [list, tone],
+    [list, tone, view],
   );
   const editable =
     isAdmin &&

@@ -22,7 +22,7 @@ const assert = require("node:assert/strict");
   const players = [
     {
       tg_id: 5,
-      display_name: "Защитник поздний",
+      display_name: "Ли",
       position: "D",
       status: "yes",
       status_changed_at: new Date(time - 1000).toISOString(),
@@ -178,17 +178,19 @@ const assert = require("node:assert/strict");
     const before = await order(p);
     assert.deepEqual(
       before.slice(0, 4).map((x) => x.trim()),
-      ["Иван", "Алексей", "Защитник поздний", "Нападающий"],
+      ["Иван", "Алексей", "Ли", "Нападающий"],
     );
     await p
       .getByPlaceholder("Сообщение…", { exact: true })
       .fill("Черновик сохраняется");
     holdSave = true;
-    await choose(p, "Чипсы");
+    const expectedChips = [before[0], before[2], before[1], ...before.slice(3)];
+    assert.equal(await controls(p).innerText(), "");
+    await choose(p, "Капсулы");
     await p.waitForFunction(
       () => document.querySelectorAll(".rsvpRoster--chips").length === 3,
     );
-    assert.deepEqual(await order(p), before);
+    assert.deepEqual(await order(p), expectedChips);
     assert.equal(
       await p.getByPlaceholder("Сообщение…", { exact: true }).inputValue(),
       "Черновик сохраняется",
@@ -260,6 +262,7 @@ const assert = require("node:assert/strict");
     assert.equal(await p.locator(".rsvpRoster--chips").count(), 3);
     const second = await device(1); // Independent localStorage, server chooses chips.
     assert.equal(await second.page.locator(".rsvpRoster--chips").count(), 3);
+    assert.deepEqual(await order(second.page), expectedChips);
     await second.context.close();
     const other = await device(2);
     assert.equal(await other.page.locator(".rsvpRoster--chips").count(), 0);
@@ -291,7 +294,7 @@ const assert = require("node:assert/strict");
     assert.ok(writes.every((write) => write.userId === 1));
     await first.context.close();
     console.log(
-      "PASS: immediate list/chips switch for all RSVP groups, order/draft/player actions/team colors/trophies preserved, per-user cache, second-device server restore, independent accounts, error/retry/reload, mobile wrapping, lineups unchanged; mocked API only.",
+      "PASS: immediate list/chips switch for all RSVP groups, view-specific sorting/draft/player actions/team colors/trophies preserved, per-user cache, second-device server restore, independent accounts, error/retry/reload, mobile wrapping, lineups unchanged; mocked API only.",
     );
   } finally {
     await browser.close();

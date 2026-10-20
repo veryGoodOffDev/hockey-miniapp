@@ -17,6 +17,8 @@ export default function RsvpViewToggle({
         <button
           type="button"
           className={view === "list" ? "isActive" : ""}
+          aria-label="Список"
+          title="Список"
           aria-pressed={view === "list"}
           onClick={() => setView("list")}
         >
@@ -34,11 +36,12 @@ export default function RsvpViewToggle({
             <circle cx="3" cy="12" r="1" />
             <circle cx="3" cy="18" r="1" />
           </svg>
-          Список
         </button>
         <button
           type="button"
           className={view === "chips" ? "isActive" : ""}
+          aria-label="Капсулы"
+          title="Капсулы"
           aria-pressed={view === "chips"}
           onClick={() => setView("chips")}
         >
@@ -55,7 +58,6 @@ export default function RsvpViewToggle({
             <rect x="2" y="14" width="8" height="6" rx="3" />
             <rect x="13" y="14" width="9" height="6" rx="3" />
           </svg>
-          Чипсы
         </button>
       </div>
       <span
