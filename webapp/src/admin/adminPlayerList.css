@@ -1,0 +1,240 @@
+.adminPlayerList {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.adminPlayerList__count {
+  color: var(--tg-hint, #a8bed4);
+  font-size: 12px;
+  margin-top: 14px;
+}
+.adminPlayerList__empty {
+  color: var(--tg-hint, #a8bed4);
+  font-size: 13px;
+}
+.adminPlayerCard {
+  --player-accent: #83c8ff;
+  display: block;
+  width: 100%;
+  padding: 14px;
+  text-align: left;
+  font: inherit;
+  color: #f2f7ff;
+  border: 1px solid #355572;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #19344d, #102336);
+  box-shadow: 0 4px 16px #0002;
+  cursor: pointer;
+}
+.adminPlayerCard.position-G {
+  --player-accent: #76e2ba;
+}
+.adminPlayerCard.position-D {
+  --player-accent: #f1c77f;
+}
+.adminPlayerCard__top {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+.adminPlayerCard__avatar {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #709bbc66;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(140deg, #336484, #173d59);
+  color: #dcf3ff;
+  font-size: 18px;
+  font-weight: 800;
+}
+.adminPlayerCard__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.adminPlayerCard__identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.adminPlayerCard__identity strong {
+  font-size: 15px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.adminPlayerCard__username {
+  font-size: 11px;
+  color: #a8c4dc;
+  overflow-wrap: anywhere;
+}
+.adminPlayerCard__number {
+  display: grid;
+  gap: 3px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+}
+.adminPlayerCard__number small {
+  color: #8faec7;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+.adminPlayerCard__chevron {
+  flex-shrink: 0;
+  color: #799ab7;
+}
+.adminPlayerCard__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.adminPlayerCard__tags > span {
+  padding: 4px 7px;
+  border-radius: 7px;
+  background: #294259;
+  color: #c3d7e7;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.adminPlayerCard__tags .adminPlayerCard__position {
+  color: var(--player-accent);
+  background: #071c2a70;
+}
+.adminPlayerCard__tags .adminPlayerCard__active {
+  color: #8ce3bd;
+  background: #16483d;
+}
+.adminPlayerCard__tags .adminPlayerCard__disabled {
+  color: #f2b6b6;
+  background: #542f39;
+}
+.adminPlayerCard__lastSeen {
+  display: block;
+  margin-top: 10px;
+  color: #a4bed4;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.adminPlayerCard__bot {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid #6c95b533;
+}
+.adminPlayerCard__botLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #becfdf;
+  font-size: 12px;
+  font-weight: 700;
+}
+.adminPlayerCard__botLabel i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #96a9bb;
+}
+.adminPlayerCard__bot--started .adminPlayerCard__botLabel {
+  color: #85ebbb;
+}
+.adminPlayerCard__bot--started .adminPlayerCard__botLabel i {
+  background: #65e8aa;
+  box-shadow: 0 0 8px #65e8aa33;
+}
+.adminPlayerCard__botDate {
+  color: #9fb9cf;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.adminBotOverview {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #376783;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #12364a, #102639);
+  color: #def0fc;
+}
+.adminBotOverview__headline {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  font-size: 13px;
+}
+.adminBotOverview__headline strong {
+  margin-left: 5px;
+  font-size: 22px;
+  color: #8fe9c1;
+  white-space: nowrap;
+}
+.adminBotOverview__headline strong span {
+  color: #a9c5d9;
+  font-size: 15px;
+}
+.adminBotOverview p {
+  margin: 8px 0 12px;
+  color: #a9c6d9;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.adminBotFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.adminBotFilters button {
+  min-height: 36px;
+  border: 1px solid #45667f;
+  border-radius: 9px;
+  padding: 6px 9px;
+  background: #142d41;
+  color: #b9d1e2;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.adminBotFilters button.isActive {
+  border-color: #7ac5e5;
+  background: #235877;
+  color: #fff;
+}
+.adminPlayerCard:focus-visible,
+.adminBotFilters button:focus-visible {
+  outline: 2px solid #8de0ff;
+  outline-offset: 3px;
+}
+@media (hover: hover) {
+  .adminPlayerCard:hover {
+    border-color: #75a7cd;
+    background: linear-gradient(135deg, #20425f, #163048);
+  }
+}
+@media (max-width: 350px) {
+  .adminPlayerCard {
+    padding: 11px;
+  }
+  .adminPlayerCard__top {
+    gap: 8px;
+  }
+  .adminPlayerCard__avatar {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+  }
+  .adminPlayerCard__identity strong {
+    font-size: 14px;
+  }
+  .adminPlayerCard__number {
+    font-size: 14px;
+  }
+}

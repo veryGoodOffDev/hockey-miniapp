@@ -1,3 +1,4 @@
+import AdminPlayerList from "./admin/AdminPlayerList.jsx";
 import ChatInbox from "./ChatInbox.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
@@ -420,6 +421,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [games, setGames] = useState([]);
   const [players, setPlayers] = useState([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [canViewBotStatus, setCanViewBotStatus] = useState(false);
   const [teamApps, setTeamApps] = useState([]);
   const [teamAppsLoading, setTeamAppsLoading] = useState(false);
 
@@ -762,6 +764,7 @@ function closePlayerSheet() {
         const p = await apiGet("/api/admin/players");
         setPlayers(p.players || []);
         setIsSuperAdmin(!!p.is_super_admin);
+        setCanViewBotStatus(p.can_view_bot_status === true);
 
         const apps = await apiGet("/api/admin/team-applications");
         setTeamApps(apps.applications || []);
@@ -2464,30 +2467,13 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             style={{ marginTop: 10 }}
           />
 
-          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-            {filteredPlayers.map((p) => (
-              <div key={p.tg_id} className="listItem" onClick={() => openPlayerSheet(p)}>
-                <div className="rowBetween">
-                  <div style={{ fontWeight: 900 }}>
-                    {showName(p)}{showNum(p)}{" "}
-                    {p.username ? <span className="small">(@{p.username})</span> : null}
-                  </div>
-                  <span className="badgeMini">{p.disabled ? "disabled" : "active"}</span>
-                </div>
-                <div className="listMeta">
-                  {posHuman((p.position || "F").toUpperCase())}
-                  {p.is_guest ? " · 🧷 гость" : ""}
-                  {p.is_admin ? " · ⭐ админ" : ""}
-                  {p.is_env_admin ? " · 🔒 env-админ" : ""}
-                  {p.joke_premium_active ? " · 🌟 премиум" : ""}
-                </div>
-                {p.last_seen_at ? (
-                  <div className="lastSeenPill">🕒 {formatLastSeenLabel(p.last_seen_at)}</div>
-                ) : null}
-              </div>
-            ))}
-            {filteredPlayers.length === 0 && <div className="small">Игроков не найдено.</div>}
-          </div>
+          <AdminPlayerList
+            players={filteredPlayers}
+            allPlayers={players}
+            canViewBotStatus={canViewBotStatus}
+            onOpenPlayer={openPlayerSheet}
+            formatLastSeen={formatLastSeenLabel}
+          />
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import { canViewPlayerBotStatus, presentAdminPlayers } from "./adminPlayerPresentation.js";
 import { createPlayerPreferencesHandler } from "./playerPreferences.js";
 import { getPreviousMatchAward } from "./previousMatchAward.js";
 import { createChatInboxRepository, createChatInboxCapture, createChatInboxRoutes } from "./chatInbox.js";
@@ -5061,16 +5062,18 @@ app.get("/api/admin/players", async (req, res) => {
   if (!(await requireGroupMember(req, res, user))) return;
   if (!(await requireAdminAsync(req, res, user))) return;
 
+const canViewBotStatus = canViewPlayerBotStatus(user.id, process.env.OWNER_TG_ID);
 const r = await q(
   `SELECT
     tg_id, first_name, last_name, username,
     display_name, jersey_number,
-    photo_url,
+    photo_url, avatar_file_id,
     is_guest, player_kind, created_by,
     position, skill, skating, iq, stamina, passing, shooting,
     notes, disabled,
     is_admin, updated_at, last_seen_at,
     email, email_verified, email_verified_at,
+    ${canViewBotStatus ? "pm_started, pm_started_at, pm_last_seen," : ""}
 
     joke_premium,
     joke_premium_until,
@@ -5081,14 +5084,12 @@ const r = await q(
 );
 
 
-  const env = envAdminSet();
-  const players = r.rows.map((p) => ({
-    ...p,
-    is_admin: p.is_admin || env.has(String(p.tg_id)),
-    is_env_admin: env.has(String(p.tg_id)),
-  }));
-
-  res.json({ ok: true, players, is_super_admin: isSuperAdmin(user.id) });
+  const players = presentAdminPlayers(r.rows, {
+    envAdmins: envAdminSet(),
+    canViewBotStatus,
+    avatarUrl: row => photoUrlForPlayerRow(row, getPublicBaseUrl(req)),
+  });
+  res.json({ ok: true, players, is_super_admin: isSuperAdmin(user.id), can_view_bot_status: canViewBotStatus });
 });
 
 app.patch("/api/admin/players/:tg_id", async (req, res) => {
