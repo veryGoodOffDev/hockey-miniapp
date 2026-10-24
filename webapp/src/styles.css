@@ -5331,7 +5331,7 @@ button.rsvpRoster__player { cursor: pointer; }
 /* Previous-match ownership is a reminder, separate from this game's bright award. */
 .rsvpRoster__previousAward { display: inline-flex; align-items: center; justify-self: start; gap: 5px; color: #b5c8db; font-size: 10px; font-weight: 500; line-height: 1.2; }
 .rsvpRoster__previousAward .matchAwardBadge { width: 28px; height: 28px; flex-basis: 28px; margin: 0; }
-.matchAwardBadge--previous { opacity: .5; filter: saturate(.55); box-shadow: none; }
+.matchAwardBadge--previous { opacity: 1; filter: none; box-shadow: none; }
 .matchAwardArchive--previous { font-size: 12px; border-color: var(--border); background: transparent; color: var(--tg-hint); }
 
 .rsvpViewToolbar { margin: 10px 0 4px; }
