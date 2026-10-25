@@ -46,3 +46,25 @@ export function groupRsvpPlayers(list, tone, view = "list") {
       }),
   })).filter((group) => group.players.length);
 }
+
+// A match award is the only exception to the normal position/time/name order.
+export function rsvpPlayersForDisplay(
+  list,
+  tone,
+  view = "list",
+  bestPlayerId = null,
+) {
+  const players = groupRsvpPlayers(list, tone, view).flatMap((group) =>
+    group.players.map((player) => ({ player, group })),
+  );
+  if (bestPlayerId == null) return players;
+  const winnerIndex = players.findIndex(
+    ({ player }) => String(player.tg_id) === String(bestPlayerId),
+  );
+  if (winnerIndex <= 0) return players;
+  return [
+    players[winnerIndex],
+    ...players.slice(0, winnerIndex),
+    ...players.slice(winnerIndex + 1),
+  ];
+}

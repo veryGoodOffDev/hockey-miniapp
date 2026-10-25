@@ -143,3 +143,43 @@ test("equal-length names keep time/alphabet ties and Unicode characters are not 
   );
   assert.deepEqual(groupRsvpPlayers([], "yes", "chips"), []);
 });
+
+test("current match winner comes first without changing the relative order or group metadata of other players", async () => {
+  const { rsvpPlayersForDisplay } = await import("./rsvpPlayerOrder.js");
+  const list = [
+    { tg_id: 1, position: "G", display_name: "Вратарь" },
+    {
+      tg_id: 2,
+      position: "D",
+      display_name: "Александр",
+      status_changed_at: "2026-10-25T10:00:00Z",
+    },
+    {
+      tg_id: 3,
+      position: "D",
+      display_name: "Ли",
+      status_changed_at: "2026-10-25T11:00:00Z",
+    },
+    { tg_id: 4, position: "F", display_name: "Победитель" },
+  ];
+  const original = structuredClone(list);
+  for (const view of ["list", "chips"]) {
+    const base = rsvpPlayersForDisplay(list, "yes", view);
+    const result = rsvpPlayersForDisplay(list, "yes", view, "4");
+    assert.equal(result[0].player.tg_id, 4);
+    assert.equal(result[0].group.position, "F");
+    assert.deepEqual(
+      result.slice(1),
+      base.filter((entry) => entry.player.tg_id !== 4),
+    );
+    assert.deepEqual(rsvpPlayersForDisplay(list, "yes", view, null), base);
+    assert.deepEqual(rsvpPlayersForDisplay(list, "yes", view, 999), base);
+    assert.deepEqual(rsvpPlayersForDisplay(list, "yes", view, 1), base);
+    assert.equal(
+      rsvpPlayersForDisplay(list, "yes", view, 2)[0].player.tg_id,
+      2,
+    );
+  }
+  assert.deepEqual(list, original);
+  assert.deepEqual(rsvpPlayersForDisplay([], "no", "chips", 4), []);
+});

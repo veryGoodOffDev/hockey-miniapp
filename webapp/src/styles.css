@@ -5353,3 +5353,16 @@ button.rsvpRoster__player { cursor: pointer; }
 .rsvpRoster--chips .rsvpRoster__meta { flex-shrink: 0; gap: 1px; }
 .rsvpRoster--chips .rsvpRoster__number { font-size: 11px; }
 .rsvpRoster--chips .rsvpRoster__skill { font-size: 9px; }
+
+.rsvpRoster__player.isMatchWinner {
+  border: 2px solid #e1bc68;
+  border-radius: 14px;
+  background: linear-gradient(115deg, #493a1c, #1c3044 75%);
+  box-shadow: 0 0 0 1px #edc97622, 0 3px 12px #0002;
+  padding: 10px 9px;
+}
+.rsvpRoster__awardTitle { color: #ffe1a0; font-size: 10px; font-weight: 850; letter-spacing: .04em; line-height: 1.4; }
+.rsvpRoster__player.isMatchWinner .rsvpRoster__identity { gap: 4px; }
+.rsvpRoster--chips .rsvpRoster__list > .rsvpRoster__winnerItem { flex: 0 0 100%; width: 100%; }
+.rsvpRoster--chips .rsvpRoster__player.isMatchWinner { width: 100%; border-radius: 14px; }
+@media (hover: hover) { button.rsvpRoster__player.isMatchWinner:hover { background: linear-gradient(115deg, #5b4720, #24425b 75%); border-color: #ffe0a0; } }

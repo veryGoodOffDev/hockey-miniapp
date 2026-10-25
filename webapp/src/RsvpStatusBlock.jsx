@@ -2,7 +2,7 @@ import MatchAwardBadge from "./MatchAwardBadge.jsx";
 import TeamColorMark from "./TeamColorMark.jsx";
 import { playerTeamColor } from "./teamColors.js";
 import React, { useMemo } from "react";
-import { groupRsvpPlayers, playerName } from "./rsvpPlayerOrder.js";
+import { rsvpPlayersForDisplay, playerName } from "./rsvpPlayerOrder.js";
 export default function RsvpStatusBlock({
   title,
   tone,
@@ -17,11 +17,8 @@ export default function RsvpStatusBlock({
   view = "list",
 }) {
   const players = useMemo(
-    () =>
-      groupRsvpPlayers(list, tone, view).flatMap((group) =>
-        group.players.map((player) => ({ player, group })),
-      ),
-    [list, tone, view],
+    () => rsvpPlayersForDisplay(list, tone, view, bestPlayerId),
+    [list, tone, view, bestPlayerId],
   );
   const editable =
     isAdmin &&
@@ -59,13 +56,18 @@ export default function RsvpStatusBlock({
                 number !== "" &&
                 Number.isFinite(Number(number)),
               override = !!String(p.pos_override || "").trim();
+            const winner =
+              bestPlayerId != null && String(bestPlayerId) === String(p.tg_id);
             const color =
               tone === "yes" ? playerTeamColor(teams, p.tg_id) : null;
             const Row = editable ? "button" : "div";
             return (
-              <li key={p.tg_id}>
+              <li
+                key={p.tg_id}
+                className={winner ? "rsvpRoster__winnerItem" : undefined}
+              >
                 <Row
-                  className={`rsvpRoster__player position-${group.position} ${mine ? "isMine" : ""}`}
+                  className={`rsvpRoster__player position-${group.position} ${mine ? "isMine" : ""} ${winner ? "isMatchWinner" : ""}`}
                   {...(editable
                     ? {
                         type: "button",
@@ -90,14 +92,16 @@ export default function RsvpStatusBlock({
                     {override ? "*" : ""}
                   </span>
                   <span className="rsvpRoster__identity">
+                    {winner && (
+                      <span className="rsvpRoster__awardTitle">
+                        Топ игрок матча
+                      </span>
+                    )}
                     <span className="rsvpRoster__nameLine">
                       {color && <TeamColorMark color={color} />}
                       <span className="rsvpRoster__name">
                         {playerName(p)}
-                        {bestPlayerId != null &&
-                          String(bestPlayerId) === String(p.tg_id) && (
-                            <MatchAwardBadge />
-                          )}
+                        {winner && <MatchAwardBadge />}
                       </span>
                       {mine && <span className="rsvpRoster__you">Вы</span>}
                     </span>

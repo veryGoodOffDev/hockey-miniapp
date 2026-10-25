@@ -3509,7 +3509,7 @@ function openYandexRoute(lat, lon) {
                         onRsvp={rsvp}
                       />
                       {game.best_player_tg_id != null && !rsvps.some(p => String(p.tg_id) === String(game.best_player_tg_id)) && <div className="matchAwardArchive">
-                        <MatchAwardBadge /><span>Лучший игрок матча: <strong>{game.best_player_name || `Игрок #${game.best_player_tg_id}`}</strong></span>
+                        <MatchAwardBadge /><span>Топ игрок матча: <strong>{game.best_player_name || `Игрок #${game.best_player_tg_id}`}</strong></span>
                       </div>}
                       {game.previous_game_award?.tg_id != null && !rsvps.some(p => String(p.tg_id) === String(game.previous_game_award.tg_id)) && <div className="matchAwardArchive matchAwardArchive--previous">
                         <MatchAwardBadge previous decorative /><span><strong>{game.previous_game_award.name}</strong> · в прошлой игре</span>

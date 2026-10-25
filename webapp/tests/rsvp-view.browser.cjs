@@ -176,15 +176,27 @@ const assert = require("node:assert/strict");
       "true",
     );
     const before = await order(p);
+    assert.equal(await p.locator(".rsvpRoster__winnerItem").count(), 1);
+    assert.match(
+      await p.locator(".rsvpRoster__winnerItem").innerText(),
+      /Топ игрок матча/,
+    );
+
     assert.deepEqual(
       before.slice(0, 4).map((x) => x.trim()),
-      ["Иван", "Алексей", "Ли", "Нападающий"],
+      ["Нападающий", "Иван", "Алексей", "Ли"],
     );
     await p
       .getByPlaceholder("Сообщение…", { exact: true })
       .fill("Черновик сохраняется");
     holdSave = true;
-    const expectedChips = [before[0], before[2], before[1], ...before.slice(3)];
+    const expectedChips = [
+      before[0],
+      before[1],
+      before[3],
+      before[2],
+      ...before.slice(4),
+    ];
     assert.equal(await controls(p).innerText(), "");
     await choose(p, "Капсулы");
     await p.waitForFunction(
@@ -290,6 +302,26 @@ const assert = require("node:assert/strict");
     await controls(p).waitFor();
     assert.equal(await p.locator(".rsvpRoster--chips").count(), 0);
     assert.deepEqual(await order(p), before);
+    game.best_player_tg_id = 2;
+    await p.reload({ waitUntil: "domcontentloaded" });
+    await p.locator(".gameCard__main").first().click();
+    await controls(p).waitFor();
+    assert.equal((await order(p))[0].trim(), "Алексей");
+    assert.equal(await p.locator(".isMatchWinner").count(), 1);
+    assert.equal(
+      await p.locator(".isMatchWinner .rsvpRoster__previousAward").count(),
+      1,
+    );
+    game.best_player_tg_id = null;
+    await p.reload({ waitUntil: "domcontentloaded" });
+    await p.locator(".gameCard__main").first().click();
+    await controls(p).waitFor();
+    assert.equal(
+      await p.locator(".isMatchWinner,.rsvpRoster__awardTitle").count(),
+      0,
+    );
+    assert.equal((await order(p))[0].trim(), "Иван");
+    assert.equal(await p.locator(".rsvpRoster__previousAward").count(), 1);
     assert.deepEqual(errors, []);
     assert.ok(writes.every((write) => write.userId === 1));
     await first.context.close();
