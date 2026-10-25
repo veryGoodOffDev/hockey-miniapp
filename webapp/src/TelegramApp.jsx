@@ -1,3 +1,5 @@
+import TeamPostFormatChoice from "./TeamPostFormatChoice.jsx";
+import { teamPostError, teamPostSuccess } from "./teamPostFeedback.js";
 import useRsvpView from "./useRsvpView.js";
 import RsvpViewToggle from "./RsvpViewToggle.jsx";
 import MatchAwardBadge from "./MatchAwardBadge.jsx";
@@ -212,6 +214,7 @@ useEffect(() => {
   const isMeId = (id) => me?.tg_id != null && String(id) === String(me.tg_id);
   const [teamsSendBusy, setTeamsSendBusy] = useState(false);
   const [teamsSendMsg, setTeamsSendMsg] = useState("");
+  const [teamsPostFormat, setTeamsPostFormat] = useState("columns");
   const [talismanHolder, setTalismanHolder] = useState(null);
   const [bestPick, setBestPick] = useState("");
   const [posPopup, setPosPopup] = useState(null);
@@ -2177,48 +2180,31 @@ async function giveMatchAward(player, { remove = false } = {}) {
 }
 
 async function sendTeamsToChat() {
-  if (!selectedGameId) return;
+  if (!selectedGameId || teamsSendBusy) return;
   setTeamsSendMsg("");
-  const ok1 = confirm("Отправить составы в командный чат?");
-  if (!ok1) return;
-  // если составы устарели — подтверждаем отдельно и шлём с force
+  const format = teamsPostFormat;
+  if (!confirm(format === "jerseys" ? "Опубликовать две команды с фотографиями джерси?" : "Опубликовать таблицу составов в командный чат?")) return;
   let force = false;
   if (teamsStaleInfo?.stale) {
-    const ok2 = confirm(
-      `⚠️ Составы устарели.\n` +
-      `Ушли из "✅ Буду": ${teamsStaleInfo.removed || 0}\n` +
-      `Добавились в "✅ Буду": ${teamsStaleInfo.added || 0}\n\n` +
-      `Отправить всё равно?`
-    );
-    if (!ok2) return;
+    if (!confirm(`⚠️ Составы устарели.\nУшли из «Буду»: ${teamsStaleInfo.removed || 0}\nДобавились: ${teamsStaleInfo.added || 0}\n\nОтправить всё равно?`)) return;
     force = true;
-  } else {
-    const ok2 = confirm("Это окончательные составы?");
-    if (!ok2) return;
-  }
+  } else if (!confirm("Это окончательные составы?")) return;
   setTeamsSendBusy(true);
   try {
-    const r = await apiPost("/api/admin/teams/send", { game_id: selectedGameId, force });
-    if (!r?.ok) {
-      // если бэк вернул 409 teams_stale, а фронт не знал — можно переспросить и повторить
-      if (r?.reason === "teams_stale") {
-        const ok3 = confirm(
-          `⚠️ Составы устарели (сервер подтвердил).\n` +
-          `Ушли: ${r.removed || 0}\nДобавились: ${r.added || 0}\n\nОтправить всё равно?`
-        );
-        if (!ok3) return;
-        const r2 = await apiPost("/api/admin/teams/send", { game_id: selectedGameId, force: true });
-        if (!r2?.ok) {
-          setTeamsSendMsg(`❌ Не удалось отправить: ${r2?.reason || r2?.error || "unknown"}`);
-          return;
-        }
-        setTeamsSendMsg(r2?.edited ? "✅ Составы в чате обновлены" : "✅ Составы отправлены в чат");
-        return;
-      }
-      setTeamsSendMsg(`❌ Не удалось отправить: ${r?.reason || r?.error || "unknown"}`);
-      return;
+    let result;
+    try {
+      result = await apiPost("/api/admin/teams/send", { game_id: selectedGameId, force, format });
+      if (!result?.ok) throw Object.assign(new Error(result?.reason || "teams_send_failed"), { data: result });
+    } catch (error) {
+      const data = error?.data || {};
+      if (data.reason !== "teams_stale") throw error;
+      if (!confirm(`⚠️ Составы устарели.\nУшли: ${data.removed || 0}\nДобавились: ${data.added || 0}\n\nОтправить всё равно?`)) return;
+      result = await apiPost("/api/admin/teams/send", { game_id: selectedGameId, force: true, format });
+      if (!result?.ok) throw Object.assign(new Error(result?.reason || "teams_send_failed"), { data: result });
     }
-    setTeamsSendMsg(r?.edited ? "✅ Составы в чате обновлены" : "✅ Составы отправлены в чат");
+    setTeamsSendMsg(teamPostSuccess(result));
+  } catch (error) {
+    setTeamsSendMsg(teamPostError(error));
   } finally {
     setTeamsSendBusy(false);
   }
@@ -4503,6 +4489,7 @@ function openYandexRoute(lat, lon) {
         ← Назад
       </button>
     </div>
+    {isAdmin && <TeamPostFormatChoice value={teamsPostFormat} disabled={teamsSendBusy} onChange={format => { setTeamsPostFormat(format); setTeamsSendMsg(""); }} />}
     <div className="row" style={{ marginTop: 10 }}>
     <button
       className="btn secondary"

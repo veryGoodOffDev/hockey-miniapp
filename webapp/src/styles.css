@@ -5366,3 +5366,8 @@ button.rsvpRoster__player { cursor: pointer; }
 .rsvpRoster--chips .rsvpRoster__list > .rsvpRoster__winnerItem { flex: 0 0 100%; width: 100%; }
 .rsvpRoster--chips .rsvpRoster__player.isMatchWinner { width: 100%; border-radius: 14px; }
 @media (hover: hover) { button.rsvpRoster__player.isMatchWinner:hover { background: linear-gradient(115deg, #5b4720, #24425b 75%); border-color: #ffe0a0; } }
+
+.teamPostFormat { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 13px; background: #16314b33; }
+.teamPostFormat label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
+.teamPostFormat select { width: 100%; min-width: 0; }
+.teamPostFormat p { margin: 8px 0 0; color: var(--tg-hint); font-size: 11px; line-height: 1.5; }
