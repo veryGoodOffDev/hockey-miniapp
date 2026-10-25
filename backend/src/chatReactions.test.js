@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   STANDARD_REACTIONS,
+  SHEEP_REACTION,
   createChatReactions,
   parseReaction,
 } from "./chatReactions.js";
@@ -25,7 +26,7 @@ test("chat settings: all standard reactions, explicit/disabled lists, custom lab
   const catalog = createChatReactions(api, { now: () => now, ttlMs: 100 });
   const [a, b] = await Promise.all([catalog.get(-1), catalog.get(-1)]);
   assert.ok(a.length > 70);
-  assert.equal(a.length, STANDARD_REACTIONS.length);
+  assert.equal(a.length, STANDARD_REACTIONS.length + 1);
   assert.equal(calls, 1);
   assert.equal(a, b);
   allowed = [
@@ -59,6 +60,30 @@ test("chat settings: all standard reactions, explicit/disabled lists, custom lab
       }),
     /bad_reaction/,
   );
+});
+test("team sheep preserves exact ID, uses a recognisable label and respects explicit chat restrictions", async () => {
+  let allowed;
+  const catalog = createChatReactions({
+    getChat: async () => ({ available_reactions: allowed }),
+    getCustomEmojiStickers: async () => [{ custom_emoji_id: SHEEP_REACTION.custom_emoji_id, emoji: "⭐" }],
+  });
+  const find = (choices) => choices.filter((r) => r.custom_emoji_id === SHEEP_REACTION.custom_emoji_id);
+  const [sheep] = find(await catalog.get(-1));
+  assert.equal(sheep.label, "🐑");
+  assert.equal(sheep.name, "Овечка команды");
+  assert.equal(sheep.key, "custom:5399928167827808635");
+  assert.deepEqual(parseReaction({ reaction: sheep }), {
+    type: "custom_emoji", custom_emoji_id: "5399928167827808635",
+  });
+  allowed = [SHEEP_REACTION, SHEEP_REACTION];
+  catalog.invalidate(-1);
+  assert.equal(find(await catalog.get(-1)).length, 1);
+  allowed = [{ type: "emoji", emoji: "👍" }];
+  catalog.invalidate(-1);
+  assert.equal(find(await catalog.get(-1)).length, 0);
+  allowed = [];
+  catalog.invalidate(-1);
+  assert.deepEqual(await catalog.get(-1), []);
 });
 test("catalog retries after network failure; absent custom preview keeps selectable ID", async () => {
   let calls = 0;
@@ -124,7 +149,7 @@ test("routes enforce current chat choices, send custom types, persist missing me
       return {
         available_reactions: [
           { type: "emoji", emoji: "🏆" },
-          { type: "custom_emoji", custom_emoji_id: "99" },
+          { type: "custom_emoji", custom_emoji_id: SHEEP_REACTION.custom_emoji_id },
         ],
       };
     },
@@ -166,13 +191,13 @@ test("routes enforce current chat choices, send custom types, persist missing me
   assert.equal(
     (
       await call(routes.react, {
-        reaction: { type: "custom_emoji", custom_emoji_id: "99" },
+        reaction: { type: "custom_emoji", custom_emoji_id: SHEEP_REACTION.custom_emoji_id },
       })
     ).status,
     200,
   );
-  assert.deepEqual(api.last, [{ type: "custom_emoji", custom_emoji_id: "99" }]);
-  assert.equal(saved, "custom:99");
+  assert.deepEqual(api.last, [{ type: "custom_emoji", custom_emoji_id: SHEEP_REACTION.custom_emoji_id }]);
+  assert.equal(saved, "custom:5399928167827808635");
   await call(routes.react, { reaction: null });
   assert.deepEqual(api.last, []);
   reactionError = {

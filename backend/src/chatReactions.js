@@ -74,6 +74,13 @@ export const STANDARD_REACTIONS = [
   "🤷‍♀",
   "😡",
 ];
+// Keep Telegram IDs as strings: they exceed JavaScript's safe integer range.
+export const SHEEP_REACTION = Object.freeze({
+  type: "custom_emoji",
+  custom_emoji_id: "5399928167827808635",
+  label: "🐑",
+  name: "Овечка команды",
+});
 export const canonicalEmoji = (value) =>
   typeof value === "string" ? value.replace(/\uFE0F/g, "") : "";
 export const reactionKey = (reaction) =>
@@ -128,7 +135,10 @@ export function createChatReactions(
         );
         const allowed =
           chat.available_reactions ??
-          STANDARD_REACTIONS.map((emoji) => ({ type: "emoji", emoji }));
+          [
+            ...STANDARD_REACTIONS.map((emoji) => ({ type: "emoji", emoji })),
+            SHEEP_REACTION,
+          ];
         const distinct = new Map();
         for (const raw of allowed) {
           if (!["emoji", "custom_emoji"].includes(raw.type)) continue; // Bots cannot send paid reactions.
@@ -139,6 +149,12 @@ export function createChatReactions(
             label: reaction.emoji || "⭐",
           });
         }
+        const sheep = distinct.get(`custom:${SHEEP_REACTION.custom_emoji_id}`);
+        if (sheep)
+          Object.assign(sheep, {
+            label: SHEEP_REACTION.label,
+            name: SHEEP_REACTION.name,
+          });
         const choices = [...distinct.values()],
           custom = choices.filter((r) => r.type === "custom_emoji");
         for (let index = 0; index < custom.length; index += 200) {
@@ -149,7 +165,8 @@ export function createChatReactions(
             );
             for (const sticker of stickers) {
               const choice = distinct.get(`custom:${sticker.custom_emoji_id}`);
-              if (choice && sticker.emoji) choice.label = sticker.emoji;
+              if (choice && sticker.emoji && !choice.name)
+                choice.label = sticker.emoji;
             }
           } catch {
             /* An emoji can still be selected by ID if preview metadata is unavailable. */

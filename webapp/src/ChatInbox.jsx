@@ -348,10 +348,10 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
                           type="button"
                           key={choice.key}
                           className={`btn secondary chatInboxReaction${selected ? " selected" : ""}`}
-                          aria-label={`Реакция ${choice.label}${choice.type === "custom_emoji" ? ` · кастомная ${choice.custom_emoji_id}` : ""}: ${m.sender_name}`}
+                          aria-label={`Реакция ${choice.name || choice.label}${choice.type === "custom_emoji" ? ` · кастомная ${choice.custom_emoji_id}` : ""}: ${m.sender_name}`}
                           title={
                             choice.type === "custom_emoji"
-                              ? `Кастомный эмодзи ${choice.custom_emoji_id}`
+                              ? `${choice.name || "Кастомный эмодзи"} · ${choice.custom_emoji_id}`
                               : choice.label
                           }
                           aria-pressed={selected}
@@ -366,6 +366,13 @@ export default function ChatInbox({ apiGet, apiPost, onSent }) {
                       );
                     })}
                   </div>
+                  {!choices.some(
+                    (choice) => choice.custom_emoji_id === "5399928167827808635",
+                  ) && (
+                    <div className="small chatInboxPickerCaption">
+                      Чтобы ставить овечку команды, добавьте её в разрешённые реакции группы в Telegram.
+                    </div>
+                  )}
                 </div>
               )}
               {reacting === m.message_id && (
