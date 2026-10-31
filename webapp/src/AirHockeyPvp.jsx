@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { connectPvp } from "./airHockeyPvpSocket.js";
 import AirHockeyPvpRink from "./AirHockeyPvpRink.jsx";
 const ERRORS = {
+  feature_disabled: "Air Hockey отключён администратором. Новые игры пока недоступны",
   room_full: "Комната уже заполнена",
   room_finished: "Игра уже завершена",
   room_not_found: "Комната не найдена",

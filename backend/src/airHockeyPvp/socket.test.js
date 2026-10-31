@@ -43,6 +43,48 @@ test("tickets expire and can only authenticate once", () => {
   now = 30001;
   assert.equal(tickets.consume(expired), null);
 });
+test("an existing WebSocket cannot start, join or rematch after disabling hockey; reconnect and play remain available", async () => {
+  const server = http.createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  let enabled = false;
+  const calls = [];
+  const rooms = {
+    start() {}, stop() {}, disconnect() {},
+    reconnect: () => calls.push("reconnect"),
+    create: async () => calls.push("create"),
+    join: async () => calls.push("join"),
+    rematch: async () => calls.push("rematch"),
+    move: () => calls.push("move"),
+  };
+  const tickets = createPvpTickets();
+  const service = attachPvpSocket({ server, rooms, tickets, canStartGame: async () => enabled });
+  let a;
+  try {
+    a = await client(`ws://127.0.0.1:${server.address().port}${PVP_SOCKET_PATH}`, tickets.issue({ id: 1 }));
+    await until(() => a.messages.find((m) => m.event === "airhockey:authenticated"));
+    for (const event of ["create_room", "join_room", "rematch"]) {
+      a.messages.length = 0;
+      a.send(event, { code: "1234" });
+      const result = await until(() => a.messages.find((m) => m.event === "airhockey:error"));
+      assert.equal(result.data.reason, "feature_disabled");
+      await wait(310);
+    }
+    assert.deepEqual(calls, ["reconnect"]);
+    a.send("paddle_move", { x: 50, y: 50 });
+    await until(() => calls.includes("move"));
+    a.send("reconnect");
+    await until(() => calls.filter((c) => c === "reconnect").length === 2);
+    await wait(310);
+    enabled = true;
+    a.send("create_room");
+    await until(() => calls.includes("create"));
+  } finally {
+    a?.ws.terminate();
+    service.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
 test("real WebSocket requires auth, uses ticket identity and reconnects same participant", async () => {
   const server = http.createServer();
   server.listen(0, "127.0.0.1");

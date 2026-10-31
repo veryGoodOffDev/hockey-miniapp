@@ -1,4 +1,5 @@
 import TeamPostFormatChoice from "./TeamPostFormatChoice.jsx";
+import useAppFeatures from "./useAppFeatures.js";
 import { teamPostError, teamPostSuccess } from "./teamPostFeedback.js";
 import useRsvpView from "./useRsvpView.js";
 import RsvpViewToggle from "./RsvpViewToggle.jsx";
@@ -118,6 +119,7 @@ useEffect(() => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [me, setMe] = useState(initialMeProp?.player ?? initialMeProp ?? null);
+  const { features, apply: applyFeatures } = useAppFeatures(initialMeProp?.features, !!me);
   const rsvpView = useRsvpView(me?.tg_id, me?.rsvp_view, (view) => {
     setMe(previous => previous ? { ...previous, rsvp_view: view } : previous);
   });
@@ -172,8 +174,8 @@ useEffect(() => {
     apiGet("/api/game/profile").then((r) => setAirHockeyBalance(r.sheepCoins)).catch(() => {});
   }, []);
   useEffect(() => {
-    if (tab === "profile") refreshAirHockeyBalance();
-  }, [tab, refreshAirHockeyBalance]);
+    if (tab === "profile" && features.air_hockey) refreshAirHockeyBalance();
+  }, [tab, refreshAirHockeyBalance, features.air_hockey]);
     // ===== jersey order (profile) =====
   const jerseyCardRef = useRef(null);
   const EMPTY_JERSEY_REQ = {
@@ -302,6 +304,22 @@ const isSandboxPlayer = !isAdmin && !!me?.disabled;
 const canUseSandboxTab = isAdmin || isSandboxPlayer;
 const canUseTeamTab = !isSandboxPlayer;
 const canUseDmTab = !isSandboxPlayer;
+useEffect(() => {
+  if (!features.chat) {
+    setChatOpen(false);
+    setChatVisible(false);
+    setChatUnreadTotal(0);
+    setChatActionFor(null);
+    setChatReactPickerOpenFor(null);
+  }
+}, [features.chat]);
+useEffect(() => {
+  if (!features.game_comments) {
+    setDetailFocus(null);
+    setReactPickFor(null);
+    setReactPickerOpenFor(null);
+  }
+}, [features.game_comments]);
 function openGameDetail(id, focus = null) {
   setTab("game");                 // ✅ важно для переходов из чата
   setSelectedGameId(id);
@@ -310,7 +328,7 @@ function openGameDetail(id, focus = null) {
   setRsvps([]);
   setTeams(null);
   setDetailLoading(true);
-  setDetailFocus(focus);
+  setDetailFocus(features.game_comments ? focus : null);
   Promise.all([refreshGameOnly(id)])
     .then(() => refreshCommentsOnly(id))
     .catch(console.error)
@@ -740,6 +758,7 @@ function onSwipeEnd(type, item) {
   });
 }
 function openChatDrawer() {
+  if (!features.chat) return;
   if (chatCloseTimerRef.current) {
     clearTimeout(chatCloseTimerRef.current);
     chatCloseTimerRef.current = null;
@@ -1080,7 +1099,7 @@ function errReason(e) {
   return e?.reason || e?.data?.reason || e?.response?.data?.reason || null;
 }
 async function refreshCommentsOnly(gameId, { silent = false } = {}) {
-  if (!gameId) return;
+  if (!gameId || !features.game_comments) return;
   if (!silent) setCommentsLoading(true);
   try {
     const r = await apiGet(`/api/game-comments?game_id=${gameId}`);
@@ -1290,6 +1309,7 @@ async function refreshAll(forceGameId, { startup = false, signal } = {}) {
   try {
     setGamesError(null);
     const m = startup && initialMeProp?.player ? initialMeProp : await get("/api/me");
+    applyFeatures(m?.features);
     // доступ закрыт
     if (m?.ok === false && (m?.reason === "not_member" || m?.reason === "access_chat_not_set" || m?.reason === "player_deleted")) {
       setMe(null);
@@ -1528,7 +1548,7 @@ useEffect(() => {
 }, [photoModal.open]);
 useEffect(() => {
   // стартуем только в деталке
-  if (gameView !== "detail" || !selectedGameId) return;
+  if (!features.game_comments || gameView !== "detail" || !selectedGameId) return;
   // сразу подгружаем (тихо)
   refreshCommentsOnly(selectedGameId, { silent: true }).catch(() => {});
   // чистим старый таймер
@@ -1542,15 +1562,16 @@ useEffect(() => {
     if (commentsPollRef.current) clearInterval(commentsPollRef.current);
     commentsPollRef.current = null;
   };
-}, [gameView, selectedGameId]);
+}, [gameView, selectedGameId, features.game_comments]);
 useEffect(() => {
+  if (!features.chat) return;
   loadChatUnreadTotal().catch(() => {});
   const t = setInterval(() => {
     if (document.hidden) return;
     loadChatUnreadTotal().catch(() => {});
   }, 10000);
   return () => clearInterval(t);
-}, []);
+}, [features.chat]);
 useEffect(() => {
   if (!chatVisible) {
     unlockBackgroundScroll();
@@ -1644,7 +1665,7 @@ useEffect(() => {
 }, [chatDraft, chatActiveCid, chatTab, chatVisible]);
 
 useEffect(() => {
-  if (!chatVisible) {
+  if (!chatVisible || !features.chat) {
     if (chatPollRef.current) clearInterval(chatPollRef.current);
     if (chatReactionPollRef.current) clearInterval(chatReactionPollRef.current);
     chatPollRef.current = null;
@@ -1681,7 +1702,7 @@ useEffect(() => {
     chatPollRef.current = null;
     chatReactionPollRef.current = null;
   };
-}, [chatVisible, chatActiveCid]);
+}, [chatVisible, chatActiveCid, features.chat]);
 useEffect(() => {
   if (!chatVisible) return;
   if (!chatScrollToBottomOnNextPaintRef.current) return;
@@ -1798,7 +1819,7 @@ function clipText(s, max = 70) {
   const sp = readStartParam();
   let forceGameId = null;
   if (sp) {
-    if (/^airhockey_\d{4}$/.test(sp)) {
+    if (/^airhockey_\d{4}$/.test(sp) && features.air_hockey) {
       setAirHockeyInvite(sp.slice("airhockey_".length));
       setAirHockeyOpen(true);
     } else if (sp === "jersey") {
@@ -3189,7 +3210,7 @@ function openYandexRoute(lat, lon) {
   return (
     <div ref={gamesPullRef} className="container appShell">
     <SheepReminder playerId={me?.tg_id} nextGameId={nextUpcomingId} />
-    {airHockeyOpen ? <AirHockey inviteCode={airHockeyInvite} onClose={() => { setAirHockeyOpen(false); setAirHockeyInvite(null); refreshAirHockeyBalance(); }} onProfileChange={refreshAirHockeyBalance} /> : null}
+    {airHockeyOpen ? <AirHockey enabled={features.air_hockey} inviteCode={airHockeyInvite} onClose={() => { setAirHockeyOpen(false); setAirHockeyInvite(null); refreshAirHockeyBalance(); }} onProfileChange={refreshAirHockeyBalance} /> : null}
     {!inTelegramWebApp && (
       <div className="webThemeDock" role="region" aria-label="Тема (веб)">
         <div className="webThemeDock__panel">
@@ -3433,7 +3454,7 @@ function openYandexRoute(lat, lon) {
                       const progress = Math.min(1, yes / Math.max(1, target));
                     
                       return (
-                        <GameCard key={g.id} {...{ g, idx, past, lockRsvp, when, status, noAutoFill, isNext, bgUrl, month, day, yes, target, progress, isAdmin, opBusy, runOp, openGameDetail, openGameSheet }} statusLabel={uiStatus(g)} myTeamColor={myTeamColors[String(g.id)]} />
+                        <GameCard key={g.id} {...{ g, idx, past, lockRsvp, when, status, noAutoFill, isNext, bgUrl, month, day, yes, target, progress, isAdmin, opBusy, runOp, openGameDetail, openGameSheet }} statusLabel={uiStatus(g)} myTeamColor={myTeamColors[String(g.id)]} commentsEnabled={features.game_comments} />
                       );
                     })}
                       {showPast ? (
@@ -3519,6 +3540,7 @@ function openYandexRoute(lat, lon) {
                         <StatusBlock view={rsvpView.view} title="❌ Не будут" tone="no" list={grouped.no} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
                         <StatusBlock view={rsvpView.view} title="❓ Не отметились" tone="maybe" list={grouped.maybe} isAdmin={isAdmin} me={me} bestPlayerId={game.best_player_tg_id} previousAward={game.previous_game_award} />
                       </div>
+                      {features.game_comments && <>
                       <hr />
                                   <div ref={commentsBlockRef} />
                                   <div className="card" ref={commentsCardRef}>
@@ -3864,6 +3886,7 @@ function openYandexRoute(lat, lon) {
                                               </div>
                                             </div>
                                           ) : null}
+                      </>}
                     </>
                   );
                 })()
@@ -3911,10 +3934,10 @@ function openYandexRoute(lat, lon) {
             <div className="card">
               <h2>Мой профиль</h2>
               <div className="small">Заполни один раз — дальше просто отмечайся.</div>
-              <button className="airProfileCard" onClick={() => setAirHockeyOpen(true)}>
+              {features.air_hockey && <button className="airProfileCard" onClick={() => setAirHockeyOpen(true)}>
                 <span><strong>🏒 Играть в хоккей</strong><small>Зарабатывай Sheep Coins и получай награды</small></span>
                 <span className="airProfileBalance"><SheepCoin value={airHockeyBalance ?? 0}/><b>›</b></span>
-              </button>
+              </button>}
               <div style={{ marginTop: 10 }}>
                 <label>Имя для отображения (если пусто — возьмём имя из Telegram)</label>
                 <input
@@ -4782,6 +4805,8 @@ function openYandexRoute(lat, lon) {
       {/* ====== ADMIN ====== */}
       {tab === "admin" && isAdmin && (
         <AdminPanel
+          features={features}
+          onFeaturesChange={applyFeatures}
           apiGet={apiGet}
           apiPost={apiPost}
           apiPatch={apiPatch}
@@ -5079,11 +5104,11 @@ function openYandexRoute(lat, lon) {
                 }}
                 onChanged={onChanged}
               />
-              <button className="chatFab" type="button" onClick={openChatDrawer}>
+              {features.chat && <button className="chatFab" type="button" onClick={openChatDrawer}>
                 <span className="chatFabIcon" aria-hidden="true">💬</span>
                 {chatUnreadTotal > 0 ? <span className="chatFabBadge">{chatUnreadTotal > 99 ? '99+' : chatUnreadTotal}</span> : null}
-              </button>
-              {chatVisible ? (
+              </button>}
+              {features.chat && chatVisible ? (
                 <div
                   className={`chatDrawerOverlay ${chatOpen ? "isOpen" : ""}`}
                   onClick={closeChatDrawer}

@@ -3,6 +3,7 @@ import { createTeamPostRepository } from "./teamPosts/repository.js";
 import { createTeamPostService } from "./teamPosts/service.js";
 import { canViewPlayerBotStatus, presentAdminPlayers } from "./adminPlayerPresentation.js";
 import { createPlayerPreferencesHandler } from "./playerPreferences.js";
+import { createAppFeatures } from "./appFeatures.js";
 import { getPreviousMatchAward } from "./previousMatchAward.js";
 import { createChatInboxRepository, createChatInboxCapture, createChatInboxRoutes } from "./chatInbox.js";
 import "dotenv/config";
@@ -340,6 +341,15 @@ app.use(async (req, res, next) => {
 // init + schema
 await initDb();
 await ensureSchema(q);
+
+const appFeatures = createAppFeatures({
+  q,
+  authenticate: (req, res) => req.webappUser || requireWebAppAuth(req, res),
+  authorizeAdmin: requireAdminAsync,
+});
+app.use(appFeatures.middleware);
+app.get("/api/features", appFeatures.read);
+app.patch("/api/admin/features", appFeatures.update);
 
 // Telegram bot (polling)
 const chatInbox = createChatInboxRepository(q);
@@ -2739,7 +2749,7 @@ app.get("/api/me", async (req, res) => {
     const ex = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
     const player = ex.rows?.[0] ?? null;
     if (!player) return res.status(403).json({ ok: false, reason: "player_deleted" });
-    return res.json({ ok: true, player, is_admin: admin });
+    return res.json({ ok: true, player, is_admin: admin, features: await appFeatures.get() });
   }
 
   await ensurePlayer(user);
@@ -2747,7 +2757,7 @@ app.get("/api/me", async (req, res) => {
   const pr = await q(`SELECT * FROM players WHERE tg_id=$1`, [user.id]);
   const player = pr.rows?.[0] ?? null;
 
-  res.json({ ok: true, player, is_admin: admin });
+  res.json({ ok: true, player, is_admin: admin, features: await appFeatures.get() });
 });
 
 app.patch("/api/me/preferences", createPlayerPreferencesHandler({
@@ -8693,7 +8703,8 @@ console.log('куку все ок играем в хоккей')
 
 if (!isSmoke) await pvpRepository.recover();
 const httpServer = app.listen(port, () => console.log("Backend listening on", port));
-if (!isSmoke) attachPvpSocket({ server: httpServer, rooms: pvpRooms, tickets: pvpTickets });
+if (!isSmoke) attachPvpSocket({ server: httpServer, rooms: pvpRooms, tickets: pvpTickets,
+  canStartGame: () => appFeatures.enabled("air_hockey") });
 
 // RSVP delivery is independent of HTTP requests: retries and message IDs are
 // persisted, so Telegram downtime never prevents a player saving their mark.

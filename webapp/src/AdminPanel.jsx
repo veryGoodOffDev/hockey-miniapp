@@ -1,4 +1,5 @@
 import AdminPlayerList from "./admin/AdminPlayerList.jsx";
+import AppFeatureSettings from "./admin/AppFeatureSettings.jsx";
 import ChatInbox from "./ChatInbox.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
@@ -415,7 +416,7 @@ function MapPickModal({ open, initial, onClose, onPick }) {
 
 
 
-export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged }) {
+export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onChanged, features, onFeaturesChange }) {
   const [section, setSection] = useState("games"); // games | players | applications | reminders | jersey | engagement | ssl
 
   const [games, setGames] = useState([]);
@@ -1662,6 +1663,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </div>
 
       <div className="segRow">
+        <button className={`segBtn ${section === "features" ? "active" : ""}`} onClick={() => setSection("features")}>
+          Функции
+        </button>
         <button className={`segBtn ${section === "games" ? "active" : ""}`} onClick={() => setSection("games")}>
           Игры
         </button>
@@ -1686,6 +1690,9 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         </button>
       </div>
 
+      {section === "features" && (
+        <AppFeatureSettings apiGet={apiGet} apiPatch={apiPatch} features={features} onFeaturesChange={onFeaturesChange} />
+      )}
       {section === "ssl" && (
         <section className={`card sslCard sslCard--${sslTone}`} aria-busy={sslLoading || sslRenewing}>
           <div className="sslCard__heading">

@@ -28,7 +28,7 @@ export function createPvpTickets({ now = Date.now } = {}) {
     },
   };
 }
-export function attachPvpSocket({ server, rooms, tickets, logger = console }) {
+export function attachPvpSocket({ server, rooms, tickets, logger = console, canStartGame = async () => true }) {
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload: 2048,
@@ -139,6 +139,8 @@ export function attachPvpSocket({ server, rooms, tickets, logger = console }) {
       queue = queue
         .then(async () => {
           if (clients.get(String(user.id)) !== ws) return;
+          if (["airhockey:create_room", "airhockey:join_room", "airhockey:rematch"].includes(message.event) &&
+              !(await canStartGame())) throw new Error("feature_disabled");
           switch (message.event) {
             case "airhockey:create_room":
               await rooms.create(user);
@@ -166,6 +168,7 @@ export function attachPvpSocket({ server, rooms, tickets, logger = console }) {
         })
         .catch((e) => {
           const safe = new Set([
+            "feature_disabled",
             "already_in_room",
             "server_busy",
             "room_not_found",

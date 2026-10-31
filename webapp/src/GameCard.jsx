@@ -46,6 +46,7 @@ export default function GameCard({
   openGameSheet,
   statusLabel,
   myTeamColor = null,
+  commentsEnabled = true,
 }) {
   return (
     <div
@@ -88,7 +89,7 @@ export default function GameCard({
               ▶️
             </span>
           ) : null}
-          {(() => {
+          {commentsEnabled && (() => {
             const cc = g.comments_count ?? 0;
             return (
               <span

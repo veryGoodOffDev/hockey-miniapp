@@ -6,8 +6,9 @@ export default function AirHockeyModes({
   onClose,
   onProfileChange,
   inviteCode,
+  enabled = true,
 }) {
-  const [mode, setMode] = useState(inviteCode ? "pvp" : null);
+  const [mode, setMode] = useState(inviteCode && enabled ? "pvp" : null);
   const [invite, setInvite] = useState(inviteCode);
   useEffect(() => {
     if (mode) return;
@@ -52,10 +53,11 @@ export default function AirHockeyModes({
         <h2>🏒 Играть в хоккей</h2>
       </header>
       <div className="airModeChoices">
-        <button className="btn" onClick={() => setMode("bot")}>
+        {!enabled && <p className="small" role="status">Air Hockey отключён администратором. Новые игры пока недоступны.</p>}
+        <button className="btn" disabled={!enabled} onClick={() => setMode("bot")}>
           Против бота
         </button>
-        <button className="btn secondary" onClick={() => setMode("pvp")}>
+        <button className="btn secondary" disabled={!enabled} onClick={() => setMode("pvp")}>
           Игрок против игрока
         </button>
         <p className="small">PvP 1×1 · комнаты по коду · матч до 7 голов</p>
