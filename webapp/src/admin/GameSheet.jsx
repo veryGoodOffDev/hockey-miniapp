@@ -1,79 +1,63 @@
 // src/admin/GameSheet.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Sheet from "./Sheet.jsx";
+import GameSettingsDialog from "./GameSettingsDialog.jsx";
+import GameGuestEditor from "./GameGuestEditor.jsx";
+import GameParticipants from "./GameParticipants.jsx";
+import "./GameSettings.css";
 import MapPickModal from "./MapPickModal.jsx";
-import { toLocal, toIsoFromLocal, showName, showNum, posLabel, GUEST_DEFAULT } from "./adminUtils.js";
+import {
+  toLocal,
+  toIsoFromLocal,
+  showName,
+  showNum,
+  posLabel,
+  GUEST_DEFAULT,
+} from "./adminUtils.js";
 
-function PortalModal({ open, onClose, children }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-
-  // ESC закрытие
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  // lock body scroll
-  useEffect(() => {
-    if (!open) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open]);
-
-  if (!open || !mounted) return null;
-
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(e) => {
-        // клик по фону закрывает
-        if (e.target === e.currentTarget) onClose?.();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 999999, // выше sheet
-        background: "rgba(0,0,0,0.55)",
-        // важное: СКРОЛЛ ДЕЛАЕМ НА ОВЕРЛЕЕ, не внутри sheet
-        overflowY: "auto",
-        WebkitOverflowScrolling: "touch",
-        paddingTop: "max(12px, env(safe-area-inset-top))",
-        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
-        paddingLeft: 12,
-        paddingRight: 12,
-      }}
+function SettingsIcon({ name }) {
+  const shapes = {
+    game: (
+      <>
+        <rect x="3" y="5" width="18" height="16" rx="3" />
+        <path d="M7 3v4m10-4v4M3 11h18m-13 5h3m3 0h2" />
+      </>
+    ),
+    players: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3 21v-3a6 6 0 0 1 12 0v3M17 5a3 3 0 0 1 0 6m1 3a5 5 0 0 1 3 4v3" />
+      </>
+    ),
+    guests: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v8m-4-4h8" />
+      </>
+    ),
+    reminders: (
+      <>
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+        <path d="M12 2V1" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="21"
+      height="21"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
     >
-      <div
-        className="card"
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: "min(720px, 100%)",
-          margin: "0 auto",
-          // ограничиваем высоту в пределах окна, но скролл уже на оверлее,
-          // поэтому даже если контент больше — можно скроллить оверлей.
-          maxHeight:
-            "calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)) - 24px)",
-          overflow: "visible",
-        }}
-      >
-        {children}
-      </div>
-    </div>,
-    document.body
+      {shapes[name]}
+    </svg>
   );
 }
-
 
 export default function GameSheet({
   open,
@@ -83,60 +67,68 @@ export default function GameSheet({
   apiPost,
   apiPatch,
   apiDelete,
-  onReload,  // например: () => load({silent:true})
+  onReload, // например: () => load({silent:true})
   onChanged, // твой onChanged
 }) {
   const [gameDraft, setGameDraft] = useState(null);
+  const [activeTab, setActiveTab] = useState("game");
+  const [guestQuery, setGuestQuery] = useState("");
 
-    // info blocks (notice + info)
+  // info blocks (notice + info)
   const [noticeText, setNoticeText] = useState("");
   const [infoText, setInfoText] = useState("");
-  const [infoSaving, setInfoSaving] = useState(false);
 
-// reminder
-// reminders (list)
-const [reminders, setReminders] = useState([]);
-const [remLoading, setRemLoading] = useState(false);
-const [postgameEnabled, setPostgameEnabled] = useState(true);
-const [postgameSaving, setPostgameSaving] = useState(false);
+  // reminder
+  // reminders (list)
+  const [reminders, setReminders] = useState([]);
+  const [remLoading, setRemLoading] = useState(false);
+  const [postgameEnabled, setPostgameEnabled] = useState(true);
+  const [postgameSaving, setPostgameSaving] = useState(false);
 
-function isoToLocalDT(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
-  const pad = (n) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  );
-}
+  function isoToLocalDT(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    );
+  }
 
-function localDTToIso(local) {
-  if (!local) return null;
-  const [date, time] = String(local).split("T");
-  if (!date || !time) return null;
-  return toIsoFromLocal(date, time);
-}
+  function localDTToIso(local) {
+    if (!local) return null;
+    const [date, time] = String(local).split("T");
+    if (!date || !time) return null;
+    return toIsoFromLocal(date, time);
+  }
 
-function keyOfRem(r) {
-  return r.id ?? r._key;
-}
+  function keyOfRem(r) {
+    return r.id ?? r._key;
+  }
 
-function updateReminderRow(row, patch) {
-  const k = keyOfRem(row);
-  setReminders((prev) => prev.map((x) => (keyOfRem(x) === k ? { ...x, ...patch } : x)));
-}
+  function updateReminderRow(row, patch) {
+    const k = keyOfRem(row);
+    setReminders((prev) =>
+      prev.map((x) => (keyOfRem(x) === k ? { ...x, ...patch } : x)),
+    );
+  }
 
-function toggleReminderExpanded(row) {
-  const k = keyOfRem(row);
-  setReminders((prev) => prev.map((x) => (keyOfRem(x) === k ? { ...x, expanded: !x.expanded } : x)));
-}
-
-
+  function toggleReminderExpanded(row) {
+    const k = keyOfRem(row);
+    setReminders((prev) =>
+      prev.map((x) =>
+        keyOfRem(x) === k ? { ...x, expanded: !x.expanded } : x,
+      ),
+    );
+  }
 
   // guests
   const [guestsState, setGuestsState] = useState({ loading: false, list: [] });
-  const [guestPoolState, setGuestPoolState] = useState({ loading: false, list: [] });
+  const [guestPoolState, setGuestPoolState] = useState({
+    loading: false,
+    list: [],
+  });
   const [guestFormOpen, setGuestFormOpen] = useState(false);
   const [guestEditingId, setGuestEditingId] = useState(null);
   const [guestDraft, setGuestDraft] = useState({ ...GUEST_DEFAULT });
@@ -145,7 +137,6 @@ function toggleReminderExpanded(row) {
   const [videoOpen, setVideoOpen] = useState(false);
 
   const [videoNotifySilent, setVideoNotifySilent] = useState(false);
-
 
   // attendance
   const [attendanceRows, setAttendanceRows] = useState([]);
@@ -164,28 +155,28 @@ function toggleReminderExpanded(row) {
   // busy
   const [opBusy, setOpBusy] = useState(false);
 
-
-
   const [toast, setToast] = useState(null); // { text, kind }
-const toastTimerRef = useRef(null);
+  const toastTimerRef = useRef(null);
 
-function pushToast(text, kind = "ok") {
-  setToast({ text, kind });
-  if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-  toastTimerRef.current = setTimeout(() => setToast(null), 1800);
-}
-
-function askConfirm(message) {
-  const tg = window.Telegram?.WebApp;
-  if (tg?.showConfirm) {
-    return new Promise((resolve) => {
-      try { tg.showConfirm(String(message || ""), (ok) => resolve(!!ok)); }
-      catch { resolve(false); }
-    });
+  function pushToast(text, kind = "ok") {
+    setToast({ text, kind });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 1800);
   }
-  return Promise.resolve(window.confirm(String(message || "")));
-}
 
+  function askConfirm(message) {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showConfirm) {
+      return new Promise((resolve) => {
+        try {
+          tg.showConfirm(String(message || ""), (ok) => resolve(!!ok));
+        } catch {
+          resolve(false);
+        }
+      });
+    }
+    return Promise.resolve(window.confirm(String(message || "")));
+  }
 
   const isOpen = !!open && !!game;
 
@@ -202,8 +193,10 @@ function askConfirm(message) {
       return true;
     } catch (e) {
       console.error(label, e);
-      pushToast("❌ Ошибка", "err");
-      notify("❌ Ошибка"); // можешь потом убрать, если не хочешь модалки
+      pushToast("Не удалось сохранить. Попробуйте ещё раз.", "err");
+      notify(
+        "Не удалось выполнить действие. Проверьте соединение и попробуйте ещё раз.",
+      ); // можешь потом убрать, если не хочешь модалки
 
       return false;
     } finally {
@@ -215,6 +208,8 @@ function askConfirm(message) {
   useEffect(() => {
     if (!isOpen) return;
 
+    setActiveTab("game");
+    setGuestQuery("");
     const dt = toLocal(game.starts_at);
 
     setGameDraft({
@@ -229,7 +224,7 @@ function askConfirm(message) {
       geo_address: game.geo_address || "",
       raw: game,
     });
-        // init info blocks
+    // init info blocks
     setNoticeText(game.notice_text || "");
     setInfoText(game.info_text || "");
 
@@ -264,297 +259,193 @@ function askConfirm(message) {
     setPostgameEnabled(game.postgame_enabled !== false);
   }, [isOpen, game?.id, game?.notice_text, game?.info_text]);
 
-  useEffect(() => {
-  if (!guestFormOpen) return;
-  const prev = document.body.style.overflow;
-  document.body.style.overflow = "hidden";
-  return () => { document.body.style.overflow = prev; };
-}, [guestFormOpen]);
+  function formatWhen(starts_at) {
+    const s = new Date(starts_at).toLocaleString("ru-RU", {
+      weekday: "short",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
-
-//   useEffect(() => {
-//   if (!isOpen || !game) return;
-
-//   setRemEnabled(!!game.reminder_enabled);
-//   setRemPin(game.reminder_pin !== false);
-
-//   // reminder_at (timestamptz) -> datetime-local
-//   if (game.reminder_at) {
-//     const d = new Date(game.reminder_at);
-//     const pad = (n) => String(n).padStart(2, "0");
-//     const local =
-//       `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-//       `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-//     setRemAt(local);
-//   } else {
-//     setRemAt("");
-//   }
-// }, [
-//   isOpen,
-//   game?.id,
-//   game?.reminder_enabled,
-//   game?.reminder_pin,
-//   game?.reminder_at,
-// ]);
-
-function formatWhen(starts_at) {
-  const s = new Date(starts_at).toLocaleString("ru-RU", {
-    weekday: "short",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const cleaned = String(s).replace(/\s+/g, " ").trim();
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-}
-
-async function saveReminderSettings() {
-  if (!gameDraft?.id) return;
-
-  if (remEnabled && !remAt) {
-    alert("Укажи дату/время напоминания");
-    return;
+    const cleaned = String(s).replace(/\s+/g, " ").trim();
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }
 
-  let reminder_at = null;
-  if (remEnabled && remAt) {
-    const [d, t] = remAt.split("T");
-    if (!d || !t) {
-      alert("Некорректная дата/время напоминания");
+  async function sendVideoNotify() {
+    if (!gameDraft?.id) return;
+
+    const videoUrl = String(gameDraft.video_url || "").trim();
+    if (!videoUrl) return notify("Ссылка на видео пустая");
+
+    const ok = await runOp("send video notify", async () => {
+      const r = await apiPost("/api/admin/games/video/send", {
+        game_id: gameDraft.id,
+        video_url: videoUrl,
+        silent: !!videoNotifySilent,
+      });
+      if (!r?.ok) throw new Error(r?.reason || "video_send_failed");
+    });
+
+    if (ok) notify("✅ Отправлено в чат");
+  }
+
+  async function savePostgameSettings() {
+    if (!gameDraft?.id) return;
+
+    setPostgameSaving(true);
+    try {
+      const ok = await runOp("save postgame settings", async () => {
+        const r = await apiPatch(`/api/admin/games/${gameDraft.id}/reminder`, {
+          postgame_enabled: !!postgameEnabled,
+        });
+        if (!r?.ok)
+          throw new Error(r?.reason || r?.error || "postgame_save_failed");
+      });
+
+      if (!ok) return;
+
+      await onReload?.(gameDraft.id);
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Послеигровое сообщение сохранено — обновляю приложение…",
+        gameId: gameDraft.id,
+      });
+      notify("✅ Послеигровое сообщение сохранено");
+    } finally {
+      setPostgameSaving(false);
+    }
+  }
+
+  async function loadRemindersForGame(gameId) {
+    setRemLoading(true);
+    try {
+      const r = await apiGet(`/api/admin/games/${gameId}/reminders`);
+      if (!r?.ok) throw new Error(r?.reason || "reminders_load_failed");
+
+      const list = (r.reminders || []).map((x) => ({
+        ...x,
+        _key: x.id, // для React key
+        local_at: isoToLocalDT(x.remind_at),
+        __orig: { enabled: !!x.enabled, pin: !!x.pin, remind_at: x.remind_at },
+        expanded: false,
+        saving: false,
+      }));
+
+      setReminders(list);
+    } catch (e) {
+      console.error(e);
+      pushToast("❌ Не удалось загрузить напоминания", "err");
+      setReminders([]);
+    } finally {
+      setRemLoading(false);
+    }
+  }
+
+  function addReminderRow() {
+    const k = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    setReminders((prev) => [
+      ...prev,
+      {
+        id: null,
+        _key: k,
+        enabled: true,
+        pin: true,
+        remind_at: null,
+        local_at: "",
+        sent_at: null,
+        message_id: null,
+        attempts: 0,
+        last_error: null,
+        __orig: { enabled: true, pin: true, remind_at: null },
+        expanded: true,
+        saving: false,
+      },
+    ]);
+  }
+
+  async function saveReminderRow(row) {
+    if (row.enabled && !row.local_at) {
+      notify("Укажи дату/время напоминания");
       return;
     }
-    reminder_at = toIsoFromLocal(d, t);
-  }
 
-  setRemSaving(true);
-  try {
-    const ok = await runOp("save reminder", async () => {
-      const r = await apiPatch(`/api/admin/games/${gameDraft.id}/reminder`, {
-        reminder_enabled: remEnabled,
-        reminder_at,
-        reminder_pin: remPin,
-        reset_sent: true, // чтобы отправилось заново при изменении времени
-      });
-
-      // ВАЖНО: иначе можно "успешно" сохранить в никуда и не заметить
-      if (!r?.ok) throw new Error(r?.reason || r?.error || "reminder_save_failed");
-    });
-
-    if (!ok) return;
-
-    await onReload?.(gameDraft.id); // <-- передай id, у тебя onReload умеет его принять
-    await onChanged?.({ label: "✅ Напоминание сохранено — обновляю приложение…", gameId: gameDraft.id });
-
-    notify("✅ Напоминание сохранено");
-  } finally {
-    setRemSaving(false);
-  }
-}
-
-async function sendVideoNotify() {
-  if (!gameDraft?.id) return;
-
-  const videoUrl = String(gameDraft.video_url || "").trim();
-  if (!videoUrl) return notify("Ссылка на видео пустая");
-
-  const ok = await runOp("send video notify", async () => {
-    const r = await apiPost("/api/admin/games/video/send", {
-      game_id: gameDraft.id,
-      video_url: videoUrl,
-      silent: !!videoNotifySilent,
-    });
-    if (!r?.ok) throw new Error(r?.reason || "video_send_failed");
-  });
-
-  if (ok) notify("✅ Отправлено в чат");
-}
-
-
-async function saveInfoBlocks() {
-  if (!gameDraft?.id) return;
-
-  const notice = String(noticeText ?? "").replace(/\r\n/g, "\n").trim();
-  const info = String(infoText ?? "").replace(/\r\n/g, "\n").trim();
-
-  if (notice && notice.length > 240) {
-    alert("❌ Короткая заметка должна быть до 240 символов");
-    return;
-  }
-
-  setInfoSaving(true);
-  try {
-    const ok = await runOp("save info blocks", async () => {
-      const r = await apiPatch(`/api/games/${gameDraft.id}`, {
-        notice_text: notice,     // пустое -> сервер сам положит null (у тебя так сделано)
-        info_text: info,
-      });
-      if (!r?.ok) throw new Error(r?.reason || r?.error || "info_save_failed");
-    });
-
-    if (!ok) return;
-
-    await onReload?.(gameDraft.id);
-    await onChanged?.({ label: "✅ Информация по игре сохранена — обновляю приложение…", gameId: gameDraft.id });
-
-    notify("✅ Информация сохранена");
-  } finally {
-    setInfoSaving(false);
-  }
-}
-
-async function savePostgameSettings() {
-  if (!gameDraft?.id) return;
-
-  setPostgameSaving(true);
-  try {
-    const ok = await runOp("save postgame settings", async () => {
-      const r = await apiPatch(`/api/admin/games/${gameDraft.id}/reminder`, {
-        postgame_enabled: !!postgameEnabled,
-      });
-      if (!r?.ok) throw new Error(r?.reason || r?.error || "postgame_save_failed");
-    });
-
-    if (!ok) return;
-
-    await onReload?.(gameDraft.id);
-    await onChanged?.({ label: "✅ Послеигровое сообщение сохранено — обновляю приложение…", gameId: gameDraft.id });
-    notify("✅ Послеигровое сообщение сохранено");
-  } finally {
-    setPostgameSaving(false);
-  }
-}
-
-async function loadRemindersForGame(gameId) {
-  setRemLoading(true);
-  try {
-    const r = await apiGet(`/api/admin/games/${gameId}/reminders`);
-    if (!r?.ok) throw new Error(r?.reason || "reminders_load_failed");
-
-    const list = (r.reminders || []).map((x) => ({
-      ...x,
-      _key: x.id, // для React key
-      local_at: isoToLocalDT(x.remind_at),
-      __orig: { enabled: !!x.enabled, pin: !!x.pin, remind_at: x.remind_at },
-      expanded: false,
-      saving: false,
-    }));
-
-    setReminders(list);
-  } catch (e) {
-    console.error(e);
-    pushToast("❌ Не удалось загрузить напоминания", "err");
-    setReminders([]);
-  } finally {
-    setRemLoading(false);
-  }
-}
-
-function addReminderRow() {
-  const k = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  setReminders((prev) => [
-    ...prev,
-    {
-      id: null,
-      _key: k,
-      enabled: true,
-      pin: true,
-      remind_at: null,
-      local_at: "",
-      sent_at: null,
-      message_id: null,
-      attempts: 0,
-      last_error: null,
-      __orig: { enabled: true, pin: true, remind_at: null },
-      expanded: true,
-      saving: false,
-    },
-  ]);
-}
-
-async function saveReminderRow(row) {
-  if (row.enabled && !row.local_at) {
-    notify("Укажи дату/время напоминания");
-    return;
-  }
-
-  const remind_at = row.local_at ? localDTToIso(row.local_at) : null;
-  if (row.enabled && !remind_at) {
-    notify("Некорректная дата/время");
-    return;
-  }
-
-  // reset_sent только если уже было отправлено и ты реально меняешь время/вкл
-  const changedTime = remind_at !== row.__orig?.remind_at;
-  const changedEnabled = !!row.enabled !== !!row.__orig?.enabled;
-  const reset_sent = !!row.sent_at && (changedTime || changedEnabled);
-
-  updateReminderRow(row, { saving: true });
-
-  const ok = await runOp("save reminder row", async () => {
-    if (!row.id) {
-      const r = await apiPost(`/api/admin/games/${gameDraft.id}/reminders`, {
-        enabled: !!row.enabled,
-        pin: !!row.pin,
-        remind_at,
-      });
-      if (!r?.ok) throw new Error(r?.reason || "reminder_create_failed");
-    } else {
-      const r = await apiPatch(`/api/admin/reminders/${row.id}`, {
-        enabled: !!row.enabled,
-        pin: !!row.pin,
-        remind_at,
-        reset_sent,
-      });
-      if (!r?.ok) throw new Error(r?.reason || "reminder_update_failed");
+    const remind_at = row.local_at ? localDTToIso(row.local_at) : null;
+    if (row.enabled && !remind_at) {
+      notify("Некорректная дата/время");
+      return;
     }
-  });
 
-  updateReminderRow(row, { saving: false });
+    // reset_sent только если уже было отправлено и ты реально меняешь время/вкл
+    const changedTime = remind_at !== row.__orig?.remind_at;
+    const changedEnabled = !!row.enabled !== !!row.__orig?.enabled;
+    const reset_sent = !!row.sent_at && (changedTime || changedEnabled);
 
-  if (ok) {
-    pushToast("✅ Напоминание сохранено");
-    await loadRemindersForGame(gameDraft.id);
+    updateReminderRow(row, { saving: true });
+
+    const ok = await runOp("save reminder row", async () => {
+      if (!row.id) {
+        const r = await apiPost(`/api/admin/games/${gameDraft.id}/reminders`, {
+          enabled: !!row.enabled,
+          pin: !!row.pin,
+          remind_at,
+        });
+        if (!r?.ok) throw new Error(r?.reason || "reminder_create_failed");
+      } else {
+        const r = await apiPatch(`/api/admin/reminders/${row.id}`, {
+          enabled: !!row.enabled,
+          pin: !!row.pin,
+          remind_at,
+          reset_sent,
+        });
+        if (!r?.ok) throw new Error(r?.reason || "reminder_update_failed");
+      }
+    });
+
+    updateReminderRow(row, { saving: false });
+
+    if (ok) {
+      pushToast("✅ Напоминание сохранено");
+      await loadRemindersForGame(gameDraft.id);
+    }
   }
-}
 
-async function deleteReminderRow(row) {
-  const confirmed = await askConfirm("Удалить напоминание?");
-  if (!confirmed) return;
+  async function deleteReminderRow(row) {
+    const confirmed = await askConfirm("Удалить напоминание?");
+    if (!confirmed) return;
 
-  if (!row.id) {
-    setReminders((prev) => prev.filter((x) => keyOfRem(x) !== keyOfRem(row)));
-    return;
+    if (!row.id) {
+      setReminders((prev) => prev.filter((x) => keyOfRem(x) !== keyOfRem(row)));
+      return;
+    }
+
+    const ok = await runOp("delete reminder row", async () => {
+      const r = await apiDelete(`/api/admin/reminders/${row.id}`);
+      if (!r?.ok) throw new Error(r?.reason || "reminder_delete_failed");
+    });
+
+    if (ok) {
+      pushToast("🗑️ Удалено");
+      await loadRemindersForGame(gameDraft.id);
+    }
   }
 
-  const ok = await runOp("delete reminder row", async () => {
-    const r = await apiDelete(`/api/admin/reminders/${row.id}`);
-    if (!r?.ok) throw new Error(r?.reason || "reminder_delete_failed");
-  });
+  async function resetReminderSent(row) {
+    if (!row?.id) return;
 
-  if (ok) {
-    pushToast("🗑️ Удалено");
-    await loadRemindersForGame(gameDraft.id);
+    const ok = await runOp("reset reminder sent", async () => {
+      const r = await apiPatch(`/api/admin/reminders/${row.id}`, {
+        reset_sent: true,
+      });
+      if (!r?.ok) throw new Error(r?.reason || "reminder_reset_failed");
+    });
+
+    if (ok) {
+      pushToast("↻ Сброшено");
+      await loadRemindersForGame(gameDraft.id);
+    }
   }
-}
-
-async function resetReminderSent(row) {
-  if (!row?.id) return;
-
-  const ok = await runOp("reset reminder sent", async () => {
-    const r = await apiPatch(`/api/admin/reminders/${row.id}`, { reset_sent: true });
-    if (!r?.ok) throw new Error(r?.reason || "reminder_reset_failed");
-  });
-
-  if (ok) {
-    pushToast("↻ Сброшено");
-    await loadRemindersForGame(gameDraft.id);
-  }
-}
-
-
 
   function close() {
     setGameDraft(null);
@@ -594,52 +485,61 @@ async function resetReminderSent(row) {
     }
   }
 
-function attendLabel(st) {
-  if (st === "yes") return "✅ был";
-  if (st === "no") return "❌ не был";
-  return "⭕ не отмечено";
-}
-
-async function setAttend(pOrId, nextStatus) {
-  if (!gameDraft?.id) return;
-
-  const tg_id = typeof pOrId === "object" ? pOrId.tg_id : pOrId;
-  const row = typeof pOrId === "object"
-    ? pOrId
-    : attendanceRows.find(x => String(x.tg_id) === String(tg_id));
-
-  const cur = (row?.status || "maybe");
-  if (cur === nextStatus) {
-    pushToast(`Уже: ${attendLabel(cur)}`, "warn");
-    return;
+  function attendLabel(st) {
+    if (st === "yes") return pastGame ? "был" : "будет";
+    if (st === "no") return pastGame ? "не был" : "не будет";
+    return "⭕ не отмечено";
   }
 
-  const name = row ? `${showName(row)}${showNum(row) ? ` #${showNum(row)}` : ""}` : `ID ${tg_id}`;
+  async function setAttend(pOrId, nextStatus) {
+    if (!gameDraft?.id) return;
 
-  const ok = await askConfirm(`Изменить статус для ${name} на "${attendLabel(nextStatus)}"?`);
-  if (!ok) return;
+    const tg_id = typeof pOrId === "object" ? pOrId.tg_id : pOrId;
+    const row =
+      typeof pOrId === "object"
+        ? pOrId
+        : attendanceRows.find((x) => String(x.tg_id) === String(tg_id));
 
-  const success = await runOp("save attend", async () => {
-    await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id, status: nextStatus });
+    const cur = row?.status || "maybe";
+    if (cur === nextStatus) {
+      pushToast(`Уже: ${attendLabel(cur)}`, "warn");
+      return;
+    }
 
-    setAttendanceRows((prev) =>
-      prev.map((x) => (String(x.tg_id) === String(tg_id) ? { ...x, status: nextStatus } : x))
+    const name = row ? `${showName(row)}${showNum(row)}` : `ID ${tg_id}`;
+
+    const ok = await askConfirm(
+      `Изменить статус для ${name} на "${attendLabel(nextStatus)}"?`,
     );
-  });
+    if (!ok) return;
 
-  if (success) {
-    pushToast(`✅ ${name}: ${attendLabel(nextStatus)}`, "ok");
-    // sheet НЕ закрываем
-    // если нужно обновлять внешние данные — лучше onReload, а не onChanged (чтобы не закрывало)
-    await onReload?.(gameDraft.id);
+    const success = await runOp("save attend", async () => {
+      await apiPost("/api/admin/rsvp", {
+        game_id: gameDraft.id,
+        tg_id,
+        status: nextStatus,
+      });
+
+      setAttendanceRows((prev) =>
+        prev.map((x) =>
+          String(x.tg_id) === String(tg_id) ? { ...x, status: nextStatus } : x,
+        ),
+      );
+    });
+
+    if (success) {
+      pushToast(`✅ ${name}: ${attendLabel(nextStatus)}`, "ok");
+      // sheet НЕ закрываем
+      // если нужно обновлять внешние данные — лучше onReload, а не onChanged (чтобы не закрывало)
+      await onReload?.(gameDraft.id);
+    }
   }
-}
-
 
   /** tokens */
   async function createRsvpLink(tg_id) {
     if (!gameDraft?.id || !tg_id) return;
 
+    setActiveTab("players");
     setTokenMsg("");
     setTokenUrl("");
     setTokenValue("");
@@ -655,7 +555,9 @@ async function setAttend(pOrId, nextStatus) {
       });
 
       if (!r?.ok) {
-        setTokenMsg(`❌ Не удалось создать ссылку: ${r?.reason || r?.error || "unknown"}`);
+        setTokenMsg(
+          `❌ Не удалось создать ссылку: ${r?.reason || r?.error || "unknown"}`,
+        );
         setTokenForId(null);
         return;
       }
@@ -663,9 +565,15 @@ async function setAttend(pOrId, nextStatus) {
       const token = r?.token?.token || r?.token || "";
       setTokenValue(token);
 
-      const url = r?.url || (token ? `${window.location.origin}/rsvp?t=${encodeURIComponent(token)}` : "");
+      const url =
+        r?.url ||
+        (token
+          ? `${window.location.origin}/rsvp?t=${encodeURIComponent(token)}`
+          : "");
       if (!url) {
-        setTokenMsg("❌ Токен создан, но URL пустой (проверь PUBLIC_WEB_URL/WEB_APP_URL на бэке)");
+        setTokenMsg(
+          "❌ Токен создан, но URL пустой (проверь PUBLIC_WEB_URL/WEB_APP_URL на бэке)",
+        );
         setTokenForId(null);
         return;
       }
@@ -694,9 +602,13 @@ async function setAttend(pOrId, nextStatus) {
 
     setTokenBusy(true);
     try {
-      const r = await apiPost("/api/admin/rsvp-tokens/revoke", { token: tokenValue });
+      const r = await apiPost("/api/admin/rsvp-tokens/revoke", {
+        token: tokenValue,
+      });
       if (!r?.ok) {
-        setTokenMsg(`❌ Не удалось отозвать: ${r?.reason || r?.error || "unknown"}`);
+        setTokenMsg(
+          `❌ Не удалось отозвать: ${r?.reason || r?.error || "unknown"}`,
+        );
         return;
       }
       setTokenMsg("🚫 Ссылка отозвана");
@@ -736,12 +648,20 @@ async function setAttend(pOrId, nextStatus) {
     if (!gameDraft?.id || !tgId) return;
 
     await runOp("set guest rsvp", async () => {
-      await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id: tgId, status });
+      await apiPost("/api/admin/rsvp", {
+        game_id: gameDraft.id,
+        tg_id: tgId,
+        status,
+      });
       await loadGuestsForGame(gameDraft.id);
       await loadGuestPool();
       await loadAttendanceForGame(gameDraft.id);
       await onReload?.();
-      await onChanged?.({ label: "✅ Гость отмечен на игру — обновляю приложение…", gameId: gameDraft.id });
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Гость отмечен на игру — обновляю приложение…",
+        gameId: gameDraft.id,
+      });
     });
   }
 
@@ -774,7 +694,9 @@ async function setAttend(pOrId, nextStatus) {
   async function saveGuest() {
     if (!gameDraft) return;
 
-    await runOp("save guest", async () => {
+    if (!String(guestDraft.display_name || "").trim())
+      return notify("Укажите имя гостя");
+    const saved = await runOp("save guest", async () => {
       const payload = {
         game_id: gameDraft.id,
         status: guestDraft.status,
@@ -790,14 +712,13 @@ async function setAttend(pOrId, nextStatus) {
         notes: guestDraft.notes || "",
       };
 
-      if (!payload.display_name) {
-        alert("Укажи имя гостя");
-        return;
-      }
-
       if (guestEditingId) {
         await apiPatch(`/api/admin/players/${guestEditingId}`, payload);
-        await apiPost("/api/admin/rsvp", { game_id: gameDraft.id, tg_id: guestEditingId, status: payload.status });
+        await apiPost("/api/admin/rsvp", {
+          game_id: gameDraft.id,
+          tg_id: guestEditingId,
+          status: payload.status,
+        });
       } else {
         await apiPost("/api/admin/guests", payload);
       }
@@ -810,17 +731,21 @@ async function setAttend(pOrId, nextStatus) {
       await loadGuestPool();
       await loadAttendanceForGame(gameDraft.id);
       await onReload?.();
-      await onChanged?.({ label: "✅ Гости обновлены — обновляю приложение…", gameId: gameDraft.id });
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Гости обновлены — обновляю приложение…",
+        gameId: gameDraft.id,
+      });
     });
 
-    notify("✅ Сохранено");
+    if (saved) notify("✅ Гость сохранён");
   }
 
   async function deleteGuest(tgId) {
     const ok = confirm("Удалить гостя? (Он исчезнет из списков и состава)");
     if (!ok) return;
 
-    await runOp("delete guest", async () => {
+    const deleted = await runOp("delete guest", async () => {
       await apiDelete(`/api/admin/players/${tgId}`);
 
       if (gameDraft) {
@@ -829,24 +754,41 @@ async function setAttend(pOrId, nextStatus) {
         await loadAttendanceForGame(gameDraft.id);
       }
       await onReload?.();
-      await onChanged?.({ label: "✅ Гость удалён — обновляю приложение…", gameId: gameDraft?.id });
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Гость удалён — обновляю приложение…",
+        gameId: gameDraft?.id,
+      });
     });
 
-    notify("✅ Удалено");
+    if (deleted) {
+      if (String(guestEditingId) === String(tgId)) setGuestFormOpen(false);
+      notify("✅ Гость удалён");
+    }
   }
 
-  async function promoteGuestToManual(tg_id, guestName = "", emailFromForm = "") {
-    const ok = confirm("Сделать этого гостя постоянным игроком команды (manual)?");
+  async function promoteGuestToManual(
+    tg_id,
+    guestName = "",
+    emailFromForm = "",
+  ) {
+    const ok = confirm(
+      "Сделать этого гостя постоянным игроком команды (manual)?",
+    );
     if (!ok) return;
 
-    let email = String(emailFromForm || "").trim().toLowerCase();
+    let email = String(emailFromForm || "")
+      .trim()
+      .toLowerCase();
     if (!email) {
       const emailInput = prompt(
         `Укажите email для игрока ${guestName ? `«${guestName}»` : ""} (обязательно):`,
-        ""
+        "",
       );
       if (emailInput == null) return;
-      email = String(emailInput || "").trim().toLowerCase();
+      email = String(emailInput || "")
+        .trim()
+        .toLowerCase();
     }
 
     if (!email || !email.includes("@")) {
@@ -858,7 +800,8 @@ async function setAttend(pOrId, nextStatus) {
       const r = await apiPost(`/api/admin/players/${tg_id}/promote`, { email });
       if (!r?.ok) {
         const reason = r?.reason || r?.error || "unknown";
-        if (reason === "email_in_use") notify("❌ Такой email уже используется");
+        if (reason === "email_in_use")
+          notify("❌ Такой email уже используется");
         else notify(`❌ Не удалось перевести гостя: ${reason}`);
         return;
       }
@@ -871,8 +814,14 @@ async function setAttend(pOrId, nextStatus) {
         await loadAttendanceForGame(gameDraft.id);
       }
       await onReload?.();
-      await onChanged?.({ label: "✅ Состав игроков обновлён — обновляю приложение…", refreshPlayers: true, gameId: gameDraft?.id });
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Состав игроков обновлён — обновляю приложение…",
+        refreshPlayers: true,
+        gameId: gameDraft?.id,
+      });
 
+      setGuestFormOpen(false);
       notify("✅ Гость переведён в постоянные игроки");
     });
   }
@@ -881,22 +830,33 @@ async function setAttend(pOrId, nextStatus) {
   async function saveGame() {
     if (!gameDraft) return;
 
-    await runOp("save game", async () => {
+    if (!gameDraft.date || !gameDraft.time)
+      return notify("Укажите дату и время игры");
+    const notice = String(noticeText || "").trim();
+    const info = String(infoText || "").trim();
+    if (notice.length > 240)
+      return notify("Короткое объявление должно быть до 240 символов");
+    const saved = await runOp("save game", async () => {
       const starts_at = toIsoFromLocal(gameDraft.date, gameDraft.time);
 
-      const latStr = String(gameDraft.geo_lat ?? "").replace(",", ".").trim();
-      const lonStr = String(gameDraft.geo_lon ?? "").replace(",", ".").trim();
+      const latStr = String(gameDraft.geo_lat ?? "")
+        .replace(",", ".")
+        .trim();
+      const lonStr = String(gameDraft.geo_lon ?? "")
+        .replace(",", ".")
+        .trim();
 
       const geo_lat = latStr === "" ? null : Number(latStr);
       const geo_lon = lonStr === "" ? null : Number(lonStr);
 
-      if ((geo_lat !== null && !Number.isFinite(geo_lat)) || (geo_lon !== null && !Number.isFinite(geo_lon))) {
-        alert("❌ Геоточка: lat/lon должны быть числами (или пусто)");
-        return;
+      if (
+        (geo_lat !== null && !Number.isFinite(geo_lat)) ||
+        (geo_lon !== null && !Number.isFinite(geo_lon))
+      ) {
+        throw new Error("invalid_coordinates");
       }
       if ((geo_lat === null) !== (geo_lon === null)) {
-        alert("❌ Геоточка: нужно заполнить и lat, и lon (или оставить оба пустыми)");
-        return;
+        throw new Error("incomplete_coordinates");
       }
 
       await apiPatch(`/api/games/${gameDraft.id}`, {
@@ -904,30 +864,50 @@ async function setAttend(pOrId, nextStatus) {
         location: gameDraft.location,
         status: gameDraft.status,
         video_url: gameDraft.video_url || "",
+        notice_text: notice,
+        info_text: info,
         geo_lat,
         geo_lon,
       });
 
       await onReload?.();
-      await onChanged?.({ label: "✅ Игра сохранена — обновляю приложение…", gameId: gameDraft.id });
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Игра сохранена — обновляю приложение…",
+        gameId: gameDraft.id,
+      });
     });
 
-    notify("✅ Игра сохранена");
-    close();
+    if (saved) {
+      notify("✅ Игра сохранена");
+      close();
+    }
   }
 
   async function setGameStatus(status) {
     if (!gameDraft) return;
 
-    await runOp("set status", async () => {
+    if (
+      !(await askConfirm(
+        status === "cancelled"
+          ? "Отменить эту игру? Игроки увидят статус «Отменена»."
+          : "Восстановить эту игру?",
+      ))
+    )
+      return;
+    const saved = await runOp("set status", async () => {
       await apiPost(`/api/games/${gameDraft.id}/status`, { status });
       setGameDraft((d) => ({ ...d, status }));
 
       await onReload?.();
-      await onChanged?.({ label: "✅ Статус обновлён — обновляю приложение…", gameId: gameDraft.id });
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Статус обновлён — обновляю приложение…",
+        gameId: gameDraft.id,
+      });
     });
 
-    notify("✅ Статус обновлён");
+    if (saved) notify("✅ Статус обновлён");
   }
 
   async function deleteGame() {
@@ -935,45 +915,79 @@ async function setAttend(pOrId, nextStatus) {
     const ok = confirm(`Удалить игру #${gameDraft.id}?`);
     if (!ok) return;
 
-    await runOp("delete game", async () => {
+    const deleted = await runOp("delete game", async () => {
       await apiDelete(`/api/games/${gameDraft.id}`);
 
       await onReload?.();
-      await onChanged?.({ label: "✅ Игра удалена — обновляю приложение…", gameId: gameDraft.id });
+      await onChanged?.({
+        action: "keep_open",
+        label: "✅ Игра удалена — обновляю приложение…",
+        gameId: gameDraft.id,
+      });
     });
 
-    notify("✅ Игра удалена");
-    close();
+    if (deleted) {
+      notify("✅ Игра удалена");
+      close();
+    }
   }
 
   function GuestPill({ g }) {
     const status = g.status || "yes";
-    const tone = status === "yes" ? "guestPill yes" : status === "maybe" ? "guestPill maybe" : "guestPill no";
 
     return (
-      <div className={tone}>
-        <div className="guestPillMain">
-          <span className="guestTag">ГОСТЬ</span>
-          <span className="guestName">
+      <div className={`gsGuest gsGuest--${status}`}>
+        <div className="gsGuest__main">
+          <span className="gsGuest__tag">ГОСТЬ</span>
+          <span className="gsGuest__name">
             {showName(g)}
             {showNum(g)}
           </span>
-          <span className="guestMeta">({posLabel((g.position || "F").toUpperCase())})</span>
-          <span className="guestStatus">
-            {status === "yes" ? "✅ будет" : status === "maybe" ? "❓ под вопросом" : "❌ не будет"}
+          <span className="gsGuest__meta">
+            ({posLabel((g.position || "F").toUpperCase())})
+          </span>
+          <span className="gsGuest__status">
+            {status === "yes"
+              ? "✅ будет"
+              : status === "maybe"
+                ? "❓ под вопросом"
+                : "❌ не будет"}
           </span>
         </div>
-        <div className="guestPillActions">
-          <button className="iconBtn" title="Ссылка на отметку" disabled={tokenBusy} onClick={() => createRsvpLink(g.tg_id)}>
+        <div className="gsGuest__actions">
+          <button
+            className="gsIconButton"
+            aria-label={`Ссылка на отметку: ${showName(g)}`}
+            title="Ссылка на отметку"
+            disabled={tokenBusy}
+            onClick={() => createRsvpLink(g.tg_id)}
+          >
             🔗
           </button>
-          <button className="iconBtn" title="Сделать игроком команды (manual)" onClick={() => promoteGuestToManual(g.tg_id, showName(g), g.email || "")}>
+          <button
+            className="gsIconButton"
+            aria-label={`Перевести в постоянные игроки: ${showName(g)}`}
+            title="Сделать постоянным игроком"
+            onClick={() =>
+              promoteGuestToManual(g.tg_id, showName(g), g.email || "")
+            }
+          >
             ⭐
           </button>
-          <button className="iconBtn" title="Изменить" onClick={() => openEditGuest(g)}>
+          <button
+            className="gsIconButton"
+            aria-label={`Изменить гостя: ${showName(g)}`}
+            title="Изменить"
+            onClick={() => openEditGuest(g)}
+          >
             ✏️
           </button>
-          <button className="iconBtn" title="Удалить" onClick={() => deleteGuest(g.tg_id)}>
+          <button
+            className="gsIconButton gsDangerButton"
+            aria-label={`Удалить гостя: ${showName(g)}`}
+            title="Удалить"
+            onClick={() => deleteGuest(g.tg_id)}
+          >
             🗑️
           </button>
         </div>
@@ -981,868 +995,754 @@ async function setAttend(pOrId, nextStatus) {
     );
   }
 
-  // список для админки: предстоящие/прошедшие у тебя снаружи, здесь не надо
   const title = gameDraft ? `Игра #${gameDraft.id}` : "Игра";
+  const tabs = [
+    ["game", "Игра"],
+    ["players", "Игроки"],
+    ["guests", "Гости"],
+    ["reminders", "Напоминания"],
+  ];
+  const pastGame =
+    game?.status === "finished" ||
+    Date.now() >= new Date(game?.starts_at).getTime() + 2 * 60 * 60 * 1000;
+  const statusName = {
+    scheduled: "Запланирована",
+    cancelled: "Отменена",
+    finished: "Прошла",
+  };
+  const matchingGuests = guestPoolState.list.filter((g) =>
+    `${showName(g)} ${showNum(g)}`
+      .toLocaleLowerCase("ru")
+      .includes(guestQuery.trim().toLocaleLowerCase("ru")),
+  );
+  if (!isOpen || !gameDraft || gameDraft.id !== game.id) return null;
 
-  if (!isOpen || !gameDraft) return null;
-
+  const navigation = (
+    <nav className="gsTabs" role="tablist" aria-label="Настройки игры">
+      {tabs.map(([key, label], index) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          id={`gs-tab-${key}`}
+          aria-controls={`gs-panel-${key}`}
+          aria-selected={activeTab === key}
+          tabIndex={activeTab === key ? 0 : -1}
+          disabled={opBusy}
+          onClick={() => setActiveTab(key)}
+          onKeyDown={(event) => {
+            let next;
+            if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+            if (event.key === "ArrowLeft")
+              next = (index + tabs.length - 1) % tabs.length;
+            if (event.key === "Home") next = 0;
+            if (event.key === "End") next = tabs.length - 1;
+            if (next !== undefined) {
+              event.preventDefault();
+              setActiveTab(tabs[next][0]);
+              event.currentTarget.parentElement.children[next]?.focus();
+            }
+          }}
+        >
+          <span aria-hidden="true">
+            <SettingsIcon name={key} />
+          </span>
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
   return (
     <>
-      <style>{`
-        .rowBetween{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
-
-        .sheetBackdrop{
-          position:fixed; inset:0;
-          background: rgba(0,0,0,.5);
-          z-index: 9999;
-          display:flex;
-          align-items:flex-end;
-        }
-        .sheet{
-          width:100%;
-          max-height: 92vh;
-          background: var(--bg);
-          border-top-left-radius: 18px;
-          border-top-right-radius: 18px;
-          border:1px solid var(--border);
-          overflow:hidden;
-        }
-        .sheetHeader{
-          display:flex; align-items:center; justify-content:space-between;
-          gap:10px;
-          padding:10px 12px;
-          border-bottom:1px solid var(--border);
-          background: color-mix(in srgb, var(--bg) 85%, black);
-        }
-        .sheetTitle{
-          font-weight: 1000;
-          text-align:center;
-          flex:1;
-          overflow:hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .sheetBody{
-          padding:12px;
-          overflow:auto;
-          -webkit-overflow-scrolling: touch;
-          max-height: 82vh;
-          padding-bottom: calc(18px + env(safe-area-inset-bottom));
-        }
-
-        .guestPill{
-          display:flex; align-items:center; justify-content:space-between;
-          gap:10px; padding:10px 12px;
-          border:1px solid var(--border);
-          background: var(--card-bg);
-          margin-top:8px;
-        }
-        .guestPill.yes{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #16a34a 10%, transparent); }
-        .guestPill.maybe{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #f59e0b 12%, transparent); }
-        .guestPill.no{ box-shadow: inset 0 0 0 999px color-mix(in srgb, #ef4444 10%, transparent); }
-        .guestPillMain{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-        .guestTag{
-          font-weight:800; font-size:12px;
-          padding:4px 8px; border-radius:999px;
-          border:1px solid var(--border);
-          background: color-mix(in srgb, var(--tg-text) 6%, transparent);
-        }
-        .guestName{ font-weight:800; }
-        .guestMeta{ opacity:.85; font-size:13px; }
-        .guestStatus{ opacity:.9; font-size:13px; }
-        .guestPillActions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-        .iconBtn{
-          border:1px solid var(--border);
-          background: transparent;
-          border-radius:10px;
-          padding:6px 8px;
-          cursor:pointer;
-          line-height:1;
-        }
-        .iconBtn:active{ transform: translateY(1px); }
-
-        .guestFormGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-        .guestFormGrid .full{ grid-column: 1 / -1; }
-
-        .gsRemCard{
-          border:1px solid var(--border);
-          border-radius:12px;
-          padding:9px 10px;
-          background: color-mix(in srgb, var(--card-bg) 92%, var(--bg));
-        }
-        .gsRemHead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-        .gsRemDt{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; }
-        .gsRemStatusIcon{ font-size:14px; line-height:1; }
-        .gsRemExpand{
-          margin-left:auto;
-          width:28px;
-          height:28px;
-          border-radius:8px;
-          border:1px solid var(--border);
-          background: transparent;
-          color:inherit;
-          display:inline-flex;
-          align-items:center;
-          justify-content:center;
-          cursor:pointer;
-          font-size:12px;
-        }
-        .gsRemExpand[aria-expanded="true"]{ background: color-mix(in srgb, var(--tg-text) 8%, transparent); }
-        .gsRemBody{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); display:grid; gap:8px; }
-        .gsRemMeta{
-          display:flex;
-          flex-direction:column;
-          gap:2px;
-          font-size:12px;
-          line-height:1.25;
-          opacity:.9;
-          min-width: 170px;
-        }
-        .gsRemActions{ display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap; }
-        .gsSwitch{ display:inline-flex; align-items:center; gap:8px; user-select:none; cursor:pointer; }
-        .gsSwitch input{ position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
-        .gsSwitchTrack{
-          position:relative;
-          width:42px;
-          height:24px;
-          border-radius:999px;
-          border:1px solid color-mix(in srgb, var(--border) 85%, transparent);
-          background: color-mix(in srgb, var(--bg) 88%, black);
-          transition: background .18s ease, border-color .18s ease;
-        }
-        .gsSwitchTrack::after{
-          content:"";
-          position:absolute;
-          top:2px;
-          left:2px;
-          width:18px;
-          height:18px;
-          border-radius:50%;
-          background:#fff;
-          box-shadow: 0 1px 3px rgba(0,0,0,.35);
-          transition: transform .18s ease;
-        }
-        .gsSwitch input:checked + .gsSwitchTrack{
-          background: color-mix(in srgb, var(--tg-button-color, #16a34a) 75%, #0f172a);
-          border-color: transparent;
-        }
-        .gsSwitch input:checked + .gsSwitchTrack::after{ transform: translateX(18px); }
-        .gsSwitch input:disabled + .gsSwitchTrack{ opacity:.45; }
-        .gsSwitchText{ font-size:12px; font-weight:700; opacity:.9; }
-
-        @media (max-width: 520px){
-          .guestFormGrid{ grid-template-columns:1fr; }
-          .gsRemHead{ gap:8px; }
-          .gsRemExpand{ margin-left:0; }
-        }
-      `}</style>
-
-      <Sheet title={title} onClose={close}>
-        {toast ? (
-          <div className={`gsToast ${toast.kind}`} role="status" aria-live="polite">
-            {toast.text}
-          </div>
-        ) : null}
-
-        <div className="card">
-          <div className="card" style={{ marginTop: 12 }}>
-            <div className="rowBetween">
-              <h3 style={{ margin: 0 }}>⏰ Напоминания по этой игре</h3>
-
-              <button
-                className="iconBtn"
-                type="button"
-                title="Добавить напоминание"
-                onClick={addReminderRow}
-                disabled={opBusy}
-              >
-                ➕
-              </button>
-            </div>
-
-            {remLoading ? (
-              <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>Загрузка…</div>
-            ) : null}
-
-            {!remLoading && reminders.length === 0 ? (
-              <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
-                Пока нет напоминаний
-              </div>
-            ) : null}
-
-            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-              {reminders.map((r) => (
-                <div key={keyOfRem(r)} className="gsRemCard">
-                  <div className="gsRemHead">
-                    <label className="gsSwitch" title="Включить напоминание">
-                      <input
-                        type="checkbox"
-                        checked={!!r.enabled}
-                        onChange={(e) => updateReminderRow(r, { enabled: e.target.checked })}
-                      />
-                      <span className="gsSwitchTrack" />
-                      <span className="gsSwitchText">Вкл</span>
-                    </label>
-
-                    <div className="gsRemDt">
-                      <span className="gsRemStatusIcon" aria-hidden="true">{r.sent_at ? "✅" : "⏰"}</span>
-                      <span>{r.local_at ? formatWhen(localDTToIso(r.local_at)) : "Дата не указана"}</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="gsRemExpand"
-                      aria-expanded={!!r.expanded}
-                      aria-label={r.expanded ? "Свернуть детали напоминания" : "Развернуть детали напоминания"}
-                      onClick={() => toggleReminderExpanded(r)}
-                    >
-                      {r.expanded ? "▲" : "▼"}
-                    </button>
-                  </div>
-
-                  {r.expanded ? (
-                    <div className="gsRemBody">
-                      <input
-                        className="input"
-                        type="datetime-local"
-                        value={r.local_at || ""}
-                        onChange={(e) => updateReminderRow(r, { local_at: e.target.value })}
-                        style={{ minWidth: 220 }}
-                        disabled={!r.enabled}
-                      />
-
-                      <label className="gsSwitch" title="Закрепить сообщение напоминания">
-                        <input
-                          type="checkbox"
-                          checked={r.pin !== false}
-                          onChange={(e) => updateReminderRow(r, { pin: e.target.checked })}
-                          disabled={!r.enabled}
-                        />
-                        <span className="gsSwitchTrack" />
-                        <span className="gsSwitchText">Закрепить</span>
-                      </label>
-
-                      <div className="gsRemMeta">
-                        {r.sent_at ? (
-                          <>✅ Отправлено: <b>{formatWhen(r.sent_at)}</b></>
-                        ) : (
-                          <>⏳ Запланировано, ещё не отправлено</>
-                        )}
-                        {r.last_error ? (
-                          <div style={{ marginTop: 4, opacity: 0.9 }}>⚠️ {String(r.last_error).slice(0, 140)}</div>
-                        ) : null}
-                      </div>
-
-                      <div className="gsRemActions">
-                        {r.id && r.sent_at ? (
-                          <button className="btn secondary" type="button" onClick={() => resetReminderSent(r)} disabled={r.saving || opBusy}>
-                            ↻ Сбросить
-                          </button>
-                        ) : null}
-
-                        <button className="btn" type="button" onClick={() => saveReminderRow(r)} disabled={r.saving || opBusy}>
-                          {r.saving ? "…" : "Сохранить"}
-                        </button>
-
-                        <button className="iconBtn" type="button" title="Удалить" onClick={() => deleteReminderRow(r)} disabled={r.saving || opBusy}>
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card" style={{ marginTop: 12 }}>
-            <div className="rowBetween" style={{ gap: 10 }}>
-              <div>
-                <h3 style={{ margin: 0 }}>💬 Послеигровое сообщение</h3>
-                <div className="small" style={{ marginTop: 4, opacity: 0.85 }}>
-                  Отправка сообщения после завершения этой игры.
-                </div>
-              </div>
-
-              <label className="gsSwitch" title="Включить послеигровое сообщение">
-                <input
-                  type="checkbox"
-                  checked={!!postgameEnabled}
-                  onChange={(e) => setPostgameEnabled(e.target.checked)}
-                  disabled={opBusy || postgameSaving}
-                />
-                <span className="gsSwitchTrack" />
-                <span className="gsSwitchText">Вкл</span>
-              </label>
-            </div>
-
-            <div className="gsRemActions" style={{ marginTop: 10 }}>
-              <button
-                className="btn"
-                type="button"
-                onClick={savePostgameSettings}
-                disabled={opBusy || postgameSaving}
-              >
-                {postgameSaving ? "…" : "Сохранить"}
-              </button>
-            </div>
-          </div>
-
-
-          <div className="rowBetween">
-            <div className="small" style={{ opacity: 0.9 }}>
-              Статус: <b>{gameDraft.status}</b>
-            </div>
-            <span className="badge">{gameDraft.status}</span>
-          </div>
-
-          <label>Дата</label>
-          <div className="iosField">
-            <input
-              className="input"
-              style={{ paddingRight: 20 }}
-              type="date"
-              value={gameDraft.date}
-              onChange={(e) => setGameDraft((d) => ({ ...d, date: e.target.value }))}
-            />
-          </div>
-
-          <label>Время</label>
-          <div className="iosField">
-            <input
-              className="input"
-              style={{ paddingRight: 20 }}
-              type="time"
-              value={gameDraft.time}
-              onChange={(e) => setGameDraft((d) => ({ ...d, time: e.target.value }))}
-            />
-          </div>
-
-          <label>Арена</label>
-          <input className="input" value={gameDraft.location} onChange={(e) => setGameDraft((d) => ({ ...d, location: e.target.value }))} />
-                    {/* ====== INFO / NOTICE ====== */}
-          <div className="card" style={{ marginTop: 12 }}>
-            <div className="rowBetween">
-              <h3 style={{ margin: 0 }}>ℹ️ Информация по игре</h3>
-
-              <button
-                className="btn"
-                onClick={saveInfoBlocks}
-                disabled={infoSaving || opBusy}
-                title="Сохранить важную информацию"
-              >
-                {infoSaving ? "…" : "Сохранить"}
-              </button>
-            </div>
-
-            <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
-              Коротко (видно в списке игр), до 240 символов
-            </div>
-
-            <input
-              className="input"
-              value={noticeText}
-              maxLength={240}
-              onChange={(e) => setNoticeText(e.target.value)}
-              placeholder="Напр: Внимание! Игра в ВС в 7:30, просьба быть вовремя."
-            />
-
-            <div className="small" style={{ marginTop: 6, opacity: 0.7 }}>
-              {String(noticeText || "").trim().length}/240
-            </div>
-
-            <div className="small" style={{ marginTop: 10, opacity: 0.85 }}>
-              Подробно (видно в деталке)
-            </div>
-
-            <textarea
-              className="input"
-              rows={4}
-              value={infoText}
-              onChange={(e) => setInfoText(e.target.value)}
-              placeholder="Оплата, сбор, форма, нюансы льда, что взять и т.д."
-              style={{ resize: "vertical", whiteSpace: "pre-wrap" }}
-            />
-
-            <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+      <GameSettingsDialog
+        title={title}
+        subtitle={`${formatWhen(game.starts_at)} · ${game.location || "Арена не указана"}`}
+        onClose={close}
+        navigation={navigation}
+        pageKey={activeTab}
+        suspended={guestFormOpen || geoPickOpen}
+        busy={opBusy}
+        footer={
+          activeTab === "game" ? (
+            <>
               <button
                 className="btn secondary"
                 type="button"
-                onClick={() => { setNoticeText(""); setInfoText(""); }}
-                disabled={infoSaving || opBusy}
-                title="Очистить поля (и нажать Сохранить)"
+                onClick={close}
+                disabled={opBusy}
               >
-                Очистить
+                Закрыть
               </button>
-
-              {(noticeText || infoText) ? (
-                <span className="badge" title="Будет видно в списке/деталке">✅ будет показано</span>
-              ) : (
-                <span className="small" style={{ opacity: 0.8 }}>Поля пустые — блоки не отображаются</span>
-              )}
-            </div>
-          </div>
-
-          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-            <button className="btn secondary" onClick={() => setGeoPickOpen(true)} disabled={!gameDraft}>
-              🗺️ Выбрать на карте
-            </button>
-
-            <button className="btn secondary" onClick={() => setGameDraft((d) => ({ ...d, geo_lat: "", geo_lon: "" }))} disabled={!gameDraft}>
-              🗑 Убрать точку
-            </button>
-
-            {gameDraft?.geo_lat && gameDraft?.geo_lon ? (
-              <span className="badge">📍 {gameDraft.geo_lat}, {gameDraft.geo_lon}</span>
-            ) : (
-              <span className="small" style={{ opacity: 0.8 }}>Геоточка не выбрана</span>
-            )}
-          </div>
-
-          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" onClick={saveGame} disabled={opBusy}>
-              {opBusy ? "…" : "Сохранить"}
-            </button>
-
-            {gameDraft.status === "cancelled" ? (
-              <button className="btn secondary" onClick={() => setGameStatus("scheduled")} disabled={opBusy}>
-                Вернуть (заплан.)
-              </button>
-            ) : (
-              <button className="btn secondary" onClick={() => setGameStatus("cancelled")} disabled={opBusy}>
-                Отменить
-              </button>
-            )}
-
-            <button className="btn secondary" onClick={deleteGame} disabled={opBusy}>
-              {opBusy ? "…" : "Удалить"}
-            </button>
-          </div>
-
-          <div className="row" style={{ marginTop: 10, gap: 8 }}>
-            <button className="btn secondary" onClick={() => setVideoOpen((v) => !v)}>
-              {videoOpen ? "Скрыть видео" : gameDraft.video_url ? "Изменить видео" : "Добавить видео"}
-            </button>
-            {gameDraft.video_url ? <span className="badge" title="Есть видео">▶️</span> : null}
-          </div>
-
-          {videoOpen && (
-            <>
-              <label>Ссылка на видео (YouTube)</label>
-              <input
-                className="input"
-                value={gameDraft.video_url}
-                placeholder="https://www.youtube.com/watch?v=..."
-                onChange={(e) => setGameDraft((d) => ({ ...d, video_url: e.target.value }))}
-              />
-              <div className="small" style={{ opacity: 0.8 }}>
-                Оставь пустым и нажми “Сохранить” — ссылка удалится
-              </div>
-              <div className="row" style={{ marginTop: 10, gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <label className="row" style={{ gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={videoNotifySilent}
-                  onChange={(e) => setVideoNotifySilent(e.target.checked)}
-                />
-                <span className="small" style={{ opacity: 0.9 }}>Отправить без звука</span>
-              </label>
-
               <button
                 className="btn"
-                type="button"
-                onClick={sendVideoNotify}
-                disabled={!String(gameDraft.video_url || "").trim()}
-                title="Отправить сообщение в командный чат"
+                form="game-settings-form"
+                type="submit"
+                disabled={opBusy}
               >
-                🎬 Отправить в чат
+                {opBusy ? "Сохраняем…" : "Сохранить игру"}
               </button>
-            </div>
-
             </>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="rowBetween">
-            <h2 style={{ margin: 0 }}>Гости</h2>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="btn secondary" onClick={() => { loadGuestsForGame(gameDraft.id); loadGuestPool(); }}>
-                Обновить
-              </button>
-              <button className="btn" onClick={openAddGuest}>
-                + Добавить
-              </button>
-            </div>
+          ) : null
+        }
+      >
+        {toast && (
+          <div
+            className={`gsToast ${toast.kind}`}
+            role="status"
+            aria-live="polite"
+          >
+            {toast.text}
           </div>
-
-          <div className="card">
-            <div className="rowBetween">
-              <h2 style={{ margin: 0 }}>Посещаемость</h2>
-              <button className="btn secondary" onClick={() => loadAttendanceForGame(gameDraft.id)}>Обновить</button>
-            </div>
-
-            {tokenMsg && <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>{tokenMsg}</div>}
-
-            {attLoading ? (
-              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю игроков…</div>
-            ) : (
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                {attendanceRows.map((p) => {
-                  const st = p.status || "maybe";
-                  return (
-                    <div
-                      key={p.tg_id}
-                      className="listItem"
-                      ref={(el) => {
-                        if (el && tokenForId === p.tg_id) {
-                          setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
-                        }
-                      }}
-                    >
-                      <div className="rowBetween">
-                        <div style={{ fontWeight: 900 }}>
-                          {showName(p)}
-                          {showNum(p)}
-                        </div>
-
-                        <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                          <span className="badgeMini">{st}</span>
-                          <button className="iconBtn" type="button" title="Ссылка на отметку" disabled={tokenBusy} onClick={() => createRsvpLink(p.tg_id)}>
-                            🔗
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="segRow segRow--icons" role="radiogroup" aria-label="Посещаемость">
-                        {tokenForId === p.tg_id && tokenUrl && (
-                          <div className="card" style={{ marginTop: 10 }}>
-                            <div className="small" style={{ opacity: 0.85, marginBottom: 6 }}>
-                              Ссылка для: <b>{showName(p)}{showNum(p)}</b>
-                            </div>
-
-                            <input className="input" value={tokenUrl} readOnly />
-
-                            <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                              <button
-                                className="btn"
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    await navigator.clipboard?.writeText?.(tokenUrl);
-                                    setTokenMsg("✅ Ссылка скопирована");
-                                  } catch {
-                                    setTokenMsg("✅ Скопируй вручную (долгий тап по полю)");
-                                  }
-                                }}
-                              >
-                                📋 Копировать
-                              </button>
-
-                              <button
-                                className="btn secondary"
-                                type="button"
-                                onClick={() => {
-                                  const tg = window.Telegram?.WebApp;
-                                  if (tg?.openLink) tg.openLink(tokenUrl);
-                                  else window.open(tokenUrl, "_blank", "noopener,noreferrer");
-                                }}
-                              >
-                                🔎 Открыть
-                              </button>
-
-                              <button className="btn secondary" type="button" disabled={tokenBusy || !tokenValue} onClick={revokeToken}>
-                                🚫 Отозвать
-                              </button>
-
-                              <button
-                                className="btn secondary"
-                                type="button"
-                                onClick={() => {
-                                  setTokenForId(null);
-                                  setTokenUrl("");
-                                  setTokenValue("");
-                                  setTokenMsg("");
-                                }}
-                              >
-                                ✕ Скрыть
-                              </button>
-                            </div>
-
-                            {tokenMsg && <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>{tokenMsg}</div>}
-                          </div>
-                        )}
-
-                      <button
-                        className={`segBtn segIcon ${st === "yes" ? "on" : ""}`}
-                        onClick={() => setAttend(p, "yes")}
-                        type="button"
-                        title="Был"
-                        aria-label="Был"
-                        aria-pressed={st === "yes"}
-                      >
-                        ✅
-                      </button>
-
-                      <button
-                        className={`segBtn segIcon ${st === "no" ? "on" : ""}`}
-                        onClick={() => setAttend(p, "no")}
-                        type="button"
-                        title="Не был"
-                        aria-label="Не был"
-                        aria-pressed={st === "no"}
-                      >
-                        ❌
-                      </button>
-
-                      <button
-                        className={`segBtn segIcon ${st === "maybe" ? "on" : ""}`}
-                        onClick={() => setAttend(p, "maybe")}
-                        type="button"
-                        title="Не отмечено"
-                        aria-label="Не отмечено"
-                        aria-pressed={st === "maybe"}
-                      >
-                        ❓
-                      </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-
-          <div className="card" style={{ marginTop: 10 }}>
-            <div className="rowBetween">
-              <div>
-                <div style={{ fontWeight: 900 }}>Сохранённые гости</div>
-                <div className="small" style={{ opacity: 0.8 }}>Выберите уже созданного гостя и отметьте его на эту игру.</div>
-              </div>
-              <button className="btn secondary" type="button" onClick={loadGuestPool}>Обновить список</button>
-            </div>
-
-            {guestPoolState.loading ? (
-              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю список гостей…</div>
-            ) : guestPoolState.list.length === 0 ? (
-              <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Сохранённых гостей пока нет. Создайте гостя кнопкой «+ Добавить».</div>
-            ) : (
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                {guestPoolState.list.map((g) => {
-                  const current = (guestsState.list || []).find((x) => String(x.tg_id) === String(g.tg_id));
-                  const st = current?.status || "";
-                  return (
-                    <div key={g.tg_id} className="listItem">
-                      <div className="rowBetween">
-                        <div>
-                          <div style={{ fontWeight: 900 }}>{showName(g)}{showNum(g)}</div>
-                          <div className="small" style={{ opacity: 0.8 }}>{posLabel((g.position || "F").toUpperCase())}{st ? ` · сейчас: ${st}` : " · не выбран на игру"}</div>
-                        </div>
-                        <button className="iconBtn" title="Изменить карточку гостя" onClick={() => openEditGuest({ ...g, status: st || "yes" })}>✏️</button>
-                      </div>
-                      <div className="segRow segRow--icons" style={{ marginTop: 8 }}>
-                        <button className={`segBtn segIcon ${st === "yes" ? "on" : ""}`} type="button" onClick={() => setGuestForGame(g.tg_id, "yes")} title="Будет">✅</button>
-                        <button className={`segBtn segIcon ${st === "no" ? "on" : ""}`} type="button" onClick={() => setGuestForGame(g.tg_id, "no")} title="Не будет">❌</button>
-                        <button className={`segBtn segIcon ${st === "maybe" ? "on" : ""}`} type="button" onClick={() => setGuestForGame(g.tg_id, "maybe")} title="Под вопросом">❓</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {guestsState.loading ? (
-            <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Загружаю гостей…</div>
-          ) : (
-            <>
-              {(guestsState.list || []).length === 0 ? (
-                <div className="small" style={{ marginTop: 8, opacity: 0.8 }}>Гостей пока нет.</div>
-              ) : (
-                <div style={{ marginTop: 8 }}>
-                  {guestsState.list.map((g) => (
-                    <GuestPill key={g.tg_id} g={g} />
-                  ))}
+        )}
+        <div
+          role="tabpanel"
+          id={`gs-panel-${activeTab}`}
+          aria-labelledby={`gs-tab-${activeTab}`}
+          className="gsTabPanel"
+        >
+          {activeTab === "game" && (
+            <form
+              id="game-settings-form"
+              className="gsStack"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!opBusy) saveGame();
+              }}
+            >
+              <section className="gsSection">
+                <div className="gsSection__heading">
+                  <div>
+                    <h3>Когда и где</h3>
+                    <p className="gsHint">Дата, время и место встречи</p>
+                  </div>
+                  <span
+                    className={`gsGameStatus gsGameStatus--${gameDraft.status}`}
+                  >
+                    {pastGame && gameDraft.status !== "cancelled"
+                      ? "Прошла"
+                      : statusName[gameDraft.status] || gameDraft.status}
+                  </span>
                 </div>
-              )}
-            </>
-          )}
-
-          <PortalModal open={guestFormOpen} onClose={() => setGuestFormOpen(false)}>
-          <div className="rowBetween">
-            <div style={{ fontWeight: 900 }}>
-              {guestEditingId ? "Редактировать гостя" : "Добавить гостя"}
-            </div>
-            <button className="btn secondary" type="button" onClick={() => setGuestFormOpen(false)}>
-              Закрыть
-            </button>
-          </div>
-
-          <div className="guestFormGrid" style={{ marginTop: 10 }}>
-            <div className="full">
-              <label>Имя гостя</label>
-              <input
-                className="input"
-                value={guestDraft.display_name}
-                onChange={(e) => setGuestDraft((d) => ({ ...d, display_name: e.target.value }))}
-                placeholder="Например: Саша (гость)"
-              />
-            </div>
-
-            <div>
-              <label>Номер</label>
-              <input
-                className="input"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="0–99"
-                value={guestDraft.jersey_number}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^\d]/g, "").slice(0, 2);
-                  setGuestDraft((d) => ({ ...d, jersey_number: v }));
-                }}
-              />
-            </div>
-
-            <div>
-              <label>Позиция</label>
-              <select
-                className="input"
-                value={guestDraft.position}
-                onChange={(e) => setGuestDraft((d) => ({ ...d, position: e.target.value }))}
-              >
-                <option value="F">F (нападающий)</option>
-                <option value="D">D (защитник)</option>
-                <option value="G">G (вратарь)</option>
-              </select>
-            </div>
-
-            <div className="full">
-              <label>Статус на игру</label>
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className={guestDraft.status === "yes" ? "btn" : "btn secondary"}
-                  onClick={() => setGuestDraft((d) => ({ ...d, status: "yes" }))}
-                >
-                  ✅ Будет
-                </button>
-                <button
-                  type="button"
-                  className={guestDraft.status === "maybe" ? "btn" : "btn secondary"}
-                  onClick={() => setGuestDraft((d) => ({ ...d, status: "maybe" }))}
-                >
-                  ❓ Под вопросом
-                </button>
-                <button
-                  type="button"
-                  className={guestDraft.status === "no" ? "btn" : "btn secondary"}
-                  onClick={() => setGuestDraft((d) => ({ ...d, status: "no" }))}
-                >
-                  ❌ Не будет
-                </button>
-              </div>
-            </div>
-
-            <div className="row full" style={{ gap: 10, flexWrap: "wrap" }}>
-              {["skill", "skating", "iq", "stamina", "passing", "shooting"].map((k) => (
-                <div key={k} style={{ flex: 1, minWidth: 130 }}>
-                  <label>{k}</label>
+                <div className="gsFieldGrid">
+                  <label className="gsField">
+                    Дата
+                    <input
+                      className="input"
+                      type="date"
+                      required
+                      value={gameDraft.date}
+                      onChange={(e) =>
+                        setGameDraft((d) => ({ ...d, date: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="gsField">
+                    Время
+                    <input
+                      className="input"
+                      type="time"
+                      required
+                      value={gameDraft.time}
+                      onChange={(e) =>
+                        setGameDraft((d) => ({ ...d, time: e.target.value }))
+                      }
+                    />
+                  </label>
+                </div>
+                <label className="gsField">
+                  Арена
                   <input
                     className="input"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={guestDraft[k]}
+                    value={gameDraft.location}
+                    placeholder="Название ледовой арены"
                     onChange={(e) =>
-                      setGuestDraft((d) => ({ ...d, [k]: Number(e.target.value || 5) }))
+                      setGameDraft((d) => ({ ...d, location: e.target.value }))
                     }
                   />
+                </label>
+                <div className="gsMapPoint">
+                  <span aria-hidden="true">📍</span>
+                  <div>
+                    <strong>
+                      {gameDraft.geo_lat && gameDraft.geo_lon
+                        ? "Точка на карте выбрана"
+                        : "Точка на карте не выбрана"}
+                    </strong>
+                    <small>
+                      {gameDraft.geo_address ||
+                        (gameDraft.geo_lat && gameDraft.geo_lon
+                          ? `${Number(gameDraft.geo_lat).toFixed(5)}, ${Number(gameDraft.geo_lon).toFixed(5)}`
+                          : "Помогает игрокам построить маршрут")}
+                    </small>
+                  </div>
                 </div>
-              ))}
-            </div>
-
-            <div className="full">
-              <label>Заметки</label>
-              <textarea
-                className="input"
-                rows={2}
-                value={guestDraft.notes}
-                onChange={(e) => setGuestDraft((d) => ({ ...d, notes: e.target.value }))}
-              />
-            </div>
-
-            <div className="full">
-              <label>Email для перевода в постоянные игроки</label>
-              <input
-                className="input"
-                type="email"
-                placeholder="name@example.com"
-                value={guestDraft.email || ""}
-                onChange={(e) => setGuestDraft((d) => ({ ...d, email: e.target.value }))}
-              />
-            </div>
-
-            <div className="row full" style={{ marginTop: 6, gap: 8, flexWrap: "wrap" }}>
-              <button className="btn" type="button" onClick={saveGuest}>
-                {guestEditingId ? "Сохранить изменения" : "Добавить гостя"}
-              </button>
-
-              {guestEditingId && (
+                <div className="gsActions">
+                  <button
+                    className="btn secondary"
+                    type="button"
+                    onClick={() => setGeoPickOpen(true)}
+                  >
+                    Выбрать на карте
+                  </button>
+                  {gameDraft.geo_lat && gameDraft.geo_lon && (
+                    <button
+                      className="gsTextButton"
+                      type="button"
+                      onClick={() =>
+                        setGameDraft((d) => ({
+                          ...d,
+                          geo_lat: "",
+                          geo_lon: "",
+                          geo_address: "",
+                        }))
+                      }
+                    >
+                      Убрать точку
+                    </button>
+                  )}
+                </div>
+              </section>
+              <section className="gsSection">
+                <h3>Информация для игроков</h3>
+                <label className="gsField">
+                  Важное
+                  <input
+                    className="input"
+                    maxLength={240}
+                    value={noticeText}
+                    onChange={(e) => setNoticeText(e.target.value)}
+                    placeholder="Короткое объявление на карточке игры"
+                  />
+                  <small className="gsField__hint">
+                    В списке игр · {noticeText.length}/240
+                  </small>
+                </label>
+                <label className="gsField">
+                  Подробности
+                  <textarea
+                    className="input"
+                    rows={4}
+                    value={infoText}
+                    onChange={(e) => setInfoText(e.target.value)}
+                    placeholder="Оплата, время сбора, форма и детали игры"
+                  />
+                  <small className="gsField__hint">
+                    Внутри игры. Пустые блоки не отображаются.
+                  </small>
+                </label>
+              </section>
+              <details
+                className="gsSection gsDisclosure"
+                open={videoOpen}
+                onToggle={(e) => setVideoOpen(e.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    Видео игры
+                    <small>
+                      {gameDraft.video_url
+                        ? "Ссылка добавлена"
+                        : "Добавить запись и отправить её в чат"}
+                    </small>
+                  </span>
+                </summary>
+                <div className="gsDisclosure__body">
+                  <label className="gsField">
+                    Ссылка на видео
+                    <input
+                      className="input"
+                      type="url"
+                      value={gameDraft.video_url}
+                      placeholder="https://www.youtube.com/watch?v=…"
+                      onChange={(e) =>
+                        setGameDraft((d) => ({
+                          ...d,
+                          video_url: e.target.value,
+                        }))
+                      }
+                    />
+                    <small className="gsField__hint">
+                      Чтобы убрать видео, очистите ссылку и сохраните игру.
+                    </small>
+                  </label>
+                  <label className="gsCheck">
+                    <input
+                      type="checkbox"
+                      checked={videoNotifySilent}
+                      onChange={(e) => setVideoNotifySilent(e.target.checked)}
+                    />
+                    Отправить без звука
+                  </label>
+                  <button
+                    className="btn secondary"
+                    type="button"
+                    onClick={sendVideoNotify}
+                    disabled={opBusy || !gameDraft.video_url.trim()}
+                  >
+                    Отправить видео в чат
+                  </button>
+                </div>
+              </details>
+              <details className="gsSection gsDisclosure gsDanger">
+                <summary>
+                  <span>
+                    Управление игрой
+                    <small>Отмена, восстановление и удаление</small>
+                  </span>
+                </summary>
+                <div className="gsDisclosure__body">
+                  <p className="gsHint">
+                    Отменённую игру можно восстановить. Удаление игры
+                    необратимо.
+                  </p>
+                  <div className="gsActions">
+                    <button
+                      className="btn secondary"
+                      type="button"
+                      disabled={opBusy}
+                      onClick={() =>
+                        setGameStatus(
+                          gameDraft.status === "cancelled"
+                            ? "scheduled"
+                            : "cancelled",
+                        )
+                      }
+                    >
+                      {gameDraft.status === "cancelled"
+                        ? "Восстановить игру"
+                        : "Отменить игру"}
+                    </button>
+                    <button
+                      className="btn secondary gsDangerButton"
+                      type="button"
+                      onClick={deleteGame}
+                      disabled={opBusy}
+                    >
+                      Удалить игру
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </form>
+          )}
+          {activeTab === "players" && (
+            <GameParticipants
+              rows={attendanceRows}
+              loading={attLoading}
+              busy={opBusy}
+              past={pastGame}
+              onRefresh={() => loadAttendanceForGame(gameDraft.id)}
+              onAttend={setAttend}
+              onLink={createRsvpLink}
+              token={{
+                forId: tokenForId,
+                url: tokenUrl,
+                value: tokenValue,
+                message: tokenMsg,
+                busy: tokenBusy,
+              }}
+              onRevoke={revokeToken}
+              onTokenMessage={setTokenMsg}
+              onHideToken={() => {
+                setTokenForId(null);
+                setTokenUrl("");
+                setTokenValue("");
+                setTokenMsg("");
+              }}
+            />
+          )}
+          {activeTab === "guests" && (
+            <div className="gsStack">
+              <section className="gsSection">
+                <div className="gsSection__heading">
+                  <div>
+                    <h3>
+                      Гости этой игры{" "}
+                      <span className="gsCount">{guestsState.list.length}</span>
+                    </h3>
+                    <p className="gsHint">Игроки без аккаунта Telegram</p>
+                  </div>
+                  <button
+                    className="gsIconButton"
+                    type="button"
+                    aria-label="Обновить гостей"
+                    disabled={guestsState.loading || opBusy}
+                    onClick={() => {
+                      loadGuestsForGame(gameDraft.id);
+                      loadGuestPool();
+                    }}
+                  >
+                    ↻
+                  </button>
+                </div>
                 <button
-                  className="btn secondary"
+                  className="btn gsFullButton"
                   type="button"
-                  onClick={() => {
-                    setGuestEditingId(null);
-                    setGuestDraft({ ...GUEST_DEFAULT, email: "" });
-                  }}
+                  disabled={opBusy}
+                  onClick={openAddGuest}
                 >
-                  Очистить
+                  + Новый гость
                 </button>
-              )}
-
-              {guestEditingId && (
-                <button
-                  className="btn secondary"
-                  type="button"
-                  onClick={() => promoteGuestToManual(guestEditingId, guestDraft.display_name, guestDraft.email || "")}
-                >
-                  ⭐ Перевести в постоянные игроки
-                </button>
-              )}
-
-              {guestEditingId && (
-                <button
-                  className="btn secondary"
-                  type="button"
-                  onClick={() => deleteGuest(guestEditingId)}
-                >
-                  🗑️ Удалить гостя
-                </button>
-              )}
+                {guestsState.loading ? (
+                  <p className="gsHint" role="status">
+                    Загружаем гостей…
+                  </p>
+                ) : !guestsState.list.length ? (
+                  <p className="gsEmpty">
+                    На эту игру гостей пока не добавляли.
+                  </p>
+                ) : (
+                  <div className="gsStack">
+                    {guestsState.list.map((g) => (
+                      <GuestPill key={g.tg_id} g={g} />
+                    ))}
+                  </div>
+                )}
+              </section>
+              <section className="gsSection">
+                <h3>Сохранённые гости</h3>
+                <p className="gsHint">
+                  Выберите знакомого игрока, чтобы добавить его на эту игру.
+                </p>
+                <label className="gsField gsSearch">
+                  <span className="gsSrOnly">Поиск гостя</span>
+                  <input
+                    className="input"
+                    type="search"
+                    value={guestQuery}
+                    onChange={(e) => setGuestQuery(e.target.value)}
+                    placeholder="Найти по имени или номеру"
+                  />
+                </label>
+                {guestPoolState.loading ? (
+                  <p className="gsHint" role="status">
+                    Загружаем список…
+                  </p>
+                ) : (
+                  <div className="gsStack">
+                    {!matchingGuests.length && (
+                      <p className="gsEmpty">
+                        {guestQuery
+                          ? "Гости не найдены."
+                          : "Список пока пуст. Добавьте первого гостя."}
+                      </p>
+                    )}
+                    {matchingGuests.map((g) => {
+                      const current = guestsState.list.find(
+                        (x) => String(x.tg_id) === String(g.tg_id),
+                      );
+                      return (
+                        <article className="gsParticipant" key={g.tg_id}>
+                          <div className="gsParticipant__heading">
+                            <div>
+                              <strong>
+                                {showName(g)}
+                                <span className="gsJerseyNumber">
+                                  {showNum(g)}
+                                </span>
+                              </strong>
+                              <span className="gsHint">
+                                {posLabel((g.position || "F").toUpperCase())}
+                                {current
+                                  ? " · уже в списке игры"
+                                  : " · не добавлен на игру"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="gsIconButton"
+                              aria-label={`Изменить гостя: ${showName(g)}`}
+                              disabled={opBusy}
+                              onClick={() =>
+                                openEditGuest({
+                                  ...g,
+                                  status: current?.status || "yes",
+                                })
+                              }
+                            >
+                              ✎
+                            </button>
+                          </div>
+                          <div
+                            className="gsStatusChoices"
+                            role="group"
+                            aria-label={`Участие гостя: ${showName(g)}`}
+                          >
+                            {[
+                              ["yes", "✓", "Будет"],
+                              ["no", "✕", "Не будет"],
+                              ["maybe", "?", "Под вопросом"],
+                            ].map(([value, icon, label]) => (
+                              <button
+                                type="button"
+                                key={value}
+                                className={`gsStatusChoice gsStatusChoice--${value}`}
+                                aria-pressed={current?.status === value}
+                                disabled={opBusy}
+                                onClick={() => setGuestForGame(g.tg_id, value)}
+                              >
+                                <b aria-hidden="true">{icon}</b>
+                                <span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             </div>
-          </div>
-        </PortalModal>
+          )}
+          {activeTab === "reminders" && (
+            <div className="gsStack">
+              {" "}
+              <div className="gsSection">
+                <div className="rowBetween">
+                  <h3 style={{ margin: 0 }}>Напоминания об игре</h3>
 
+                  <button
+                    className="iconBtn"
+                    type="button"
+                    title="Добавить напоминание"
+                    onClick={addReminderRow}
+                    disabled={opBusy}
+                  >
+                    ➕
+                  </button>
+                </div>
 
+                {remLoading ? (
+                  <div
+                    className="small"
+                    style={{ marginTop: 8, opacity: 0.85 }}
+                  >
+                    Загрузка…
+                  </div>
+                ) : null}
+
+                {!remLoading && reminders.length === 0 ? (
+                  <div
+                    className="small"
+                    style={{ marginTop: 8, opacity: 0.85 }}
+                  >
+                    Пока нет напоминаний
+                  </div>
+                ) : null}
+
+                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                  {reminders.map((r) => (
+                    <div key={keyOfRem(r)} className="gsRemCard">
+                      <div className="gsRemHead">
+                        <label
+                          className="gsSwitch"
+                          title="Включить напоминание"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!r.enabled}
+                            onChange={(e) =>
+                              updateReminderRow(r, {
+                                enabled: e.target.checked,
+                              })
+                            }
+                          />
+                          <span className="gsSwitchTrack" />
+                          <span className="gsSwitchText">
+                            {r.enabled ? "Вкл" : "Выкл"}
+                          </span>
+                        </label>
+
+                        <div className="gsRemDt">
+                          <span className="gsRemStatusIcon" aria-hidden="true">
+                            {r.sent_at ? "✅" : "⏰"}
+                          </span>
+                          <span>
+                            {r.local_at
+                              ? formatWhen(localDTToIso(r.local_at))
+                              : "Дата не указана"}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="gsRemExpand"
+                          aria-expanded={!!r.expanded}
+                          aria-label={
+                            r.expanded
+                              ? "Свернуть детали напоминания"
+                              : "Развернуть детали напоминания"
+                          }
+                          onClick={() => toggleReminderExpanded(r)}
+                        >
+                          {r.expanded ? "▲" : "▼"}
+                        </button>
+                      </div>
+
+                      {r.expanded ? (
+                        <div className="gsRemBody">
+                          <input
+                            className="input"
+                            type="datetime-local"
+                            value={r.local_at || ""}
+                            onChange={(e) =>
+                              updateReminderRow(r, { local_at: e.target.value })
+                            }
+                            aria-label="Дата и время напоминания"
+                            disabled={!r.enabled}
+                          />
+
+                          <label
+                            className="gsSwitch"
+                            title="Закрепить сообщение напоминания"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={r.pin !== false}
+                              onChange={(e) =>
+                                updateReminderRow(r, { pin: e.target.checked })
+                              }
+                              disabled={!r.enabled}
+                            />
+                            <span className="gsSwitchTrack" />
+                            <span className="gsSwitchText">Закрепить</span>
+                          </label>
+
+                          <div className="gsRemMeta">
+                            {r.sent_at ? (
+                              <>
+                                ✅ Отправлено: <b>{formatWhen(r.sent_at)}</b>
+                              </>
+                            ) : (
+                              <>⏳ Запланировано, ещё не отправлено</>
+                            )}
+                            {r.last_error ? (
+                              <div style={{ marginTop: 4, opacity: 0.9 }}>
+                                ⚠️ {String(r.last_error).slice(0, 140)}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="gsRemActions">
+                            {r.id && r.sent_at ? (
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                onClick={() => resetReminderSent(r)}
+                                disabled={r.saving || opBusy}
+                              >
+                                ↻ Сбросить
+                              </button>
+                            ) : null}
+
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => saveReminderRow(r)}
+                              disabled={r.saving || opBusy}
+                            >
+                              {r.saving ? "…" : "Сохранить"}
+                            </button>
+
+                            <button
+                              className="iconBtn"
+                              type="button"
+                              title="Удалить"
+                              onClick={() => deleteReminderRow(r)}
+                              disabled={r.saving || opBusy}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="gsSection">
+                <div className="rowBetween" style={{ gap: 10 }}>
+                  <div>
+                    <h3 style={{ margin: 0 }}>Послеигровое сообщение</h3>
+                    <div
+                      className="small"
+                      style={{ marginTop: 4, opacity: 0.85 }}
+                    >
+                      Отправка сообщения после завершения этой игры.
+                    </div>
+                  </div>
+
+                  <label
+                    className="gsSwitch"
+                    title="Включить послеигровое сообщение"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!postgameEnabled}
+                      onChange={(e) => setPostgameEnabled(e.target.checked)}
+                      disabled={opBusy || postgameSaving}
+                    />
+                    <span className="gsSwitchTrack" />
+                    <span className="gsSwitchText">
+                      {postgameEnabled ? "Вкл" : "Выкл"}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="gsRemActions" style={{ marginTop: 10 }}>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={savePostgameSettings}
+                    disabled={opBusy || postgameSaving}
+                  >
+                    {postgameSaving ? "…" : "Сохранить"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </Sheet>
-
-      <MapPickModal
-        open={geoPickOpen}
-        initial={{
-          lat: gameDraft?.geo_lat ? Number(gameDraft.geo_lat) : null,
-          lon: gameDraft?.geo_lon ? Number(gameDraft.geo_lon) : null,
-        }}
-        onClose={() => setGeoPickOpen(false)}
-        onPick={(v) => {
-          const lat = v.lat != null ? String(v.lat) : "";
-          const lon = v.lon != null ? String(v.lon) : "";
-          setGameDraft((d) => (d ? { ...d, geo_lat: lat, geo_lon: lon, geo_address: v.address || "" } : d));
-          setGeoPickOpen(false);
-        }}
-      />
+      </GameSettingsDialog>
+      {guestFormOpen && (
+        <GameGuestEditor
+          draft={guestDraft}
+          setDraft={setGuestDraft}
+          editingId={guestEditingId}
+          busy={opBusy}
+          onClose={() => setGuestFormOpen(false)}
+          onSave={saveGuest}
+          onPromote={() =>
+            promoteGuestToManual(
+              guestEditingId,
+              guestDraft.display_name,
+              guestDraft.email || "",
+            )
+          }
+          onDelete={() => deleteGuest(guestEditingId)}
+        />
+      )}
+      {geoPickOpen &&
+        createPortal(
+          <MapPickModal
+            open
+            initial={{
+              lat: gameDraft.geo_lat ? Number(gameDraft.geo_lat) : null,
+              lon: gameDraft.geo_lon ? Number(gameDraft.geo_lon) : null,
+            }}
+            onClose={() => setGeoPickOpen(false)}
+            onPick={(value) => {
+              setGameDraft((draft) => ({
+                ...draft,
+                geo_lat: value.lat != null ? String(value.lat) : "",
+                geo_lon: value.lon != null ? String(value.lon) : "",
+                geo_address: value.address || "",
+              }));
+              setGeoPickOpen(false);
+            }}
+          />,
+          document.body,
+        )}
     </>
   );
 }
