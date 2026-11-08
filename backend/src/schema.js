@@ -1,6 +1,7 @@
 import { ensureChatInboxSchema } from "./chatInbox.js";
 import { ensurePvpSchema } from "./airHockeyPvp/schema.js";
 import { ensureRsvpAuditSchema } from "./rsvpAuditSchema.js";
+import { ensureGameDurationSchema } from "./gameDuration.js";
 
 export async function ensureSchema(q) {
   await ensureChatInboxSchema(q);
@@ -34,6 +35,7 @@ export async function ensureSchema(q) {
   `);
 
   
+  await ensureGameDurationSchema(q);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT '';`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'scheduled';`);
   await q(`ALTER TABLE games ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);

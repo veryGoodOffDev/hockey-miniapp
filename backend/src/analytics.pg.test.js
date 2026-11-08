@@ -4,6 +4,7 @@ import pg from "pg";
 import express from "express";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
+import { ensureGameDurationSchema } from "./gameDuration.js";
 import { createEngagementHandler } from "./engagement.js";
 import { createGameAttendanceHandler } from "./gameAttendanceStats.js";
 
@@ -39,6 +40,7 @@ test(
         (7,NOW()+INTERVAL '1 day','scheduled'),(8,NOW()-INTERVAL '1 hour','scheduled'),(9,NOW()-INTERVAL '3 hours','scheduled');
       INSERT INTO rsvps VALUES(1,1,'yes'),(1,-11,'yes'),(1,2,'no'),(2,1,'yes'),(3,1,'yes'),(4,1,'maybe'),(5,1,'yes'),(6,1,'yes'),(7,1,'yes'),(8,1,'yes'),(9,1,'yes');`);
       const q = (sql, values) => client.query(sql, values);
+      await ensureGameDurationSchema(q);
       const auth =
         (admin = false) =>
         async (req, res) => {

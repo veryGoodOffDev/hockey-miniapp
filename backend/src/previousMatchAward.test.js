@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
+import { ensureGameDurationSchema } from "./gameDuration.js";
 import { getPreviousMatchAward } from "./previousMatchAward.js";
 
 test(
@@ -25,6 +26,7 @@ test(
         (20,NOW()-INTERVAL '7 days','scheduled',NULL),
         (30,NOW()+INTERVAL '7 days','scheduled',NULL),
         (40,NOW()+INTERVAL '14 days','scheduled',NULL)`);
+      await ensureGameDurationSchema(q);
       assert.equal(await getPreviousMatchAward(q, 10), null);
       assert.equal(await getPreviousMatchAward(q, 999), null);
       assert.equal((await getPreviousMatchAward(q, 20)).name, "Алиса");
@@ -36,19 +38,19 @@ test(
       await q("UPDATE games SET best_player_tg_id=1 WHERE id=30");
       assert.equal(await getPreviousMatchAward(q, 40), null); // Future predecessor cannot supply a trophy.
       await q(
-        "INSERT INTO games VALUES(25,NOW()-INTERVAL '3 days','cancelled',1)",
+        "INSERT INTO games(id,starts_at,status,best_player_tg_id) VALUES(25,NOW()-INTERVAL '3 days','cancelled',1)",
       );
       assert.equal(Number((await getPreviousMatchAward(q, 30)).tg_id), 2);
       await q("UPDATE games SET status='cancelled' WHERE id=30");
       assert.equal(await getPreviousMatchAward(q, 30), null);
       await q("UPDATE games SET status='scheduled' WHERE id=30");
       await q(
-        "INSERT INTO games VALUES(5,NOW()-INTERVAL '5 days','scheduled',1)",
+        "INSERT INTO games(id,starts_at,status,best_player_tg_id) VALUES(5,NOW()-INTERVAL '5 days','scheduled',1)",
       );
       assert.equal(Number((await getPreviousMatchAward(q, 30)).game_id), 5); // Dates, not insertion IDs.
       assert.equal(Number((await getPreviousMatchAward(q, 5)).game_id), 20);
       await q(
-        "INSERT INTO games SELECT 6,starts_at,'scheduled',2 FROM games WHERE id=5",
+        "INSERT INTO games(id,starts_at,status,best_player_tg_id) SELECT 6,starts_at,'scheduled',2 FROM games WHERE id=5",
       );
       assert.equal(Number((await getPreviousMatchAward(q, 6)).game_id), 5);
       assert.equal(Number((await getPreviousMatchAward(q, 30)).game_id), 6);

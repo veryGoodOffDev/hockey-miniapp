@@ -1,3 +1,5 @@
+import { getGameFlags } from "./gameTiming.js";
+import useGameClock from "./useGameClock.js";
 import GameAttendanceStats from "./GameAttendanceStats.jsx";
 import TeamPostFormatChoice from "./TeamPostFormatChoice.jsx";
 import useAppFeatures from "./useAppFeatures.js";
@@ -131,6 +133,8 @@ useEffect(() => {
   const [gameView, setGameView] = useState("list"); // list | detail
   const [detailLoading, setDetailLoading] = useState(false);
   const [game, setGame] = useState(null);
+  const gameClock = useGameClock(games, game);
+  const localGameDay = new Date(gameClock).toDateString();
   const [rsvps, setRsvps] = useState([]);
   const [teams, setTeams] = useState(null);
   // ручная правка составов
@@ -433,6 +437,7 @@ function closeGameSheet() {
 }
 const NEW_GAME_TEMPLATE = {
   id: null,               // важный признак "создание"
+  duration_minutes: 75,
   starts_at: new Date().toISOString(),
   location: "",
   status: "scheduled",
@@ -445,7 +450,7 @@ const NEW_GAME_TEMPLATE = {
   reminder_pin: true,
 };
 function openCreateGameSheet() {
-  setGameSheetGame(NEW_GAME_TEMPLATE);
+  setGameSheetGame({ ...NEW_GAME_TEMPLATE, starts_at: new Date().toISOString() });
   setGameSheetOpen(true);
 }
 function getAvatarSrc(p) {
@@ -1175,7 +1180,7 @@ async function refreshUpcomingGamesOnly() {
     return null;
   }
   const past = pl.status === "fulfilled" ? (pl.value?.games || []) : [];
-  const todayFromPast = past.filter((g) => !gameFlags(g?.starts_at).isPast); // сегодня/не ушла за 00:00
+  const todayFromPast = past.filter((g) => !gameFlags(g).isPast); // сегодня/не ушла за 00:00
   const merged = mergeUniqueById(up.games || [], todayFromPast);
   setGamesError(null);
   setGames(merged);
@@ -1243,25 +1248,15 @@ async function syncAfterMutation(sync = {}) {
   //   // прошла, если начало было больше чем 3 часа назад
   //   return t < Date.now() - 3 * 60 * 60 * 1000;
   // }
-function gameFlags(starts_at) {
-  if (!starts_at) return { isPast: false, isFinished: false, isLive: false };
-  const startMs = new Date(starts_at).getTime();
-  const now = Date.now();
-  // 00:00 сегодняшнего дня (локальное время клиента)
-  const today00 = new Date();
-  today00.setHours(0, 0, 0, 0);
-  const isPast = startMs < today00.getTime();                 // в "прошедшие" после 00:00 следующего дня
-  const isFinished = now >= startMs + 2 * 60 * 60 * 1000;     // "прошла" через 2 часа
-  const isLive = now >= startMs && now < startMs + 2 * 60 * 60 * 1000; // "идёт" первые 2 часа
-  return { isPast, isFinished, isLive };
-}
+function gameFlags(game) { return getGameFlags(game, gameClock); }
+
 function isPastGame(g) {
-  return gameFlags(g?.starts_at).isPast;
+  return gameFlags(g).isPast;
 }
 function uiStatus(game) {
   if (!game) return "—";
   if (game.status === "cancelled") return "Отменена";
-  const { isFinished, isLive } = gameFlags(game.starts_at);
+  const { isFinished, isLive } = gameFlags(game);
   if (isFinished) return "Прошла";
   if (isLive) return "Идёт";
   return "Запланирована";
@@ -1269,7 +1264,7 @@ function uiStatus(game) {
 // function uiStatus(game) {
 //   if (!game) return "—";
 //   if (game.status === "cancelled") return "Отменена";
-//   const { isFinished } = gameFlags(game.starts_at);
+//   const { isFinished } = gameFlags(game);
 //   if (isFinished) return "Прошла";
 //   // дальше твоя логика для будущей/идёт/набор
 //   return "Скоро"; 
@@ -1405,7 +1400,7 @@ async function refreshAll(forceGameId, { startup = false, signal } = {}) {
     let todayFromPast = [];
     try {
       const p = await get("/api/games?scope=past&limit=20&offset=0");
-      todayFromPast = (p?.games || []).filter((g) => !gameFlags(g?.starts_at).isPast);
+      todayFromPast = (p?.games || []).filter((g) => !gameFlags(g).isPast);
     } catch {}
     if (signal?.aborted) throw signal.reason;
     let list = mergeUniqueById(gl.games || [], todayFromPast);
@@ -2142,7 +2137,7 @@ async function giveMatchAward(player, { remove = false } = {}) {
     awardBusyRef.current ||
     !game?.id ||
     game.status === "cancelled" ||
-    !gameFlags(game.starts_at).isFinished ||
+    !gameFlags(game).isFinished ||
     player?.tg_id == null
   )
     return;
@@ -2739,13 +2734,13 @@ function mergeUniqueById(primary = [], extra = []) {
       (games || [])
         .filter((g) => !isPastGame(g))
         .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)),
-    [games]
+    [games, localGameDay]
   );
   const myTeamColors = useGameTeamColors(upcomingGames, me?.tg_id, tab === "game" && gameView === "list" && !showPast && !loading);
   // Today's finished game stays in the list until midnight, but loses the nearest highlight.
   // Recalculate on render so the label follows the same clock as uiStatus.
   const nextUpcomingId = upcomingGames.find(
-    (g) => g.status === "scheduled" && !gameFlags(g.starts_at).isFinished
+    (g) => g.status === "scheduled" && !gameFlags(g).isFinished
   )?.id ?? null;
 const teamsStaleInfo = useMemo(() => {
   if (!teams?.ok) return { stale: false, current: 0, inTeams: 0, removed: 0, added: 0 };
@@ -3207,7 +3202,7 @@ function openYandexRoute(lat, lon) {
   }
   const gamesFailure = gamesError ? describeConnectionError(gamesError) : null;
   const curPos = String(posPopup?.position || posPopup?.profile_position || "F").toUpperCase();
-  const canGiveMatchAward = !!game?.id && game.status !== "cancelled" && gameFlags(game.starts_at).isFinished;
+  const canGiveMatchAward = !!game?.id && game.status !== "cancelled" && gameFlags(game).isFinished;
   const popupHasAward = game?.best_player_tg_id != null && String(game.best_player_tg_id) === String(posPopup?.tg_id);
   return (
     <div ref={gamesPullRef} className="container appShell">
@@ -3282,6 +3277,7 @@ function openYandexRoute(lat, lon) {
                     className="iconBtn"
                     type="button"
                     title="Создать игру"
+                    aria-label="Создать игру"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -3436,9 +3432,9 @@ function openYandexRoute(lat, lon) {
                     </div>
                   )}
                     {listToShow.map((g, idx) => {
-                      const { isPast, isFinished } = gameFlags(g.starts_at);
+                      const { isPast, isFinished } = gameFlags(g);
                     const past = isPast; // для класса/стайла "прошедшая" (после 00:00)
-                    const lockRsvp = isFinished && !isAdmin; // блокируем RSVP через 2 часа после начала
+                    const lockRsvp = isFinished && !isAdmin; // закрываем управление после окончания игры
                       const when = formatWhen(g.starts_at);
                       const status = g.my_status || "maybe";
                       const noAutoFill = status === "maybe" ? autoNoProgress(g) : 0;
@@ -3500,7 +3496,7 @@ function openYandexRoute(lat, lon) {
                 <div className="small">Не удалось загрузить игру.</div>
               ) : (
                 (() => {
-                  const { isFinished } = gameFlags(game?.starts_at);
+                  const { isFinished } = gameFlags(game);
                   const lockRsvp = isFinished && !isAdmin;
                   return (
                     <>

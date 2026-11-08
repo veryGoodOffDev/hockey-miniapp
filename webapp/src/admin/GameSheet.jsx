@@ -1,3 +1,5 @@
+import { gameDurationMinutes, getGameFlags } from "../gameTiming.js";
+import GameDurationField from "./GameDurationField.jsx";
 // src/admin/GameSheet.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -214,6 +216,7 @@ export default function GameSheet({
 
     setGameDraft({
       id: game.id,
+      duration_minutes: gameDurationMinutes(game),
       status: game.status || "scheduled",
       location: game.location || "",
       date: dt.date,
@@ -245,10 +248,12 @@ export default function GameSheet({
     setTokenForId(null);
 
     // загрузки
-    loadGuestsForGame(game.id);
-    loadGuestPool();
-    loadAttendanceForGame(game.id);
-    loadRemindersForGame(game.id);
+    if (game.id != null) {
+      loadGuestsForGame(game.id);
+      loadGuestPool();
+      loadAttendanceForGame(game.id);
+      loadRemindersForGame(game.id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, game?.id]);
 
@@ -832,6 +837,11 @@ export default function GameSheet({
 
     if (!gameDraft.date || !gameDraft.time)
       return notify("Укажите дату и время игры");
+    const duration = Number(gameDraft.duration_minutes);
+    if (!Number.isInteger(duration) || duration < 1 || duration > 1440)
+      return notify(
+        "Продолжительность должна быть целым числом от 1 до 1440 минут",
+      );
     const notice = String(noticeText || "").trim();
     const info = String(infoText || "").trim();
     if (notice.length > 240)
@@ -859,8 +869,9 @@ export default function GameSheet({
         throw new Error("incomplete_coordinates");
       }
 
-      await apiPatch(`/api/games/${gameDraft.id}`, {
+      const payload = {
         starts_at,
+        duration_minutes: duration,
         location: gameDraft.location,
         status: gameDraft.status,
         video_url: gameDraft.video_url || "",
@@ -868,13 +879,17 @@ export default function GameSheet({
         info_text: info,
         geo_lat,
         geo_lon,
-      });
-
-      await onReload?.();
+      };
+      const result =
+        gameDraft.id == null
+          ? await apiPost("/api/games", payload)
+          : await apiPatch(`/api/games/${gameDraft.id}`, payload);
+      const savedId = result.game?.id ?? gameDraft.id;
+      await onReload?.(savedId);
       await onChanged?.({
         action: "keep_open",
         label: "✅ Игра сохранена — обновляю приложение…",
-        gameId: gameDraft.id,
+        gameId: savedId,
       });
     });
 
@@ -995,16 +1010,15 @@ export default function GameSheet({
     );
   }
 
-  const title = gameDraft ? `Игра #${gameDraft.id}` : "Игра";
+  const creating = game?.id == null;
+  const title = creating ? "Новая игра" : `Игра #${gameDraft?.id}`;
   const tabs = [
     ["game", "Игра"],
     ["players", "Игроки"],
     ["guests", "Гости"],
     ["reminders", "Напоминания"],
   ];
-  const pastGame =
-    game?.status === "finished" ||
-    Date.now() >= new Date(game?.starts_at).getTime() + 2 * 60 * 60 * 1000;
+  const pastGame = getGameFlags(game).isFinished;
   const statusName = {
     scheduled: "Запланирована",
     cancelled: "Отменена",
@@ -1028,9 +1042,10 @@ export default function GameSheet({
           aria-controls={`gs-panel-${key}`}
           aria-selected={activeTab === key}
           tabIndex={activeTab === key ? 0 : -1}
-          disabled={opBusy}
+          disabled={opBusy || (creating && key !== "game")}
           onClick={() => setActiveTab(key)}
           onKeyDown={(event) => {
+            if (creating) return;
             let next;
             if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
             if (event.key === "ArrowLeft")
@@ -1079,7 +1094,11 @@ export default function GameSheet({
                 type="submit"
                 disabled={opBusy}
               >
-                {opBusy ? "Сохраняем…" : "Сохранить игру"}
+                {opBusy
+                  ? "Сохраняем…"
+                  : creating
+                    ? "Создать игру"
+                    : "Сохранить игру"}
               </button>
             </>
           ) : null
@@ -1149,6 +1168,15 @@ export default function GameSheet({
                     />
                   </label>
                 </div>
+                <GameDurationField
+                  value={gameDraft.duration_minutes}
+                  onChange={(value) =>
+                    setGameDraft((draft) => ({
+                      ...draft,
+                      duration_minutes: value,
+                    }))
+                  }
+                />
                 <label className="gsField">
                   Арена
                   <input
@@ -1277,52 +1305,54 @@ export default function GameSheet({
                     className="btn secondary"
                     type="button"
                     onClick={sendVideoNotify}
-                    disabled={opBusy || !gameDraft.video_url.trim()}
+                    disabled={creating || opBusy || !gameDraft.video_url.trim()}
                   >
                     Отправить видео в чат
                   </button>
                 </div>
               </details>
-              <details className="gsSection gsDisclosure gsDanger">
-                <summary>
-                  <span>
-                    Управление игрой
-                    <small>Отмена, восстановление и удаление</small>
-                  </span>
-                </summary>
-                <div className="gsDisclosure__body">
-                  <p className="gsHint">
-                    Отменённую игру можно восстановить. Удаление игры
-                    необратимо.
-                  </p>
-                  <div className="gsActions">
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      disabled={opBusy}
-                      onClick={() =>
-                        setGameStatus(
-                          gameDraft.status === "cancelled"
-                            ? "scheduled"
-                            : "cancelled",
-                        )
-                      }
-                    >
-                      {gameDraft.status === "cancelled"
-                        ? "Восстановить игру"
-                        : "Отменить игру"}
-                    </button>
-                    <button
-                      className="btn secondary gsDangerButton"
-                      type="button"
-                      onClick={deleteGame}
-                      disabled={opBusy}
-                    >
-                      Удалить игру
-                    </button>
+              {!creating && (
+                <details className="gsSection gsDisclosure gsDanger">
+                  <summary>
+                    <span>
+                      Управление игрой
+                      <small>Отмена, восстановление и удаление</small>
+                    </span>
+                  </summary>
+                  <div className="gsDisclosure__body">
+                    <p className="gsHint">
+                      Отменённую игру можно восстановить. Удаление игры
+                      необратимо.
+                    </p>
+                    <div className="gsActions">
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        disabled={opBusy}
+                        onClick={() =>
+                          setGameStatus(
+                            gameDraft.status === "cancelled"
+                              ? "scheduled"
+                              : "cancelled",
+                          )
+                        }
+                      >
+                        {gameDraft.status === "cancelled"
+                          ? "Восстановить игру"
+                          : "Отменить игру"}
+                      </button>
+                      <button
+                        className="btn secondary gsDangerButton"
+                        type="button"
+                        onClick={deleteGame}
+                        disabled={opBusy}
+                      >
+                        Удалить игру
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </details>
+                </details>
+              )}
             </form>
           )}
           {activeTab === "players" && (

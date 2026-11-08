@@ -165,6 +165,11 @@ const assert = require("node:assert/strict");
     page.getByRole("dialog", { name: "Игра #12", exact: true });
   const tab = (name) => dialog().getByRole("tab", { name, exact: true });
   const assertLayout = async (selector) => {
+    // visualViewport resize events and React layout updates settle after setViewportSize.
+    await page.waitForFunction((selector) => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect();
+      return rect && rect.top >= -1 && rect.bottom <= innerHeight + 1;
+    }, selector);
     const result = await page.locator(selector).evaluate((panel) => {
       const rect = panel.getBoundingClientRect(),
         body = panel.querySelector(".gsDialog__body"),

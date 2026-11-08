@@ -1,3 +1,4 @@
+import { gameEndSql } from "./gameDuration.js";
 export function createAutoScheduleService({
   q,
   withTransaction,
@@ -168,7 +169,7 @@ export function createAutoScheduleService({
       const upcoming = await q(
         `SELECT id, starts_at
        FROM games
-      WHERE status='scheduled' AND starts_at > NOW() - INTERVAL '2 hours'
+      WHERE status='scheduled' AND ${gameEndSql()} > NOW()
       ORDER BY starts_at ASC`,
       );
 
@@ -257,7 +258,7 @@ export function createAutoScheduleService({
         const ins = await q(
           `INSERT INTO games(starts_at, location, status, geo_lat, geo_lon)
        VALUES($1,$2,'scheduled',$3,$4)
-       RETURNING id, starts_at, location, geo_lat, geo_lon, status`,
+       RETURNING id, starts_at, location, geo_lat, geo_lon, status, duration_minutes`,
           [
             candidate.toISOString(),
             String(cfg.location || "").trim(),

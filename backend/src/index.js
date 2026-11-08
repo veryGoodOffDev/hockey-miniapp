@@ -1,3 +1,5 @@
+import { parseGameDuration, gameEndSql } from "./gameDuration.js";
+import { createMatchAwardHandler } from "./matchAward.js";
 import { clipW, padRightW } from "./teamPosts/format.js";
 import { createTeamPostRepository } from "./teamPosts/repository.js";
 import { createTeamPostService } from "./teamPosts/service.js";
@@ -4007,7 +4009,7 @@ const [r, holderR] = await Promise.all([
     LEFT JOIN players p ON p.tg_id = g.best_player_tg_id
     WHERE g.status <> 'cancelled'
       AND g.best_player_tg_id IS NOT NULL
-      AND g.starts_at < (NOW() - INTERVAL '3 hours')
+      AND ${gameEndSql("g")} <= NOW()
     ORDER BY g.starts_at DESC
     LIMIT 1
   `),
@@ -4455,6 +4457,9 @@ app.post("/api/games", async (req, res) => {
 
  const { starts_at, location, video_url, geo_lat, geo_lon, info_text, notice_text } = req.body || {};
   const postgame_enabled = req.body?.postgame_enabled === undefined ? false : !!req.body.postgame_enabled;
+  let duration_minutes;
+  try { duration_minutes = parseGameDuration(req.body?.duration_minutes); }
+  catch (error) { return res.status(400).json({ ok: false, reason: error.message }); }
 
 
   const d = new Date(starts_at);
@@ -4486,10 +4491,10 @@ if (noticeVal && noticeVal.length > 240) {
 
 
 const ir = await q(
-  `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled, auto_no_at)
-   VALUES($1,$2,'scheduled',$3,$4,$5,$6,$7,$8,$9)
-   RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled, auto_no_at`,
-  [d.toISOString(), String(location || "").trim(), vu, lat, lon, infoVal, noticeVal, postgame_enabled, defaultAutoNoAtIso(d)]
+  `INSERT INTO games(starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled, auto_no_at, duration_minutes)
+   VALUES($1,$2,'scheduled',$3,$4,$5,$6,$7,$8,$9,$10)
+   RETURNING id, starts_at, location, status, video_url, geo_lat, geo_lon, info_text, notice_text, postgame_enabled, auto_no_at, duration_minutes`,
+  [d.toISOString(), String(location || "").trim(), vu, lat, lon, infoVal, noticeVal, postgame_enabled, defaultAutoNoAtIso(d), duration_minutes]
 );
 
  
@@ -4511,6 +4516,10 @@ app.patch("/api/games/:id", async (req, res) => {
 
   const id = Number(req.params.id);
   const b = req.body || {};
+  if (b.duration_minutes !== undefined) {
+    try { parseGameDuration(b.duration_minutes); }
+    catch (error) { return res.status(400).json({ ok: false, reason: error.message }); }
+  }
 
   const sets = [];
   const vals = [];
@@ -4525,6 +4534,10 @@ app.patch("/api/games/:id", async (req, res) => {
       sets.push(`auto_no_at=$${i++}`);
       vals.push(defaultAutoNoAtIso(d));
     }
+  }
+  if (b.duration_minutes !== undefined) {
+    sets.push(`duration_minutes=$${i++}`);
+    vals.push(b.duration_minutes);
   }
   if (b.location !== undefined) {
     sets.push(`location=$${i++}`);
@@ -5731,7 +5744,7 @@ app.post("/api/internal/reminders/run", async (req, res) => {
         AND g.starts_at IS NOT NULL
         AND g.postgame_enabled = TRUE
         AND g.postgame_message_id IS NULL
-        AND (g.starts_at + interval '3 hours') <= NOW()
+        AND ${gameEndSql("g")} <= NOW()
       ORDER BY g.starts_at ASC
       LIMIT 5
     `);
@@ -6055,7 +6068,7 @@ app.post("/api/internal/postgame/run", async (req, res) => {
       SELECT *
       FROM games
       WHERE status IS DISTINCT FROM 'cancelled'
-        AND starts_at <= NOW() - INTERVAL '2 hours'
+        AND ${gameEndSql()} <= NOW()
         AND postgame_enabled = TRUE
         AND postgame_sent_at IS NULL
         AND starts_at >= NOW() - INTERVAL '14 days'
@@ -6921,7 +6934,7 @@ app.get("/api/admin/games/auto-schedule", async (req, res) => {
   if (!(await requireAdminAsync(req, res, user))) return;
 
   const cfg = await getAutoScheduleConfig();
-  const upcomingR = await q(`SELECT COUNT(*)::int AS cnt FROM games WHERE status='scheduled' AND starts_at > NOW() - INTERVAL '2 hours'`);
+  const upcomingR = await q(`SELECT COUNT(*)::int AS cnt FROM games WHERE status='scheduled' AND ${gameEndSql()} > NOW()`);
   res.json({ ok: true, cfg, upcoming_count: Number(upcomingR.rows?.[0]?.cnt || 0) });
 });
 
@@ -7041,37 +7054,15 @@ app.post("/api/best-player/vote", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/admin/games/:id/best-player", async (req, res) => {
-  const user = req.webappUser || requireWebAppAuth(req, res);
-  if (!user) return;
-  if (!(await requireGroupMember(req, res, user))) return;
-  if (!(await requireAdminAsync(req, res, user))) return;
-
-  const game_id = Number(req.params.id);
-  const best_player_tg_id = req.body?.best_player_tg_id === null ? null : Number(req.body?.best_player_tg_id);
-
-  if (!game_id) return res.status(400).json({ ok: false, reason: "bad_game_id" });
-
-  if (best_player_tg_id !== null) {
-    const pr = await q(`SELECT tg_id, disabled FROM players WHERE tg_id=$1`, [best_player_tg_id]);
-    const p = pr.rows[0];
-    if (!p || p.disabled) return res.status(400).json({ ok: false, reason: "bad_player" });
-  }
-
-  const ur = await q(
-    `UPDATE games
-     SET best_player_tg_id=$2,
-         best_player_set_by=$3,
-         best_player_set_at=NOW(),
-         best_player_source='manual',
-         updated_at=NOW()
-     WHERE id=$1
-     RETURNING *`,
-    [game_id, best_player_tg_id, user.id]
-  );
-
-  res.json({ ok: true, game: ur.rows[0] });
-});
+app.post("/api/admin/games/:id/best-player", createMatchAwardHandler({
+  withTransaction,
+  authenticate: async (req, res) => {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user || !(await requireGroupMember(req, res, user))) return null;
+    if (!(await requireAdminAsync(req, res, user))) return null;
+    return user;
+  },
+}));
 
 
 /* ------- comments ------------------ */

@@ -1,3 +1,4 @@
+import { gameEndSql } from "./gameDuration.js";
 import { parseAttendanceRange } from "./analyticsPeriods.js";
 
 export function createGameAttendanceHandler({
@@ -15,7 +16,7 @@ export function createGameAttendanceHandler({
           to_char(g.starts_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD') AS date,
           COUNT(r.tg_id) FILTER (WHERE r.status='yes')::int AS players
         FROM games g LEFT JOIN rsvps r ON r.game_id=g.id
-        WHERE g.status <> 'cancelled' AND g.starts_at <= NOW() - INTERVAL '2 hours'
+        WHERE g.status <> 'cancelled' AND ${gameEndSql("g")} <= NOW()
           AND g.starts_at >= ($1::date::timestamp AT TIME ZONE 'Europe/Moscow')
           AND g.starts_at < (($2::date + 1)::timestamp AT TIME ZONE 'Europe/Moscow')
         GROUP BY g.id ORDER BY g.starts_at, g.id`,
@@ -23,7 +24,7 @@ export function createGameAttendanceHandler({
       );
       const years =
         await q(`SELECT DISTINCT EXTRACT(YEAR FROM starts_at AT TIME ZONE 'Europe/Moscow')::int AS year
-        FROM games WHERE status <> 'cancelled' AND starts_at <= NOW() - INTERVAL '2 hours' ORDER BY year`);
+        FROM games WHERE status <> 'cancelled' AND ${gameEndSql()} <= NOW() ORDER BY year`);
       res
         .set("Cache-Control", "no-store")
         .json({

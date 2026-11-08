@@ -1,3 +1,4 @@
+import { gameEndSql } from "./gameDuration.js";
 // Pick the immediate preceding non-cancelled game first, even when it has no award.
 // Filtering for winners before LIMIT would incorrectly carry a trophy across several games.
 export async function getPreviousMatchAward(q, gameId) {
@@ -10,7 +11,7 @@ export async function getPreviousMatchAward(q, gameId) {
         CASE WHEN BTRIM(winner.username) <> '' THEN '@' || BTRIM(winner.username) END,
         previous.best_player_tg_id::text) AS name
     FROM (
-      SELECT earlier.id, earlier.starts_at, earlier.best_player_tg_id
+      SELECT earlier.id, earlier.starts_at, earlier.best_player_tg_id, earlier.duration_minutes
       FROM games earlier
       JOIN games current_game ON current_game.id=$1
       WHERE current_game.status <> 'cancelled' AND earlier.status <> 'cancelled'
@@ -20,7 +21,7 @@ export async function getPreviousMatchAward(q, gameId) {
     ) previous
     LEFT JOIN players winner ON winner.tg_id=previous.best_player_tg_id
     WHERE previous.best_player_tg_id IS NOT NULL
-      AND previous.starts_at <= NOW() - INTERVAL '2 hours'
+      AND ${gameEndSql("previous")} <= NOW()
   `,
     [gameId],
   );

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
+import { ensureGameDurationSchema } from "./gameDuration.js";
 import {
   createAutoScheduleService,
   startAutoScheduleWorker,
@@ -41,6 +42,7 @@ test(
       await q(
         "CREATE TABLE settings(key text PRIMARY KEY,value text); CREATE TABLE games(id serial PRIMARY KEY,starts_at timestamptz,location text,status text,geo_lat float8,geo_lon float8)",
       );
+      await ensureGameDurationSchema(q);
       const cfg = {
         enabled: true,
         target_count: 3,
@@ -62,13 +64,17 @@ test(
       const service = createAutoScheduleService({ q, withTransaction });
       const ensure = service.ensureAutoScheduledGames;
       assert.equal((await ensure()).created, 0);
+      await q("UPDATE games SET starts_at=NOW()-INTERVAL '2 hours',duration_minutes=180 WHERE id=1");
+      assert.equal((await ensure()).created, 0);
+      await q("UPDATE games SET duration_minutes=75 WHERE id=1");
       await q(
-        "UPDATE games SET starts_at=NOW()-INTERVAL '2 hours 1 second' WHERE id=1",
+        "UPDATE games SET starts_at=NOW()-INTERVAL '75 minutes 1 second' WHERE id=1",
       );
       const result = await ensure();
       assert.equal(result.created, 1);
       const game = result.created_games[0];
       assert.equal(game.location, "Арена");
+      assert.equal(game.duration_minutes, 75);
       assert.equal(game.geo_lat, 60);
       assert.equal(game.geo_lon, 30);
       assert.equal(

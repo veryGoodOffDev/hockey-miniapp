@@ -1,3 +1,4 @@
+import { gameEndAt } from "./gameTiming.js";
 // A/B correspond to the existing team labels in the lineups screen.
 export const TEAM_COLORS = {
   white: {
@@ -53,7 +54,7 @@ export async function fetchGameTeamColors({
           (g) =>
             g.my_status === "yes" &&
             g.status !== "cancelled" &&
-            new Date(g.starts_at).getTime() + 2 * 60 * 60_000 > now,
+            gameEndAt(g) > now,
         )
         .map((g) => String(g.id)),
     ),

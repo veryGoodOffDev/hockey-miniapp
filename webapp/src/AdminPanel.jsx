@@ -1,3 +1,6 @@
+import { getGameFlags } from "./gameTiming.js";
+import useGameClock from "./useGameClock.js";
+import GameDurationField from "./admin/GameDurationField.jsx";
 import AdminPlayerList from "./admin/AdminPlayerList.jsx";
 import AppFeatureSettings from "./admin/AppFeatureSettings.jsx";
 import ChatInbox from "./ChatInbox.jsx";
@@ -420,6 +423,7 @@ export default function AdminPanel({ apiGet, apiPost, apiPatch, apiDelete, onCha
   const [section, setSection] = useState("games"); // games | players | applications | reminders | jersey | engagement | ssl
 
   const [games, setGames] = useState([]);
+  const adminClock = useGameClock(games, null);
   const [players, setPlayers] = useState([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [canViewBotStatus, setCanViewBotStatus] = useState(false);
@@ -492,6 +496,7 @@ const [jerseySelectedId, setJerseySelectedId] = useState(null);
   const [tokenValue, setTokenValue] = useState(""); // сам токен, чтобы можно было отозвать
   const [tokenForId, setTokenForId] = useState(null); // tg_id игрока, для которого показана ссылка
   const [geoPickOpen, setGeoPickOpen] = useState(false);
+  const [createDuration, setCreateDuration] = useState(75);
   const [createGeo, setCreateGeo] = useState({ lat: "", lon: "", address: "" });
   const [geoPickTarget, setGeoPickTarget] = useState("create"); // 'create' | 'edit'
 
@@ -984,6 +989,7 @@ async function exportJerseyCsv(id) {
 
 async function createOne() {
   if (!date || !time) return;
+  if (!Number.isInteger(Number(createDuration)) || Number(createDuration) < 1 || Number(createDuration) > 1440) return alert("Укажите продолжительность от 1 до 1440 минут");
 
   await runAdminOp("Создаю игру…", async () => {
     const starts_at = toIsoFromLocal(date, time);
@@ -1003,7 +1009,7 @@ async function createOne() {
       return;
     }
 
-    const payload = { starts_at, location, geo_lat, geo_lon };
+    const payload = { starts_at, location, geo_lat, geo_lon, duration_minutes: Number(createDuration) };
     console.log("CREATE payload:", payload, "createGeo:", createGeo);
 
     const r = await apiPost("/api/games", payload);
@@ -1013,6 +1019,7 @@ async function createOne() {
     await onChanged?.({ label: "✅ Игра создана — обновляю приложение…", refreshPlayers: false });
 
     setCreateGeo({ lat: "", lon: "", address: "" });
+    setCreateDuration(75);
   }, { successText: "✅ Игра создана" });
 }
 
@@ -1022,6 +1029,7 @@ async function createOne() {
   
 async function createSeries() {
   if (!date || !time || weeks < 1) return;
+  if (!Number.isInteger(Number(createDuration)) || Number(createDuration) < 1 || Number(createDuration) > 1440) return alert("Укажите продолжительность от 1 до 1440 минут");
 
   await runAdminOp(`Создаю расписание (${weeks} нед.)…`, async () => {
     const geo_lat = createGeo.lat.trim() ? Number(createGeo.lat) : null;
@@ -1033,6 +1041,7 @@ async function createSeries() {
 
       await apiPost("/api/games", {
         starts_at: base.toISOString(),
+        duration_minutes: Number(createDuration),
         location,
         geo_lat,
         geo_lon,
@@ -1043,6 +1052,7 @@ async function createSeries() {
     await onChanged?.({ label: "✅ Расписание создано — обновляю приложение…", refreshPlayers: false });
 
     setCreateGeo({ lat: "", lon: "", address: "" });
+    setCreateDuration(75);
   }, { successText: "✅ Расписание создано" });
 }
 
@@ -1491,23 +1501,19 @@ async function promoteGuestToManual(tg_id) {
 
 
   
-  function isPastGameAdmin(g) {
-  if (!g?.starts_at) return false;
-  const t = new Date(g.starts_at).getTime();
-  return t < (Date.now() - 3 * 60 * 60 * 1000); // прошло, если старт был > 3ч назад
-}
+  function isPastGameAdmin(g) { return getGameFlags(g, adminClock).isFinished; }
 
 const upcomingAdminGames = useMemo(() => {
   return (games || [])
     .filter(g => !isPastGameAdmin(g))
     .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)); // ближайшая первая
-}, [games]);
+}, [games, adminClock]);
 
 const pastAdminGames = useMemo(() => {
   return (games || [])
     .filter(g => isPastGameAdmin(g))
     .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at)); // свежие прошедшие сверху
-}, [games]);
+}, [games, adminClock]);
 
 const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
@@ -2039,6 +2045,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
         />
       </div>
 
+      <GameDurationField value={createDuration} onChange={setCreateDuration} />
       <label>Арена</label>
       <input
         className="input"
@@ -2294,7 +2301,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
             >
               <div className="rowBetween">
                 <div className="gameTitle">{head}</div>
-                <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{g.status}</span>
+                <span className={`badgeMini ${cancelled ? "bad" : ""}`}>{cancelled ? "Отменена" : isPastGameAdmin(g) ? "Прошла" : getGameFlags(g, adminClock).isLive ? "Идёт" : "Запланирована"}</span>
               </div>
               <b>{g.id}</b>
               <div className="gameArena">{g.location || "—"}</div>

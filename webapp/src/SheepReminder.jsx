@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiGet } from "./api.js";
 import "./sheepReminder.css";
+import { gameEndAt } from "./gameTiming.js";
 
 // A dismissal belongs to this award and its next game, never to future wins.
 export function sheepReminderKey(playerId, game) {
@@ -34,7 +35,7 @@ export default function SheepReminder({ playerId, nextGameId }) {
         if (
           String(game?.id) !== String(nextGameId) ||
           game.status !== "scheduled" ||
-          Date.now() >= new Date(game.starts_at).getTime() + 2 * 3600000
+          Date.now() >= gameEndAt(game)
         )
           return;
         const key = sheepReminderKey(playerId, game);
