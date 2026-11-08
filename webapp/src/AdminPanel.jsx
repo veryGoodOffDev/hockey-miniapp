@@ -510,6 +510,7 @@ const [engMonth, setEngMonth] = useState(mskToday.month);
 const [engYear, setEngYear] = useState(mskToday.year);
 const [engLoading, setEngLoading] = useState(false);
 const [engError, setEngError] = useState("");
+const engRequestRef = useRef(0);
 const [engData, setEngData] = useState({ team_size: 0, by_day: {}, users_by_day: {} });
 const [engSelectedDay, setEngSelectedDay] = useState(mskToday.key);
 
@@ -1559,15 +1560,19 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
   }
 
   async function loadEngagement(year = engYear, month = engMonth) {
+    const request = ++engRequestRef.current;
     setEngLoading(true);
     setEngError("");
     try {
       const r = await apiGet(`/api/admin/engagement?year=${year}&month=${month}`);
+      if (request !== engRequestRef.current) return;
+      if (r.year !== year || r.month !== month) throw new Error("wrong_period");
       setEngData({ team_size: Number(r.team_size) || 0, by_day: r.by_day || {}, users_by_day: r.users_by_day || {} });
     } catch (e) {
-      setEngError(e?.message || "Не удалось загрузить вовлеченность");
+      if (request !== engRequestRef.current) return;
+      setEngError(e.message === "wrong_period" ? "Не удалось получить данные за выбранный месяц. Повторите загрузку позже." : "Не удалось загрузить заходы. Проверьте соединение и нажмите «Обновить».");
     } finally {
-      setEngLoading(false);
+      if (request === engRequestRef.current) setEngLoading(false);
     }
   }
 
@@ -1578,7 +1583,8 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
   }, [section, engYear, engMonth]);
 
   useEffect(() => {
-    setEngSelectedDay(mskToday.key);
+    const prefix = `${engYear}-${String(engMonth).padStart(2, "0")}`;
+    setEngSelectedDay(mskToday.key.startsWith(prefix) ? mskToday.key : `${prefix}-01`);
   }, [engMonth, engYear, mskToday.key]);
 
   async function loadSslStatus({ quiet = false } = {}) {
@@ -2358,10 +2364,10 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
 
             <div className="engTodayBadge">
               <div className="small">{isSelectedToday ? "Сегодня" : "Выбранный день"} (уникальных заходов)</div>
-              <div className={`engTodayCircle ${toneByCount(selectedCount)}`}>{selectedCount}</div>
+              <div className={`engTodayCircle ${toneByCount(selectedCount)}`}>{engLoading ? "…" : engError || safeSelectedDay > todayKey ? "—" : selectedCount}</div>
               <div className="small">{selectedDateTitle} · Размер команды: {engData.team_size || 0}</div>
               {!isSelectedToday ? (
-                <button className="btn secondary engJumpToday" onClick={() => setEngSelectedDay(todayKey)}>Перейти к Сегодня</button>
+                <button className="btn secondary engJumpToday" onClick={() => { setEngYear(mskToday.year); setEngMonth(mskToday.month); setEngSelectedDay(todayKey); }}>Перейти к Сегодня</button>
               ) : null}
             </div>
 
@@ -2393,7 +2399,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                     onClick={() => setEngSelectedDay(key)}
                   >
                     <div className="engDay">{d}</div>
-                    <div className="engCount">{count}</div>
+                    <div className="engCount">{engLoading ? "…" : engError || isFuture ? "—" : count}</div>
                     <div className="engBattery" style={{ "--team-slots": teamSize }}>
                       {segments.map((on, i) => <span key={i} className={`engSegment ${on ? "fill" : ""}`} />)}
                     </div>
@@ -2408,7 +2414,7 @@ const adminListToShow = showPastAdmin ? pastAdminGames : upcomingAdminGames;
                 <div className="small">Всего: {selectedUsers.length}</div>
               </div>
               {selectedUsers.length === 0 ? (
-                <div className="small" style={{ opacity: .8 }}>В этот день входов не было.</div>
+                <div className="small" style={{ opacity: .8 }}>{engLoading ? "Загружаем заходы…" : engError ? "Данные недоступны. Повторите загрузку." : safeSelectedDay > todayKey ? "Этот день ещё не наступил." : "В этот день входов не было."}</div>
               ) : selectedUsers.map((u) => (
                 <div key={`${safeSelectedDay}-${u.tg_id}`} className="engUserItem">
                   <div>

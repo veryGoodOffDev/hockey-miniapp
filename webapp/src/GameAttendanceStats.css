@@ -1,0 +1,421 @@
+.statsViewTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.statsViewTabs button {
+  border: 1px solid var(--border);
+  padding: 12px 8px;
+  border-radius: 13px;
+  background: var(--card-bg);
+  color: var(--tg-hint);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.statsViewTabs button[aria-pressed="true"] {
+  color: #fff;
+  background: #2361bd;
+  border-color: #62a8ff;
+}
+.gameTrend {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 18px 14px;
+  background: var(--card-bg);
+  min-width: 0;
+}
+.gameTrend__eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--tg-link);
+}
+.gameTrend__header h2 {
+  font-size: 23px;
+  letter-spacing: -0.6px;
+  margin: 8px 0 6px;
+}
+.gameTrend__header p,
+.gameTrend__seasons > p {
+  font-size: 12px;
+  color: var(--tg-hint);
+  line-height: 1.5;
+  margin: 0;
+}
+.gameTrend__year {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+.gameTrend__year > div {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+  min-width: 0;
+}
+.gameTrend__year strong {
+  font-size: 27px;
+  letter-spacing: -0.5px;
+}
+.gameTrend__year span {
+  font-size: 11px;
+  color: var(--tg-hint);
+  overflow-wrap: anywhere;
+}
+.gameTrend__year .btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.gameTrend__tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  margin: 14px 0 20px;
+}
+.gameTrend__textButton {
+  background: transparent;
+  border: 0;
+  padding: 5px 0;
+  color: var(--tg-link);
+  font-size: 11px;
+  cursor: pointer;
+}
+.gameTrend__textButton:disabled {
+  opacity: 0.5;
+}
+.gameTrend__range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.gameTrend__range label {
+  font-size: 12px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.gameTrend__range input {
+  min-width: 0;
+  font-size: 14px;
+}
+.gameTrend__range > button,
+.gameTrend__range p {
+  grid-column: 1 / -1;
+}
+.gameTrend__range p {
+  color: #e98686;
+  font-size: 12px;
+  margin: 0;
+}
+.gameTrend__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 18px;
+}
+.gameTrend__metrics > div {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--muted-bg);
+}
+.gameTrend__metrics span {
+  font-size: 10px;
+  color: var(--tg-hint);
+  line-height: 1.4;
+}
+.gameTrend__metrics strong {
+  font-size: 29px;
+  line-height: 1;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+.gameTrend__metrics .isAccent {
+  border-color: rgba(53, 197, 152, 0.5);
+  background: rgba(33, 174, 128, 0.08);
+}
+.gameTrend__metrics .isAccent strong {
+  color: #43cca3;
+}
+.gameTrend__chartCard {
+  padding: 14px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: linear-gradient(150deg, rgba(43, 116, 204, 0.08), transparent);
+}
+.gameTrend__chartHeading h3 {
+  font-size: 15px;
+  margin: 0 0 5px;
+}
+.gameTrend__chartHeading p {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--tg-hint);
+  margin: 0;
+}
+.gameTrend__mode {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--muted-bg);
+  margin-top: 14px;
+}
+.gameTrend__mode button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 750;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--tg-hint);
+  background: transparent;
+  cursor: pointer;
+}
+.gameTrend__mode button[aria-pressed="true"] {
+  background: #21538b;
+  border-color: #568ece;
+  color: #fff;
+}
+.gameTrendPlot {
+  width: 100%;
+  min-width: 0;
+}
+.gameTrendPlot svg {
+  width: 100%;
+  display: block;
+  overflow: visible;
+  touch-action: pan-y;
+  margin-top: 10px;
+}
+.gameTrendPlot__label {
+  fill: var(--tg-hint);
+  font:
+    10px system-ui,
+    sans-serif;
+}
+.gameTrendPlot__reading {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 2px 0 8px;
+}
+.gameTrendPlot__reading strong {
+  font-size: 24px;
+  color: #43cca3;
+}
+.gameTrendPlot__reading span {
+  font-size: 10px;
+  color: var(--tg-hint);
+}
+.gameTrend__hint {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--tg-hint);
+  margin: 12px 0 0;
+}
+.gameTrend__details {
+  padding: 14px 0;
+  margin: 8px 0 0;
+}
+.gameTrend__period {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gameTrend__period button {
+  border: 1px solid var(--border);
+  color: inherit;
+  background: var(--muted-bg);
+  border-radius: 10px;
+  width: 32px;
+  height: 38px;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-size: 22px;
+}
+.gameTrend__period button:disabled {
+  opacity: 0.35;
+}
+.gameTrend__period select {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 10px 7px;
+  height: 40px;
+}
+.gameTrend__periodStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 12px 0;
+  font-size: 10px;
+  color: var(--tg-hint);
+}
+.gameTrend__periodStats b {
+  color: var(--tg-text);
+}
+.gameTrend__game {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.gameTrend__game > span:first-child {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.gameTrend__game strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+.gameTrend__game small {
+  font-size: 10px;
+  color: var(--tg-hint);
+  overflow-wrap: anywhere;
+}
+.gameTrend__players {
+  display: grid;
+  gap: 3px;
+  text-align: center;
+  background: var(--muted-bg);
+  padding: 7px 11px;
+  border-radius: 11px;
+}
+.gameTrend__players b {
+  font-size: 19px;
+  color: #68b6ff;
+}
+.gameTrend__players small {
+  font-size: 9px;
+}
+.gameTrend__seasons {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.gameTrend__seasons h3 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+.gameTrend__seasons > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 15px;
+}
+.gameTrend__seasons article {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px 7px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.gameTrend__seasons article > span {
+  font-size: 10px;
+  font-weight: 650;
+}
+.gameTrend__seasons article > strong {
+  font-size: 21px;
+  letter-spacing: -0.5px;
+}
+.gameTrend__seasons small {
+  font-size: 9px;
+  color: var(--tg-hint);
+}
+.gameTrend__seasons i {
+  display: block;
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    #52c4dc var(--season-fill),
+    var(--muted-bg) var(--season-fill)
+  );
+}
+.gameTrend__empty {
+  text-align: center;
+  color: var(--tg-hint);
+  font-size: 12px;
+  line-height: 1.65;
+  padding: 30px 8px;
+  margin: 0;
+}
+.gameTrend__placeholder {
+  padding: 45px 12px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--tg-hint);
+}
+.gameTrend__footnote {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.gameTrend button:focus-visible,
+.statsViewTabs button:focus-visible {
+  outline: 2px solid var(--tg-link);
+  outline-offset: 3px;
+}
+@media (min-width: 700px) {
+  .gameTrend {
+    padding: 24px;
+  }
+  .gameTrend__metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .gameTrend__chartHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .gameTrend__mode {
+    margin-top: 0;
+    min-width: 200px;
+  }
+}
+@media (max-width: 360px) {
+  .gameTrend {
+    padding: 16px 10px;
+  }
+  .gameTrend__range {
+    grid-template-columns: 1fr;
+  }
+  .gameTrend__seasons > div {
+    gap: 5px;
+  }
+  .gameTrend__seasons article {
+    padding: 10px 5px;
+  }
+  .gameTrend__seasons article > strong {
+    font-size: 18px;
+  }
+}

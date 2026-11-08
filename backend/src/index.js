@@ -4,6 +4,8 @@ import { createTeamPostService } from "./teamPosts/service.js";
 import { canViewPlayerBotStatus, presentAdminPlayers } from "./adminPlayerPresentation.js";
 import { createPlayerPreferencesHandler } from "./playerPreferences.js";
 import { createAppFeatures } from "./appFeatures.js";
+import { createEngagementHandler } from "./engagement.js";
+import { createGameAttendanceHandler } from "./gameAttendanceStats.js";
 import { getPreviousMatchAward } from "./previousMatchAward.js";
 import { createChatInboxRepository, createChatInboxCapture, createChatInboxRoutes } from "./chatInbox.js";
 import "dotenv/config";
@@ -4762,82 +4764,15 @@ app.post("/api/admin/rsvp", async (req, res) => {
 
 /** ====== ADMIN: players list + patch ====== */
 
-app.get("/api/admin/engagement", async (req, res) => {
-  const user = req.webappUser || requireWebAppAuth(req, res);
-  if (!user) return;
-  if (!(await requireGroupMember(req, res, user))) return;
-  if (!(await requireAdminAsync(req, res, user))) return;
-
-  const y = int(req.query.year, Number.NaN);
-  const m = int(req.query.month, Number.NaN);
-
-  const nowMsk = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" }));
-  const reqYear = Number.isFinite(y) && y >= 2000 && y <= 2200 ? y : nowMsk.getFullYear();
-  const reqMonth = Number.isFinite(m) && m >= 1 && m <= 12 ? m : nowMsk.getMonth() + 1;
-
-  const monthKey = `${reqYear}-${String(reqMonth).padStart(2, "0")}-01`;
-
-  const stats = await q(
-    `SELECT to_char(visit_date, 'YYYY-MM-DD') AS day_key, COUNT(*)::int AS visitors
-     FROM app_daily_visits
-     WHERE visit_date >= DATE_TRUNC('month', $1::date)::date
-       AND visit_date < (DATE_TRUNC('month', $1::date) + INTERVAL '1 month')::date
-     GROUP BY visit_date
-     ORDER BY visit_date ASC`,
-    [monthKey]
-  );
-
-  const visitors = await q(
-    `SELECT
-       to_char(v.visit_date, 'YYYY-MM-DD') AS day_key,
-       v.tg_id,
-       p.display_name,
-       p.first_name,
-       p.last_name,
-       p.username,
-       p.jersey_number
-     FROM app_daily_visits v
-     JOIN players p ON p.tg_id = v.tg_id
-     WHERE v.visit_date >= DATE_TRUNC('month', $1::date)::date
-       AND v.visit_date < (DATE_TRUNC('month', $1::date) + INTERVAL '1 month')::date
-     ORDER BY v.visit_date ASC, COALESCE(NULLIF(BTRIM(p.display_name), ''), NULLIF(BTRIM(p.first_name), ''), NULLIF(BTRIM(p.username), ''), p.tg_id::text) ASC`,
-    [monthKey]
-  );
-
-  const playersCountRes = await q(
-    `SELECT COUNT(*)::int AS total
-     FROM players
-     WHERE disabled = FALSE
-       AND player_kind IN ('tg', 'manual')`
-  );
-
-  const byDay = {};
-  for (const row of stats.rows) {
-    byDay[row.day_key] = Number(row.visitors) || 0;
-  }
-
-  const usersByDay = {};
-  for (const row of visitors.rows) {
-    if (!usersByDay[row.day_key]) usersByDay[row.day_key] = [];
-    usersByDay[row.day_key].push({
-      tg_id: Number(row.tg_id),
-      display_name: row.display_name || "",
-      first_name: row.first_name || "",
-      last_name: row.last_name || "",
-      username: row.username || "",
-      jersey_number: row.jersey_number,
-    });
-  }
-
-  res.json({
-    ok: true,
-    year: reqYear,
-    month: reqMonth,
-    team_size: Number(playersCountRes.rows?.[0]?.total || 0),
-    by_day: byDay,
-    users_by_day: usersByDay,
-  });
-});
+app.get("/api/admin/engagement", createEngagementHandler({
+  q,
+  authenticate: async (req, res) => {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user || !(await requireGroupMember(req, res, user))) return null;
+    if (!(await requireAdminAsync(req, res, user))) return null;
+    return user;
+  },
+}));
 
 app.get("/api/admin/players", async (req, res) => {
   const user = req.webappUser || requireWebAppAuth(req, res);
@@ -6149,6 +6084,17 @@ app.post("/api/internal/postgame/run", async (req, res) => {
 });
 
 
+
+app.get("/api/stats/game-attendance", createGameAttendanceHandler({
+  q,
+  authenticate: async (req, res) => {
+    const user = req.webappUser || requireWebAppAuth(req, res);
+    if (!user) return null;
+    const admin = await isAdminId(user.id);
+    if (!admin && !(await requireGroupMember(req, res, user))) return null;
+    return user;
+  },
+}));
 
 app.get("/api/stats/attendance", async (req, res) => {
   try {

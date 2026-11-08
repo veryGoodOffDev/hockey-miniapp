@@ -1,3 +1,4 @@
+import GameAttendanceStats from "./GameAttendanceStats.jsx";
 import TeamPostFormatChoice from "./TeamPostFormatChoice.jsx";
 import useAppFeatures from "./useAppFeatures.js";
 import { teamPostError, teamPostSuccess } from "./teamPostFeedback.js";
@@ -138,6 +139,7 @@ useEffect(() => {
   const [teamsBusy, setTeamsBusy] = useState(false);
   const [teamsLockModalOpen, setTeamsLockModalOpen] = useState(false);
   // статистика
+  const [statsView, setStatsView] = useState("trend");
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsDays, setStatsDays] = useState(365);
   const [attendance, setAttendance] = useState([]);
@@ -2019,9 +2021,9 @@ function clipText(s, max = 70) {
   return () => clearTimeout(t);
 }, [detailFocus, detailLoading, game?.id, gameView]);
   useEffect(() => {
-    if (tab === "stats") loadAttendance(statsDays);
+    if (tab === "stats" && statsView === "players") loadAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, statsView]);
   useEffect(() => {
     if (tab !== "players") return;
     (async () => {
@@ -4686,7 +4688,12 @@ function openYandexRoute(lat, lon) {
   </div>
 )}
       {/* ====== STATS ====== */}
-{tab === "stats" && (
+{tab === "stats" && <div className="statsViewTabs" role="group" aria-label="Раздел статистики">
+  <button type="button" aria-pressed={statsView === "trend"} onClick={() => setStatsView("trend")}>Посещаемость игр</button>
+  <button type="button" aria-pressed={statsView === "players"} onClick={() => setStatsView("players")}>По игрокам</button>
+</div>}
+{tab === "stats" && statsView === "trend" && <GameAttendanceStats onOpenGame={openGameDetail} />}
+{tab === "stats" && statsView === "players" && (
   <div className="card">
     <h2>
       {statsMode === "yes" ? "✅ Топ посещаемости (Буду)" :
